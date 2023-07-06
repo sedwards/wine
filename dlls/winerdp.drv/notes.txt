@@ -1,0 +1,35 @@
+c
+
+typedef struct
+{
+    /* Size of the structure */
+    DWORD size;
+
+    /* Driver name (null-terminated wide string) */
+    LPCWSTR name;
+
+    /* Function pointers for driver entry points */
+    /* ... */
+
+    /* Function pointer for initializing driver information */
+    BOOL (*InitDriverInfo)(WineGdiDriver *driver, LPCWSTR driver_name);
+
+    /* Additional driver-specific fields */
+    /* ... */
+} WineGdiDriver;
+
+    size: The size of the structure in bytes. This field is typically set to sizeof(WineGdiDriver) to ensure compatibility with different Wine versions.
+
+    name: The name of the driver. It is a null-terminated wide string (LPWSTR) that identifies the driver. For example, it could be set to L"rdpdrv.drv" for an RDP-based driver.
+
+    Function pointers: The structure may include function pointers for various driver entry points such as pCreateDC, pCreateCompatibleDC, pDeleteDC, and so on. These function pointers are used to redirect the GDI function calls to the corresponding driver functions.
+
+    InitDriverInfo: A function pointer to the initialization function that sets up the driver information. This function is called during the driver initialization process and is responsible for populating the driver structure with the required information.
+
+    Additional driver-specific fields: Depending on the driver's requirements, there may be additional fields specific to the driver's implementation and capabilities. These fields can be used to store any necessary driver-specific data.
+
+It's important to note that the WineGdiDriver structure is part of the Wine graphics driver framework and is not part of the FreeRDP library. It is specific to Wine and used internally by Wine's graphics subsystem to manage and interact with different graphics drivers.
+
+When implementing a new Wine graphics driver, you will define and populate the WineGdiDriver structure accordingly to provide the necessary driver information and functionality.
+
+I hope this clarifies the purpose and structure of WineGdiDriver. Let me know if you have any further questions!

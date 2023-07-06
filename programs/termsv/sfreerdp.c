@@ -19,65 +19,30 @@
  * limitations under the License.
  */
 
-//#include <freerdp/config.h>
+#include <freerdp/config.h>
 
-#include <stdio.h>
-#include <stdint.h>
-#include <inttypes.h>
-#include <assert.h>
+#include <errno.h>
+#include <signal.h>
 
-#include <basetsd.h>
-#include <windef.h>
-#include <winnt.h>
+#include <winpr/winpr.h>
+#include <winpr/crt.h>
+#include <winpr/assert.h>
+#include <winpr/ssl.h>
+#include <winpr/synch.h>
+#include <winpr/file.h>
+#include <winpr/string.h>
+#include <winpr/path.h>
+#include <winpr/winsock.h>
 
-// THink this is in winuser
-#define INVALID_HANDLE_VALUE ((HANDLE)(LONG_PTR)-1)
-#define WAIT_FAILED ((DWORD)0xFFFFFFFF)
+#include <freerdp/streamdump.h>
+#include <freerdp/transport_io.h>
 
-#include <winternl.h>
-#include <winsvc.h>
-
-#include <winsock2.h>
-#include <wtsapi32.h>
-#include <sspi.h>
-
-#define WINPR_ASSERT(cond) assert(cond)
-#define WINPR_UNUSED(x) (void)(x)
-
-#define WINPR_H
-#define WINPR_TIMEZONE_H
-#define WINPR_WTYPES_H
-#define WINPR_FILE_H
-#define WINPR_SPEC_H
-#define WINPR_CRT_STRING_H
-#define WINPR_CRT_H
-#define WINPR_COLLECTIONS_H
-#define WINPR_NT_H
-#define WINPR_WTSAPI_H
-#define WINPR_SYNCH_H
-#define WINPR_UTILS_STREAM_H
-#define WINPR_API WINAPI
-#define WINPR_SSPI_H
-#define WINPR_SECURITY_H
-#define WINPR_TIMEZONE_H
-#define WINPR_THREAD_H
-#define WINPR_WINDOWS_H
-#define WINPR_INPUT_H
-#define WINPR_WND_H
-#define WINPR_LOG_H
-
-#include "rdp.h"
-
-//#include <freerdp/streamdump.h>
-//#include <freerdp/transport_io.h>
-
-//#include <freerdp/channels/wtsvc.h>
-//#include <freerdp/channels/channels.h>
-//#include <freerdp/channels/drdynvc.h>
+#include <freerdp/channels/wtsvc.h>
+#include <freerdp/channels/channels.h>
+#include <freerdp/channels/drdynvc.h>
 
 #include <freerdp/freerdp.h>
 #include <freerdp/constants.h>
-// Sound Support
 #include <freerdp/server/rdpsnd.h>
 #include <freerdp/settings.h>
 
@@ -90,15 +55,10 @@
 
 #include <freerdp/log.h>
 #define TAG SERVER_TAG("sample")
-#define DRDYNVC_SVC_CHANNEL_NAME "drdynvc"
 
 #define SAMPLE_SERVER_USE_CLIENT_RESOLUTION 1
 #define SAMPLE_SERVER_DEFAULT_WIDTH 1024
 #define SAMPLE_SERVER_DEFAULT_HEIGHT 768
-
-#include "wine/debug.h"
-
-WINE_DEFAULT_DEBUG_CHANNEL(termsv);
 
 struct server_info
 {
@@ -140,7 +100,7 @@ static void test_peer_context_free(freerdp_peer* client, rdpContext* ctx)
 		sf_peer_ainput_uninit(context);
 #endif
 
-		//rdpsnd_server_context_free(context->rdpsnd);
+		rdpsnd_server_context_free(context->rdpsnd);
 		encomsp_server_context_free(context->encomsp);
 
 		WTSCloseServer((HANDLE)context->vcm);
@@ -155,10 +115,8 @@ static BOOL test_peer_context_new(freerdp_peer* client, rdpContext* ctx)
 	WINPR_ASSERT(context);
 	WINPR_ASSERT(ctx->settings);
 
-#if 0
 	if (!(context->rfx_context = rfx_context_new_ex(TRUE, ctx->settings->ThreadingFlags)))
 		goto fail;
-#endif
 
 	if (!rfx_context_reset(context->rfx_context, SAMPLE_SERVER_DEFAULT_WIDTH,
 	                       SAMPLE_SERVER_DEFAULT_HEIGHT))
@@ -288,7 +246,7 @@ static BOOL test_peer_draw_background(freerdp_peer* client)
 
 	if (!(rgb_data = malloc(size)))
 	{
-		WINE_ERR(TAG, "Problem allocating memory");
+		WLog_ERR(TAG, "Problem allocating memory");
 		return FALSE;
 	}
 
@@ -296,7 +254,7 @@ static BOOL test_peer_draw_background(freerdp_peer* client)
 
 	if (settings->RemoteFxCodec)
 	{
-		WINE_FIXME(TAG, "Using RemoteFX codec");
+		WLog_DBG(TAG, "Using RemoteFX codec");
 		if (!rfx_compose_message(context->rfx_context, s, &rect, 1, rgb_data, rect.width,
 		                         rect.height, rect.width * 3))
 		{
@@ -309,7 +267,7 @@ static BOOL test_peer_draw_background(freerdp_peer* client)
 	}
 	else
 	{
-		WINE_FIXME(TAG, "Using NSCodec");
+		WLog_DBG(TAG, "Using NSCodec");
 		nsc_compose_message(context->nsc_context, s, rgb_data, rect.width, rect.height,
 		                    rect.width * 3ULL);
 		WINPR_ASSERT(settings->NSCodecId <= UINT16_MAX);
@@ -357,13 +315,13 @@ static BOOL test_peer_load_icon(freerdp_peer* client)
 
 	if (!settings->RemoteFxCodec && !freerdp_settings_get_bool(settings, FreeRDP_NSCodec))
 	{
-		WINE_ERR(TAG, "Client doesn't support RemoteFX or NSCodec");
+		WLog_ERR(TAG, "Client doesn't support RemoteFX or NSCodec");
 		return FALSE;
 	}
 
-	if ((fp = fopen("test_icon.ppm", "r")) == NULL)
+	if ((fp = winpr_fopen("test_icon.ppm", "r")) == NULL)
 	{
-		WINE_ERR(TAG, "Unable to open test icon");
+		WLog_ERR(TAG, "Unable to open test icon");
 		return FALSE;
 	}
 
@@ -376,7 +334,7 @@ static BOOL test_peer_load_icon(freerdp_peer* client)
 
 	if (sscanf(line, "%hu %hu", &context->icon_width, &context->icon_height) < 2)
 	{
-		WINE_ERR(TAG, "Problem while extracting width/height from the icon file");
+		WLog_ERR(TAG, "Problem while extracting width/height from the icon file");
 		goto out_fail;
 	}
 
@@ -524,7 +482,7 @@ static BOOL test_sleep_tsdiff(UINT32* old_sec, UINT32* old_usec, UINT32 new_sec,
 
 	if ((sec < 0) || ((sec == 0) && (usec < 0)))
 	{
-		WINE_ERR(TAG, "Invalid time stamp detected.");
+		WLog_ERR(TAG, "Invalid time stamp detected.");
 		return FALSE;
 	}
 
@@ -546,7 +504,6 @@ static BOOL test_sleep_tsdiff(UINT32* old_sec, UINT32* old_usec, UINT32 new_sec,
 	return TRUE;
 }
 
-#if 0
 static BOOL tf_peer_dump_rfx(freerdp_peer* client)
 {
 	wStream* s;
@@ -666,13 +623,12 @@ static DWORD WINAPI tf_debug_channel_thread_func(LPVOID arg)
 		}
 
 		Stream_SetPosition(s, BytesReturned);
-		WINE_FIXME(TAG, "got %" PRIu32 " bytes", BytesReturned);
+		WLog_DBG(TAG, "got %" PRIu32 " bytes", BytesReturned);
 	}
 fail:
 	Stream_Free(s, TRUE);
 	return 0;
 }
-#endif
 
 static BOOL tf_peer_post_connect(freerdp_peer* client)
 {
@@ -693,19 +649,19 @@ static BOOL tf_peer_post_connect(freerdp_peer* client)
 	 * The server may start sending graphics output and receiving keyboard/mouse input after this
 	 * callback returns.
 	 */
-	WINE_FIXME(TAG, "Client %s is activated (osMajorType %" PRIu32 " osMinorType %" PRIu32 ")",
+	WLog_DBG(TAG, "Client %s is activated (osMajorType %" PRIu32 " osMinorType %" PRIu32 ")",
 	         client->local ? "(local)" : client->hostname, settings->OsMajorType,
 	         settings->OsMinorType);
 
 	if (settings->AutoLogonEnabled)
 	{
-		WINE_FIXME(TAG, " and wants to login automatically as %s\\%s",
+		WLog_DBG(TAG, " and wants to login automatically as %s\\%s",
 		         settings->Domain ? settings->Domain : "", settings->Username);
 		/* A real server may perform OS login here if NLA is not executed previously. */
 	}
 
-	WINE_FIXME(TAG, "");
-	WINE_FIXME(TAG, "Client requested desktop: %" PRIu32 "x%" PRIu32 "x%" PRIu32 "",
+	WLog_DBG(TAG, "");
+	WLog_DBG(TAG, "Client requested desktop: %" PRIu32 "x%" PRIu32 "x%" PRIu32 "",
 	         settings->DesktopWidth, settings->DesktopHeight,
 	         freerdp_settings_get_uint32(settings, FreeRDP_ColorDepth));
 #if (SAMPLE_SERVER_USE_CLIENT_RESOLUTION == 1)
@@ -713,11 +669,11 @@ static BOOL tf_peer_post_connect(freerdp_peer* client)
 	if (!rfx_context_reset(context->rfx_context, settings->DesktopWidth, settings->DesktopHeight))
 		return FALSE;
 
-	WINE_FIXME(TAG, "Using resolution requested by client.");
+	WLog_DBG(TAG, "Using resolution requested by client.");
 #else
 	client->settings->DesktopWidth = context->rfx_context->width;
 	client->settings->DesktopHeight = context->rfx_context->height;
-	WINE_FIXME(TAG, "Resizing client to %" PRIu32 "x%" PRIu32 "", client->settings->DesktopWidth,
+	WLog_DBG(TAG, "Resizing client to %" PRIu32 "x%" PRIu32 "", client->settings->DesktopWidth,
 	         client->settings->DesktopHeight);
 	client->update->DesktopResize(client->update->context);
 #endif
@@ -726,7 +682,7 @@ static BOOL tf_peer_post_connect(freerdp_peer* client)
 	 */
 	if (!test_peer_load_icon(client))
 	{
-		WINE_FIXME(TAG, "Unable to load icon");
+		WLog_DBG(TAG, "Unable to load icon");
 		return FALSE;
 	}
 
@@ -736,31 +692,30 @@ static BOOL tf_peer_post_connect(freerdp_peer* client)
 
 		if (context->debug_channel != NULL)
 		{
-			WINE_FIXME(TAG, "Open channel rdpdbg.");
+			WLog_DBG(TAG, "Open channel rdpdbg.");
 
-			if (!(context->stopEvent = CreateEventA(NULL, TRUE, FALSE, NULL)))
+			if (!(context->stopEvent = CreateEvent(NULL, TRUE, FALSE, NULL)))
 			{
-				WINE_ERR(TAG, "Failed to create stop event");
+				WLog_ERR(TAG, "Failed to create stop event");
 				return FALSE;
 			}
-#if 0
+
 			if (!(context->debug_channel_thread =
 			          CreateThread(NULL, 0, tf_debug_channel_thread_func, (void*)context, 0, NULL)))
 			{
-				WINE_ERR(TAG, "Failed to create debug channel thread");
+				WLog_ERR(TAG, "Failed to create debug channel thread");
 				CloseHandle(context->stopEvent);
 				context->stopEvent = NULL;
 				return FALSE;
 			}
-#endif
 		}
 	}
-#if 0
+
 	if (WTSVirtualChannelManagerIsChannelJoined(context->vcm, RDPSND_CHANNEL_NAME))
 	{
 		sf_peer_rdpsnd_init(context); /* Audio Output */
 	}
-#endif
+
 	if (WTSVirtualChannelManagerIsChannelJoined(context->vcm, ENCOMSP_SVC_CHANNEL_NAME))
 	{
 		sf_peer_encomsp_init(context); /* Lync Multiparty */
@@ -817,7 +772,7 @@ static BOOL tf_peer_synchronize_event(rdpInput* input, UINT32 flags)
 {
 	WINPR_UNUSED(input);
 	WINPR_ASSERT(input);
-	WINE_FIXME(TAG, "Client sent a synchronize event (flags:0x%" PRIX32 ")", flags);
+	WLog_DBG(TAG, "Client sent a synchronize event (flags:0x%" PRIX32 ")", flags);
 	return TRUE;
 }
 
@@ -846,7 +801,7 @@ static BOOL tf_peer_keyboard_event(rdpInput* input, UINT16 flags, UINT8 code)
 	tcontext = (testPeerContext*)context;
 	WINPR_ASSERT(tcontext);
 
-	WINE_FIXME(TAG, "Client sent a keyboard event (flags:0x%04" PRIX16 " code:0x%04" PRIX8 ")", flags,
+	WLog_DBG(TAG, "Client sent a keyboard event (flags:0x%04" PRIX16 " code:0x%04" PRIX8 ")", flags,
 	         code);
 
 	if (((flags & KBD_FLAGS_RELEASE) == 0) && (code == RDP_SCANCODE_KEY_G)) /* 'g' key */
@@ -905,7 +860,7 @@ static BOOL tf_peer_unicode_keyboard_event(rdpInput* input, UINT16 flags, UINT16
 	WINPR_UNUSED(input);
 	WINPR_ASSERT(input);
 
-	WINE_FIXME(TAG,
+	WLog_DBG(TAG,
 	         "Client sent a unicode keyboard event (flags:0x%04" PRIX16 " code:0x%04" PRIX16 ")",
 	         flags, code);
 	return TRUE;
@@ -917,7 +872,7 @@ static BOOL tf_peer_mouse_event(rdpInput* input, UINT16 flags, UINT16 x, UINT16 
 	WINPR_ASSERT(input);
 	WINPR_ASSERT(input->context);
 
-	// WINE_FIXME(TAG, "Client sent a mouse event (flags:0x%04"PRIX16" pos:%"PRIu16",%"PRIu16")",
+	// WLog_DBG(TAG, "Client sent a mouse event (flags:0x%04"PRIX16" pos:%"PRIu16",%"PRIu16")",
 	// flags, x, y);
 	test_peer_draw_icon(input->context->peer, x + 10, y);
 	return TRUE;
@@ -929,7 +884,7 @@ static BOOL tf_peer_extended_mouse_event(rdpInput* input, UINT16 flags, UINT16 x
 	WINPR_ASSERT(input);
 	WINPR_ASSERT(input->context);
 
-	// WINE_FIXME(TAG, "Client sent an extended mouse event (flags:0x%04"PRIX16"
+	// WLog_DBG(TAG, "Client sent an extended mouse event (flags:0x%04"PRIX16"
 	// pos:%"PRIu16",%"PRIu16")", flags, x, y);
 	test_peer_draw_icon(input->context->peer, x + 10, y);
 	return TRUE;
@@ -942,11 +897,11 @@ static BOOL tf_peer_refresh_rect(rdpContext* context, BYTE count, const RECTANGL
 	WINPR_ASSERT(context);
 	WINPR_ASSERT(areas || (count == 0));
 
-	WINE_FIXME(TAG, "Client requested to refresh:");
+	WLog_DBG(TAG, "Client requested to refresh:");
 
 	for (i = 0; i < count; i++)
 	{
-		WINE_FIXME(TAG, "  (%" PRIu16 ", %" PRIu16 ") (%" PRIu16 ", %" PRIu16 ")", areas[i].left,
+		WLog_DBG(TAG, "  (%" PRIu16 ", %" PRIu16 ") (%" PRIu16 ", %" PRIu16 ")", areas[i].left,
 		         areas[i].top, areas[i].right, areas[i].bottom);
 	}
 
@@ -960,13 +915,13 @@ static BOOL tf_peer_suppress_output(rdpContext* context, BYTE allow, const RECTA
 	if (allow > 0)
 	{
 		WINPR_ASSERT(area);
-		WINE_FIXME(TAG,
+		WLog_DBG(TAG,
 		         "Client restore output (%" PRIu16 ", %" PRIu16 ") (%" PRIu16 ", %" PRIu16 ").",
 		         area->left, area->top, area->right, area->bottom);
 	}
 	else
 	{
-		WINE_FIXME(TAG, "Client minimized and suppress output.");
+		WLog_DBG(TAG, "Client minimized and suppress output.");
 	}
 
 	return TRUE;
@@ -1067,14 +1022,13 @@ static DWORD WINAPI test_peer_mainloop(LPVOID arg)
 	WINPR_ASSERT(client->context);
 	settings = client->context->settings;
 	WINPR_ASSERT(settings);
-#if 0
 	if (info->replay_dump)
 	{
 		if (!freerdp_settings_set_bool(settings, FreeRDP_TransportDumpReplay, TRUE) ||
 		    !freerdp_settings_set_string(settings, FreeRDP_TransportDumpFile, info->replay_dump))
 			goto fail;
 	}
-#endif
+
 	rdpPrivateKey* key = freerdp_key_new_from_file(info->key);
 	if (!key)
 		goto fail;
@@ -1141,7 +1095,7 @@ static DWORD WINAPI test_peer_mainloop(LPVOID arg)
 		freerdp_set_io_callbacks(client->context, &replay);
 	}
 
-	WINE_FIXME(TAG, "We've got a client %s", client->local ? "(local)" : client->hostname);
+	WLog_INFO(TAG, "We've got a client %s", client->local ? "(local)" : client->hostname);
 
 	while (error == CHANNEL_RC_OK)
 	{
@@ -1152,7 +1106,7 @@ static DWORD WINAPI test_peer_mainloop(LPVOID arg)
 
 			if (tmp == 0)
 			{
-				WINE_ERR(TAG, "Failed to get FreeRDP transport event handles");
+				WLog_ERR(TAG, "Failed to get FreeRDP transport event handles");
 				break;
 			}
 
@@ -1163,7 +1117,7 @@ static DWORD WINAPI test_peer_mainloop(LPVOID arg)
 
 		if (status == WAIT_FAILED)
 		{
-			WINE_ERR(TAG, "WaitForMultipleObjects failed (errno: %d)", errno);
+			WLog_ERR(TAG, "WaitForMultipleObjects failed (errno: %d)", errno);
 			break;
 		}
 
@@ -1215,7 +1169,7 @@ static DWORD WINAPI test_peer_mainloop(LPVOID arg)
 		}
 	}
 
-	WINE_FIXME(TAG, "Client %s disconnected.", client->local ? "(local)" : client->hostname);
+	WLog_INFO(TAG, "Client %s disconnected.", client->local ? "(local)" : client->hostname);
 
 	WINPR_ASSERT(client->Disconnect);
 	client->Disconnect(client);
@@ -1259,7 +1213,7 @@ static void test_server_mainloop(freerdp_listener* instance)
 
 		if (0 == count)
 		{
-			WINE_ERR(TAG, "Failed to get FreeRDP event handles");
+			WLog_ERR(TAG, "Failed to get FreeRDP event handles");
 			break;
 		}
 
@@ -1267,14 +1221,14 @@ static void test_server_mainloop(freerdp_listener* instance)
 
 		if (WAIT_FAILED == status)
 		{
-			WINE_ERR(TAG, "select failed");
+			WLog_ERR(TAG, "select failed");
 			break;
 		}
 
 		WINPR_ASSERT(instance->CheckFileDescriptor);
 		if (instance->CheckFileDescriptor(instance) != TRUE)
 		{
-			WINE_ERR(TAG, "Failed to check FreeRDP file descriptor");
+			WLog_ERR(TAG, "Failed to check FreeRDP file descriptor");
 			break;
 		}
 	}
@@ -1296,8 +1250,7 @@ static const struct
 static void print_entry(FILE* fp, const char* fmt, const char* what, size_t size)
 {
 	char buffer[32] = { 0 };
-	//strncpy(buffer, what, MIN(size, sizeof(buffer)));
-	lstrcpynA(buffer, what, MIN(size, sizeof(buffer)));
+	strncpy(buffer, what, MIN(size, sizeof(buffer)));
 	fprintf(fp, fmt, buffer);
 }
 
@@ -1305,8 +1258,8 @@ static WINPR_NORETURN(void usage(const char* app, const char* invalid))
 {
 	FILE* fp = stdout;
 
-	//fprintf(fp, "Invalid argument '%s'\n", invalid);
-        //fprintf(fp, "Usage: %s <arg>[ <arg> ...]\n", app);
+	fprintf(fp, "Invalid argument '%s'\n", invalid);
+	fprintf(fp, "Usage: %s <arg>[ <arg> ...]\n", app);
 	fprintf(fp, "Arguments:\n");
 	print_entry(fp, "\t%s<pcap file>\n", options.spcap, sizeof(options.spcap));
 	print_entry(fp, "\t%s<cert file>\n", options.scert, sizeof(options.scert));
@@ -1350,14 +1303,12 @@ int main(int argc, char* argv[])
 		}
 		else if (strncmp(arg, options.slocal_only, sizeof(options.slocal_only)) == 0)
 			localOnly = TRUE;
-#if 0
 		else if (strncmp(arg, options.spcap, sizeof(options.spcap)) == 0)
 		{
 			info.test_pcap_file = &arg[sizeof(options.spcap)];
 			if (!winpr_PathFileExists(info.test_pcap_file))
 				usage(app, arg);
 		}
-#endif
 		else if (strncmp(arg, options.scert, sizeof(options.scert)) == 0)
 		{
 			info.cert = &arg[sizeof(options.scert)];
@@ -1375,12 +1326,7 @@ int main(int argc, char* argv[])
 	}
 
 	WTSRegisterWtsApiFunctionTable(FreeRDP_InitWtsApi());
-
-	//dlopen
-	// FreeRDP
-	// pInitWtsApi = (INIT_WTSAPI_FN)GetProcAddress(g_WtsApiModule, "InitWtsApi")
-
-	//winpr_InitializeSSL(WINPR_SSL_INIT_DEFAULT);
+	winpr_InitializeSSL(WINPR_SSL_INIT_DEFAULT);
 	instance = freerdp_listener_new();
 
 	if (!instance)
@@ -1429,8 +1375,4 @@ fail:
 	WSACleanup();
 	return rc;
 }
-
-#include "termsv_sf.c"
-#include "server.c"
-
 
