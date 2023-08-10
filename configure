@@ -1486,6 +1486,7 @@ enable_wineusb_sys
 enable_winevulkan
 enable_winewayland_drv
 enable_winex11_drv
+enable_winebroadway_drv
 enable_winerdp_drv
 enable_winexinput_sys
 enable_wing32
