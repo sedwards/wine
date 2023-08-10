@@ -1,7 +1,7 @@
 /*
- * X11 graphics driver initialisation functions
+ * Android driver initialisation functions
  *
- * Copyright 1996 Alexandre Julliard
+ * Copyright 1996, 2013, 2017 Alexandre Julliard
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -26,422 +26,594 @@
 
 #include <stdarg.h>
 #include <string.h>
+#include <dlfcn.h>
+#include <link.h>
 
+#include "ntstatus.h"
+#define WIN32_NO_STATUS
 #include "windef.h"
 #include "winbase.h"
 #include "winreg.h"
-#include "broadwaydrv.h"
+#include "broadway.h"
+#include "wine/server.h"
 #include "wine/debug.h"
 
-WINE_DEFAULT_DEBUG_CHANNEL(broadwaydrv);
+WINE_DEFAULT_DEBUG_CHANNEL(broadway);
 
-Display *gdi_display;  /* display to use for all GDI functions */
+unsigned int screen_width = 0;
+unsigned int screen_height = 0;
+RECT virtual_screen_rect = { 0, 0, 0, 0 };
 
-static int palette_size;
+static const unsigned int screen_bpp = 32;  /* we don't support other modes */
 
-static Pixmap stock_bitmap_pixmap;  /* phys bitmap for the default stock bitmap */
+static RECT monitor_rc_work;
+static int device_init_done;
+static BOOL force_display_devices_refresh;
 
-static pthread_once_t init_once = PTHREAD_ONCE_INIT;
+PNTAPCFUNC register_window_callback;
 
-static const struct user_driver_funcs broadwaydrv_funcs;
-static const struct gdi_dc_funcs *xrender_funcs;
-
-
-void init_recursive_mutex( pthread_mutex_t *mutex )
+typedef struct
 {
-    pthread_mutexattr_t attr;
+    struct gdi_physdev dev;
+} BROADWAY_PDEVICE;
 
-    pthread_mutexattr_init( &attr );
-    pthread_mutexattr_settype( &attr, PTHREAD_MUTEX_RECURSIVE );
-    pthread_mutex_init( mutex, &attr );
-    pthread_mutexattr_destroy( &attr );
+static const struct user_driver_funcs broadway_drv_funcs;
+
+
+/******************************************************************************
+ *           init_monitors
+ */
+void init_monitors( int width, int height )
+{
+    static const WCHAR trayW[] = {'S','h','e','l','l','_','T','r','a','y','W','n','d',0};
+    UNICODE_STRING name;
+    RECT rect;
+    HWND hwnd;
+
+    RtlInitUnicodeString( &name, trayW );
+    hwnd = NtUserFindWindowEx( 0, 0, &name, NULL, 0 );
+
+    virtual_screen_rect.right = width;
+    virtual_screen_rect.bottom = height;
+    monitor_rc_work = virtual_screen_rect;
+
+    if (!hwnd || !NtUserIsWindowVisible( hwnd )) return;
+    if (!NtUserGetWindowRect( hwnd, &rect )) return;
+    if (rect.top) monitor_rc_work.bottom = rect.top;
+    else monitor_rc_work.top = rect.bottom;
+    TRACE( "found tray %p %s work area %s\n", hwnd,
+           wine_dbgstr_rect( &rect ), wine_dbgstr_rect( &monitor_rc_work ));
+
+    if (*p_java_vm) /* if we're notified from Java thread, update registry */
+    {
+        UINT32 num_path, num_mode;
+        force_display_devices_refresh = TRUE;
+        /* trigger refresh in win32u */
+        NtUserGetDisplayConfigBufferSizes( QDC_ONLY_ACTIVE_PATHS, &num_path, &num_mode );
+    }
+}
+
+
+/* wrapper for NtCreateKey that creates the key recursively if necessary */
+static HKEY reg_create_key( const WCHAR *name, ULONG name_len )
+{
+    UNICODE_STRING nameW = { name_len, name_len, (WCHAR *)name };
+    OBJECT_ATTRIBUTES attr;
+    NTSTATUS status;
+    HANDLE ret;
+
+    attr.Length = sizeof(attr);
+    attr.RootDirectory = 0;
+    attr.ObjectName = &nameW;
+    attr.Attributes = 0;
+    attr.SecurityDescriptor = NULL;
+    attr.SecurityQualityOfService = NULL;
+
+    status = NtCreateKey( &ret, MAXIMUM_ALLOWED, &attr, 0, NULL, 0, NULL );
+    if (status == STATUS_OBJECT_NAME_NOT_FOUND)
+    {
+        static const WCHAR registry_rootW[] = { '\\','R','e','g','i','s','t','r','y','\\' };
+        DWORD pos = 0, i = 0, len = name_len / sizeof(WCHAR);
+
+        /* don't try to create registry root */
+        if (len > ARRAY_SIZE(registry_rootW) &&
+            !memcmp( name, registry_rootW, sizeof(registry_rootW) ))
+            i += ARRAY_SIZE(registry_rootW);
+
+        while (i < len && name[i] != '\\') i++;
+        if (i == len) return 0;
+        for (;;)
+        {
+            nameW.Buffer = (WCHAR *)name + pos;
+            nameW.Length = (i - pos) * sizeof(WCHAR);
+            status = NtCreateKey( &ret, MAXIMUM_ALLOWED, &attr, 0, NULL, 0, NULL );
+
+            if (attr.RootDirectory) NtClose( attr.RootDirectory );
+            if (status) return 0;
+            if (i == len) break;
+            attr.RootDirectory = ret;
+            while (i < len && name[i] == '\\') i++;
+            pos = i;
+            while (i < len && name[i] != '\\') i++;
+        }
+    }
+    return ret;
+}
+
+
+/******************************************************************************
+ *           set_screen_dpi
+ */
+void set_screen_dpi( DWORD dpi )
+{
+    static const WCHAR dpi_value_name[] = {'L','o','g','P','i','x','e','l','s',0};
+    static const WCHAR dpi_key_name[] =
+    {
+        '\\','R','e','g','i','s','t','r','y',
+        '\\','M','a','c','h','i','n','e',
+        '\\','S','y','s','t','e','m',
+        '\\','C','u','r','r','e','n','t','C','o','n','t','r','o','l','S','e','t',
+        '\\','H','a','r','d','w','a','r','e',' ','P','r','o','f','i','l','e','s',
+        '\\','C','u','r','r','e','n','t',
+        '\\','S','o','f','t','w','a','r','e',
+        '\\','F','o','n','t','s'
+    };
+    HKEY hkey;
+
+    if ((hkey = reg_create_key( dpi_key_name, sizeof(dpi_key_name ))))
+    {
+        UNICODE_STRING name;
+        RtlInitUnicodeString( &name, dpi_value_name );
+        NtSetValueKey( hkey, &name, 0, REG_DWORD, &dpi, sizeof(dpi) );
+        NtClose( hkey );
+    }
+}
+
+/**********************************************************************
+ *	     fetch_display_metrics
+ */
+static void fetch_display_metrics(void)
+{
+    if (*p_java_vm) return;  /* for Java threads it will be set when the top view is created */
+
+    SERVER_START_REQ( get_window_rectangles )
+    {
+        req->handle = wine_server_user_handle( NtUserGetDesktopWindow() );
+        req->relative = COORDS_CLIENT;
+        if (!wine_server_call( req ))
+        {
+            screen_width  = reply->window.right;
+            screen_height = reply->window.bottom;
+        }
+    }
+    SERVER_END_REQ;
+
+    init_monitors( screen_width, screen_height );
+    TRACE( "screen %ux%u\n", screen_width, screen_height );
 }
 
 
 /**********************************************************************
- *	     device_init
+ *           device_init
  *
  * Perform initializations needed upon creation of the first device.
  */
 static void device_init(void)
 {
-    /* Initialize XRender */
-    xrender_funcs = BROADWAYDRV_XRender_Init();
-
-    /* Init Xcursor */
-    BROADWAYDRV_Xcursor_Init();
-
-    palette_size = BROADWAYDRV_PALETTE_Init();
-
-    stock_bitmap_pixmap = XCreatePixmap( gdi_display, root_window, 1, 1, 1 );
+    device_init_done = TRUE;
+    fetch_display_metrics();
 }
 
 
-static BROADWAYDRV_PDEVICE *create_x11_physdev( Drawable drawable )
+/******************************************************************************
+ *           create_broadway_physdev
+ */
+static BROADWAY_PDEVICE *create_broadway_physdev(void)
 {
-    BROADWAYDRV_PDEVICE *physDev;
+    BROADWAY_PDEVICE *physdev;
 
-    pthread_once( &init_once, device_init );
+    if (!device_init_done) device_init();
 
-    if (!(physDev = calloc( 1, sizeof(*physDev) ))) return NULL;
-
-    physDev->drawable = drawable;
-    physDev->gc = XCreateGC( gdi_display, drawable, 0, NULL );
-    XSetGraphicsExposures( gdi_display, physDev->gc, False );
-    XSetSubwindowMode( gdi_display, physDev->gc, IncludeInferiors );
-    XFlush( gdi_display );
-    return physDev;
+    if (!(physdev = calloc( 1, sizeof(*physdev) ))) return NULL;
+    return physdev;
 }
 
 /**********************************************************************
- *	     BROADWAYDRV_CreateDC
+ *           BROADWAY_CreateDC
  */
-static BOOL BROADWAYDRV_CreateDC( PHYSDEV *pdev, LPCWSTR device, LPCWSTR output, const DEVMODEW* initData )
+static BOOL BROADWAY_CreateDC( PHYSDEV *pdev, LPCWSTR device, LPCWSTR output, const DEVMODEW *initData )
 {
-    BROADWAYDRV_PDEVICE *physDev = create_x11_physdev( root_window );
+    BROADWAY_PDEVICE *physdev = create_broadway_physdev();
 
-    if (!physDev) return FALSE;
+    if (!physdev) return FALSE;
 
-    physDev->depth         = default_visual.depth;
-    physDev->color_shifts  = &BROADWAYDRV_PALETTE_default_shifts;
-    physDev->dc_rect       = NtUserGetVirtualScreenRect();
-    OffsetRect( &physDev->dc_rect, -physDev->dc_rect.left, -physDev->dc_rect.top );
-    push_dc_driver( pdev, &physDev->dev, &broadwaydrv_funcs.dc_funcs );
-    if (xrender_funcs && !xrender_funcs->pCreateDC( pdev, device, output, initData )) return FALSE;
+    push_dc_driver( pdev, &physdev->dev, &broadway_drv_funcs.dc_funcs );
     return TRUE;
 }
 
 
 /**********************************************************************
- *	     BROADWAYDRV_CreateCompatibleDC
+ *           BROADWAY_CreateCompatibleDC
  */
-static BOOL BROADWAYDRV_CreateCompatibleDC( PHYSDEV orig, PHYSDEV *pdev )
+static BOOL BROADWAY_CreateCompatibleDC( PHYSDEV orig, PHYSDEV *pdev )
 {
-    BROADWAYDRV_PDEVICE *physDev = create_x11_physdev( stock_bitmap_pixmap );
+    BROADWAY_PDEVICE *physdev = create_broadway_physdev();
 
-    if (!physDev) return FALSE;
+    if (!physdev) return FALSE;
 
-    physDev->depth  = 1;
-    SetRect( &physDev->dc_rect, 0, 0, 1, 1 );
-    push_dc_driver( pdev, &physDev->dev, &broadwaydrv_funcs.dc_funcs );
-    if (orig) return TRUE;  /* we already went through Xrender if we have an orig device */
-    if (xrender_funcs && !xrender_funcs->pCreateCompatibleDC( NULL, pdev )) return FALSE;
+    push_dc_driver( pdev, &physdev->dev, &broadway_drv_funcs.dc_funcs );
     return TRUE;
 }
 
 
 /**********************************************************************
- *	     BROADWAYDRV_DeleteDC
+ *           BROADWAY_DeleteDC
  */
-static BOOL BROADWAYDRV_DeleteDC( PHYSDEV dev )
+static BOOL BROADWAY_DeleteDC( PHYSDEV dev )
 {
-    BROADWAYDRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
-
-    XFreeGC( gdi_display, physDev->gc );
-    free( physDev );
+    free( dev );
     return TRUE;
 }
 
 
-void add_device_bounds( BROADWAYDRV_PDEVICE *dev, const RECT *rect )
-{
-    RECT rc;
-
-    if (!dev->bounds) return;
-    if (dev->region && NtGdiGetRgnBox( dev->region, &rc ))
-    {
-        if (intersect_rect( &rc, &rc, rect )) add_bounds_rect( dev->bounds, &rc );
-    }
-    else add_bounds_rect( dev->bounds, rect );
-}
-
 /***********************************************************************
- *           BROADWAYDRV_SetBoundsRect
+ *           BROADWAY_ChangeDisplaySettings
  */
-static UINT BROADWAYDRV_SetBoundsRect( PHYSDEV dev, RECT *rect, UINT flags )
+LONG BROADWAY_ChangeDisplaySettings( LPDEVMODEW displays, LPCWSTR primary_name, HWND hwnd, DWORD flags, LPVOID lpvoid )
 {
-    BROADWAYDRV_PDEVICE *pdev = get_broadwaydrv_dev( dev );
-
-    if (flags & DCB_DISABLE) pdev->bounds = NULL;
-    else if (flags & DCB_ENABLE) pdev->bounds = rect;
-    return DCB_RESET;  /* we don't have device-specific bounds */
+    FIXME( "(%p,%s,%p,0x%08x,%p)\n", displays, debugstr_w(primary_name), hwnd, (int)flags, lpvoid );
+    return DISP_CHANGE_SUCCESSFUL;
 }
 
 
 /***********************************************************************
- *           GetDeviceCaps    (BROADWAYDRV.@)
+ *           BROADWAY_UpdateDisplayDevices
  */
-static INT BROADWAYDRV_GetDeviceCaps( PHYSDEV dev, INT cap )
+BOOL BROADWAY_UpdateDisplayDevices( const struct gdi_device_manager *device_manager, BOOL force, void *param )
 {
-    switch(cap)
+    if (force || force_display_devices_refresh)
     {
-    case SIZEPALETTE:
-        return palette_size;
-    default:
-        dev = GET_NEXT_PHYSDEV( dev, pGetDeviceCaps );
-        return dev->funcs->pGetDeviceCaps( dev, cap );
-    }
-}
-
-
-/***********************************************************************
- *           SelectFont
- */
-static HFONT BROADWAYDRV_SelectFont( PHYSDEV dev, HFONT hfont, UINT *aa_flags )
-{
-    if (default_visual.depth <= 8) *aa_flags = GGO_BITMAP;  /* no anti-aliasing on <= 8bpp */
-    dev = GET_NEXT_PHYSDEV( dev, pSelectFont );
-    return dev->funcs->pSelectFont( dev, hfont, aa_flags );
-}
-
-/**********************************************************************
- *           ExtEscape  (BROADWAYDRV.@)
- */
-static INT BROADWAYDRV_ExtEscape( PHYSDEV dev, INT escape, INT in_count, LPCVOID in_data,
-                             INT out_count, LPVOID out_data )
-{
-    BROADWAYDRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
-
-    switch(escape)
-    {
-    case QUERYESCSUPPORT:
-        if (in_data && in_count >= sizeof(DWORD))
+        static const struct gdi_gpu gpu;
+        static const struct gdi_adapter adapter =
         {
-            switch (*(const INT *)in_data)
-            {
-            case BROADWAYDRV_ESCAPE:
-                return TRUE;
-            }
-        }
-        break;
-
-    case BROADWAYDRV_ESCAPE:
-        if (in_data && in_count >= sizeof(enum broadwaydrv_escape_codes))
+            .state_flags = DISPLAY_DEVICE_ATTACHED_TO_DESKTOP | DISPLAY_DEVICE_PRIMARY_DEVICE | DISPLAY_DEVICE_VGA_COMPATIBLE,
+        };
+        struct gdi_monitor gdi_monitor =
         {
-            switch(*(const enum broadwaydrv_escape_codes *)in_data)
-            {
-            case BROADWAYDRV_SET_DRAWABLE:
-                if (in_count >= sizeof(struct broadwaydrv_escape_set_drawable))
-                {
-                    const struct broadwaydrv_escape_set_drawable *data = in_data;
-                    physDev->dc_rect = data->dc_rect;
-                    physDev->drawable = data->drawable;
-                    XFreeGC( gdi_display, physDev->gc );
-                    physDev->gc = XCreateGC( gdi_display, physDev->drawable, 0, NULL );
-                    XSetGraphicsExposures( gdi_display, physDev->gc, False );
-                    XSetSubwindowMode( gdi_display, physDev->gc, data->mode );
-                    TRACE( "SET_DRAWABLE hdc %p drawable %lx dc_rect %s\n",
-                           dev->hdc, physDev->drawable, wine_dbgstr_rect(&physDev->dc_rect) );
-                    return TRUE;
-                }
-                break;
-            case BROADWAYDRV_GET_DRAWABLE:
-                if (out_count >= sizeof(struct broadwaydrv_escape_get_drawable))
-                {
-                    struct broadwaydrv_escape_get_drawable *data = out_data;
-                    data->drawable = physDev->drawable;
-                    return TRUE;
-                }
-                break;
-            case BROADWAYDRV_FLUSH_GL_DRAWABLE:
-                if (in_count >= sizeof(struct broadwaydrv_escape_flush_gl_drawable))
-                {
-                    const struct broadwaydrv_escape_flush_gl_drawable *data = in_data;
-                    RECT rect = physDev->dc_rect;
-
-                    OffsetRect( &rect, -physDev->dc_rect.left, -physDev->dc_rect.top );
-                    if (data->flush) XFlush( gdi_display );
-                    XSetFunction( gdi_display, physDev->gc, GXcopy );
-                    XCopyArea( gdi_display, data->gl_drawable, physDev->drawable, physDev->gc,
-                               0, 0, rect.right, rect.bottom,
-                               physDev->dc_rect.left, physDev->dc_rect.top );
-                    add_device_bounds( physDev, &rect );
-                    return TRUE;
-                }
-                break;
-            case BROADWAYDRV_START_EXPOSURES:
-                XSetGraphicsExposures( gdi_display, physDev->gc, True );
-                physDev->exposures = 0;
-                return TRUE;
-            case BROADWAYDRV_END_EXPOSURES:
-                if (out_count >= sizeof(HRGN))
-                {
-                    HRGN hrgn = 0, tmp = 0;
-
-                    XSetGraphicsExposures( gdi_display, physDev->gc, False );
-                    if (physDev->exposures)
-                    {
-                        for (;;)
-                        {
-                            XEvent event;
-
-                            XWindowEvent( gdi_display, physDev->drawable, ~0, &event );
-                            if (event.type == NoExpose) break;
-                            if (event.type == GraphicsExpose)
-                            {
-                                DWORD layout;
-                                RECT rect;
-
-                                rect.left   = event.xgraphicsexpose.x - physDev->dc_rect.left;
-                                rect.top    = event.xgraphicsexpose.y - physDev->dc_rect.top;
-                                rect.right  = rect.left + event.xgraphicsexpose.width;
-                                rect.bottom = rect.top + event.xgraphicsexpose.height;
-                                if (NtGdiGetDCDword( dev->hdc, NtGdiGetLayout, &layout ) &&
-                                    (layout & LAYOUT_RTL))
-                                    mirror_rect( &physDev->dc_rect, &rect );
-
-                                TRACE( "got %s count %d\n", wine_dbgstr_rect(&rect),
-                                       event.xgraphicsexpose.count );
-
-                                if (!tmp) tmp = NtGdiCreateRectRgn( rect.left, rect.top,
-                                                                    rect.right, rect.bottom );
-                                else NtGdiSetRectRgn( tmp, rect.left, rect.top, rect.right, rect.bottom );
-                                if (hrgn) NtGdiCombineRgn( hrgn, hrgn, tmp, RGN_OR );
-                                else
-                                {
-                                    hrgn = tmp;
-                                    tmp = 0;
-                                }
-                                if (!event.xgraphicsexpose.count) break;
-                            }
-                            else
-                            {
-                                ERR( "got unexpected event %d\n", event.type );
-                                break;
-                            }
-                        }
-                        if (tmp) NtGdiDeleteObjectApp( tmp );
-                    }
-                    *(HRGN *)out_data = hrgn;
-                    return TRUE;
-                }
-                break;
-            default:
-                break;
-            }
-        }
-        break;
+            .rc_monitor = virtual_screen_rect,
+            .rc_work = monitor_rc_work,
+            .state_flags = DISPLAY_DEVICE_ACTIVE | DISPLAY_DEVICE_ATTACHED,
+        };
+        const DEVMODEW mode =
+        {
+            .dmFields = DM_DISPLAYORIENTATION | DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL |
+                        DM_DISPLAYFLAGS | DM_DISPLAYFREQUENCY | DM_POSITION,
+            .dmBitsPerPel = screen_bpp, .dmPelsWidth = screen_width, .dmPelsHeight = screen_height, .dmDisplayFrequency = 60,
+        };
+        device_manager->add_gpu( &gpu, param );
+        device_manager->add_adapter( &adapter, param );
+        device_manager->add_monitor( &gdi_monitor, param );
+        device_manager->add_mode( &mode, TRUE, param );
+        force_display_devices_refresh = FALSE;
     }
-    return 0;
+
+    return TRUE;
 }
+
+
+/***********************************************************************
+ *           BROADWAY_GetCurrentDisplaySettings
+ */
+BOOL BROADWAY_GetCurrentDisplaySettings( LPCWSTR name, BOOL is_primary, LPDEVMODEW devmode )
+{
+    devmode->dmDisplayFlags = 0;
+    devmode->dmPosition.x = 0;
+    devmode->dmPosition.y = 0;
+    devmode->dmDisplayOrientation = 0;
+    devmode->dmDisplayFixedOutput = 0;
+    devmode->dmPelsWidth = screen_width;
+    devmode->dmPelsHeight = screen_height;
+    devmode->dmBitsPerPel = screen_bpp;
+    devmode->dmDisplayFrequency = 60;
+    devmode->dmFields = DM_POSITION | DM_DISPLAYORIENTATION | DM_PELSWIDTH | DM_PELSHEIGHT |
+                        DM_BITSPERPEL | DM_DISPLAYFLAGS | DM_DISPLAYFREQUENCY;
+    TRACE( "current mode -- %dx%d %d bpp @%d Hz\n",
+           (int)devmode->dmPelsWidth, (int)devmode->dmPelsHeight,
+           (int)devmode->dmBitsPerPel, (int)devmode->dmDisplayFrequency );
+    return TRUE;
+}
+
 
 /**********************************************************************
- *           BROADWAYDRV_wine_get_wgl_driver
+ *           BROADWAY_wine_get_wgl_driver
  */
-static struct opengl_funcs *BROADWAYDRV_wine_get_wgl_driver( UINT version )
+static struct opengl_funcs *BROADWAY_wine_get_wgl_driver( UINT version )
 {
-    return get_glx_driver( version );
-}
-
-/**********************************************************************
- *           BROADWAYDRV_wine_get_vulkan_driver
- */
-static const struct vulkan_funcs *BROADWAYDRV_wine_get_vulkan_driver( UINT version )
-{
-    return get_vulkan_driver( version );
+    return get_wgl_driver( version );
 }
 
 
-static const struct user_driver_funcs broadwaydrv_funcs =
+static const struct user_driver_funcs broadway_drv_funcs =
 {
-    .dc_funcs.pArc = BROADWAYDRV_Arc,
-    .dc_funcs.pChord = BROADWAYDRV_Chord,
-    .dc_funcs.pCreateCompatibleDC = BROADWAYDRV_CreateCompatibleDC,
-    .dc_funcs.pCreateDC = BROADWAYDRV_CreateDC,
-    .dc_funcs.pDeleteDC = BROADWAYDRV_DeleteDC,
-    .dc_funcs.pEllipse = BROADWAYDRV_Ellipse,
-    .dc_funcs.pExtEscape = BROADWAYDRV_ExtEscape,
-    .dc_funcs.pExtFloodFill = BROADWAYDRV_ExtFloodFill,
-    .dc_funcs.pFillPath = BROADWAYDRV_FillPath,
-    .dc_funcs.pGetDeviceCaps = BROADWAYDRV_GetDeviceCaps,
-    .dc_funcs.pGetDeviceGammaRamp = BROADWAYDRV_GetDeviceGammaRamp,
-    .dc_funcs.pGetICMProfile = BROADWAYDRV_GetICMProfile,
-    .dc_funcs.pGetImage = BROADWAYDRV_GetImage,
-    .dc_funcs.pGetNearestColor = BROADWAYDRV_GetNearestColor,
-    .dc_funcs.pGetSystemPaletteEntries = BROADWAYDRV_GetSystemPaletteEntries,
-    .dc_funcs.pGradientFill = BROADWAYDRV_GradientFill,
-    .dc_funcs.pLineTo = BROADWAYDRV_LineTo,
-    .dc_funcs.pPaintRgn = BROADWAYDRV_PaintRgn,
-    .dc_funcs.pPatBlt = BROADWAYDRV_PatBlt,
-    .dc_funcs.pPie = BROADWAYDRV_Pie,
-    .dc_funcs.pPolyPolygon = BROADWAYDRV_PolyPolygon,
-    .dc_funcs.pPolyPolyline = BROADWAYDRV_PolyPolyline,
-    .dc_funcs.pPutImage = BROADWAYDRV_PutImage,
-    .dc_funcs.pRealizeDefaultPalette = BROADWAYDRV_RealizeDefaultPalette,
-    .dc_funcs.pRealizePalette = BROADWAYDRV_RealizePalette,
-    .dc_funcs.pRectangle = BROADWAYDRV_Rectangle,
-    .dc_funcs.pRoundRect = BROADWAYDRV_RoundRect,
-    .dc_funcs.pSelectBrush = BROADWAYDRV_SelectBrush,
-    .dc_funcs.pSelectFont = BROADWAYDRV_SelectFont,
-    .dc_funcs.pSelectPen = BROADWAYDRV_SelectPen,
-    .dc_funcs.pSetBoundsRect = BROADWAYDRV_SetBoundsRect,
-    .dc_funcs.pSetDCBrushColor = BROADWAYDRV_SetDCBrushColor,
-    .dc_funcs.pSetDCPenColor = BROADWAYDRV_SetDCPenColor,
-    .dc_funcs.pSetDeviceClipping = BROADWAYDRV_SetDeviceClipping,
-    .dc_funcs.pSetDeviceGammaRamp = BROADWAYDRV_SetDeviceGammaRamp,
-    .dc_funcs.pSetPixel = BROADWAYDRV_SetPixel,
-    .dc_funcs.pStretchBlt = BROADWAYDRV_StretchBlt,
-    .dc_funcs.pStrokeAndFillPath = BROADWAYDRV_StrokeAndFillPath,
-    .dc_funcs.pStrokePath = BROADWAYDRV_StrokePath,
-    .dc_funcs.pUnrealizePalette = BROADWAYDRV_UnrealizePalette,
-    .dc_funcs.pD3DKMTCheckVidPnExclusiveOwnership = BROADWAYDRV_D3DKMTCheckVidPnExclusiveOwnership,
-    .dc_funcs.pD3DKMTCloseAdapter = BROADWAYDRV_D3DKMTCloseAdapter,
-    .dc_funcs.pD3DKMTOpenAdapterFromLuid = BROADWAYDRV_D3DKMTOpenAdapterFromLuid,
-    .dc_funcs.pD3DKMTQueryVideoMemoryInfo = BROADWAYDRV_D3DKMTQueryVideoMemoryInfo,
-    .dc_funcs.pD3DKMTSetVidPnSourceOwner = BROADWAYDRV_D3DKMTSetVidPnSourceOwner,
+    .dc_funcs.pCreateCompatibleDC = BROADWAY_CreateCompatibleDC,
+    .dc_funcs.pCreateDC = BROADWAY_CreateDC,
+    .dc_funcs.pDeleteDC = BROADWAY_DeleteDC,
     .dc_funcs.priority = GDI_PRIORITY_GRAPHICS_DRV,
 
-    .pActivateKeyboardLayout = BROADWAYDRV_ActivateKeyboardLayout,
-    .pBeep = BROADWAYDRV_Beep,
-    .pGetKeyNameText = BROADWAYDRV_GetKeyNameText,
-    .pMapVirtualKeyEx = BROADWAYDRV_MapVirtualKeyEx,
-    .pToUnicodeEx = BROADWAYDRV_ToUnicodeEx,
-    .pVkKeyScanEx = BROADWAYDRV_VkKeyScanEx,
-    .pImeToAsciiEx = BROADWAYDRV_ImeToAsciiEx,
-    .pNotifyIMEStatus = BROADWAYDRV_NotifyIMEStatus,
-    .pDestroyCursorIcon = BROADWAYDRV_DestroyCursorIcon,
-    .pSetCursor = BROADWAYDRV_SetCursor,
-    .pGetCursorPos = BROADWAYDRV_GetCursorPos,
-    .pSetCursorPos = BROADWAYDRV_SetCursorPos,
-    .pClipCursor = BROADWAYDRV_ClipCursor,
-    .pChangeDisplaySettings = BROADWAYDRV_ChangeDisplaySettings,
-    .pGetCurrentDisplaySettings = BROADWAYDRV_GetCurrentDisplaySettings,
-    .pGetDisplayDepth = BROADWAYDRV_GetDisplayDepth,
-    .pUpdateDisplayDevices = BROADWAYDRV_UpdateDisplayDevices,
-    .pCreateDesktop = BROADWAYDRV_CreateDesktop,
-    .pCreateWindow = BROADWAYDRV_CreateWindow,
-    .pDesktopWindowProc = BROADWAYDRV_DesktopWindowProc,
-    .pDestroyWindow = BROADWAYDRV_DestroyWindow,
-    .pFlashWindowEx = BROADWAYDRV_FlashWindowEx,
-    .pGetDC = BROADWAYDRV_GetDC,
-    .pProcessEvents = BROADWAYDRV_ProcessEvents,
-    .pReleaseDC = BROADWAYDRV_ReleaseDC,
-    .pScrollDC = BROADWAYDRV_ScrollDC,
-    .pSetCapture = BROADWAYDRV_SetCapture,
-    .pSetDesktopWindow = BROADWAYDRV_SetDesktopWindow,
-    .pSetFocus = BROADWAYDRV_SetFocus,
-    .pSetLayeredWindowAttributes = BROADWAYDRV_SetLayeredWindowAttributes,
-    .pSetParent = BROADWAYDRV_SetParent,
-    .pSetWindowIcon = BROADWAYDRV_SetWindowIcon,
-    .pSetWindowRgn = BROADWAYDRV_SetWindowRgn,
-    .pSetWindowStyle = BROADWAYDRV_SetWindowStyle,
-    .pSetWindowText = BROADWAYDRV_SetWindowText,
-    .pShowWindow = BROADWAYDRV_ShowWindow,
-    .pSysCommand = BROADWAYDRV_SysCommand,
-    .pClipboardWindowProc = BROADWAYDRV_ClipboardWindowProc,
-    .pUpdateClipboard = BROADWAYDRV_UpdateClipboard,
-    .pUpdateLayeredWindow = BROADWAYDRV_UpdateLayeredWindow,
-    .pWindowMessage = BROADWAYDRV_WindowMessage,
-    .pWindowPosChanging = BROADWAYDRV_WindowPosChanging,
-    .pWindowPosChanged = BROADWAYDRV_WindowPosChanged,
-    .pSystemParametersInfo = BROADWAYDRV_SystemParametersInfo,
-    .pwine_get_vulkan_driver = BROADWAYDRV_wine_get_vulkan_driver,
-    .pwine_get_wgl_driver = BROADWAYDRV_wine_get_wgl_driver,
-    .pThreadDetach = BROADWAYDRV_ThreadDetach,
+    .pGetKeyNameText = BROADWAY_GetKeyNameText,
+    .pMapVirtualKeyEx = BROADWAY_MapVirtualKeyEx,
+    .pVkKeyScanEx = BROADWAY_VkKeyScanEx,
+    .pSetCursor = BROADWAY_SetCursor,
+    .pChangeDisplaySettings = BROADWAY_ChangeDisplaySettings,
+    .pGetCurrentDisplaySettings = BROADWAY_GetCurrentDisplaySettings,
+    .pUpdateDisplayDevices = BROADWAY_UpdateDisplayDevices,
+    .pCreateDesktop = BROADWAY_CreateDesktop,
+    .pCreateWindow = BROADWAY_CreateWindow,
+    .pDesktopWindowProc = BROADWAY_DesktopWindowProc,
+    .pDestroyWindow = BROADWAY_DestroyWindow,
+    .pProcessEvents = BROADWAY_ProcessEvents,
+    .pSetCapture = BROADWAY_SetCapture,
+    .pSetLayeredWindowAttributes = BROADWAY_SetLayeredWindowAttributes,
+    .pSetParent = BROADWAY_SetParent,
+    .pSetWindowRgn = BROADWAY_SetWindowRgn,
+    .pSetWindowStyle = BROADWAY_SetWindowStyle,
+    .pShowWindow = BROADWAY_ShowWindow,
+    .pUpdateLayeredWindow = BROADWAY_UpdateLayeredWindow,
+    .pWindowMessage = BROADWAY_WindowMessage,
+    .pWindowPosChanging = BROADWAY_WindowPosChanging,
+    .pWindowPosChanged = BROADWAY_WindowPosChanged,
+    .pwine_get_wgl_driver = BROADWAY_wine_get_wgl_driver,
 };
 
 
-void init_user_driver(void)
+static const JNINativeMethod methods[] =
 {
-    __wine_set_user_driver( &broadwaydrv_funcs, WINE_GDI_DRIVER_VERSION );
+    { "wine_desktop_changed", "(II)V", desktop_changed },
+    { "wine_config_changed", "(I)V", config_changed },
+    { "wine_surface_changed", "(ILbroadway/view/Surface;Z)V", surface_changed },
+    { "wine_motion_event", "(IIIIII)Z", motion_event },
+    { "wine_keyboard_event", "(IIII)Z", keyboard_event },
+};
+
+#define DECL_FUNCPTR(f) typeof(f) * p##f = NULL
+#define LOAD_FUNCPTR(lib, func) do { \
+    if ((p##func = dlsym( lib, #func )) == NULL) \
+        { ERR( "can't find symbol %s\n", #func); return; } \
+    } while(0)
+
+DECL_FUNCPTR( __broadway_log_print );
+DECL_FUNCPTR( ANativeWindow_fromSurface );
+DECL_FUNCPTR( ANativeWindow_release );
+DECL_FUNCPTR( hw_get_module );
+
+#ifndef DT_GNU_HASH
+#define DT_GNU_HASH 0x6ffffef5
+#endif
+
+static unsigned int gnu_hash( const char *name )
+{
+    unsigned int h = 5381;
+    while (*name) h = h * 33 + (unsigned char)*name++;
+    return h;
 }
+
+static unsigned int hash_symbol( const char *name )
+{
+    unsigned int hi, hash = 0;
+    while (*name)
+    {
+        hash = (hash << 4) + (unsigned char)*name++;
+        hi = hash & 0xf0000000;
+        hash ^= hi;
+        hash ^= hi >> 24;
+    }
+    return hash;
+}
+
+static void *find_symbol( const struct dl_phdr_info* info, const char *var, int type )
+{
+    const ElfW(Dyn) *dyn = NULL;
+    const ElfW(Phdr) *ph;
+    const ElfW(Sym) *symtab = NULL;
+    const Elf32_Word *hashtab = NULL;
+    const Elf32_Word *gnu_hashtab = NULL;
+    const char *strings = NULL;
+    Elf32_Word idx;
+
+    for (ph = info->dlpi_phdr; ph < &info->dlpi_phdr[info->dlpi_phnum]; ++ph)
+    {
+        if (PT_DYNAMIC == ph->p_type)
+        {
+            dyn = (const ElfW(Dyn) *)(info->dlpi_addr + ph->p_vaddr);
+            break;
+        }
+    }
+    if (!dyn) return NULL;
+
+    while (dyn->d_tag)
+    {
+        if (dyn->d_tag == DT_STRTAB)
+            strings = (const char*)(info->dlpi_addr + dyn->d_un.d_ptr);
+        if (dyn->d_tag == DT_SYMTAB)
+            symtab = (const ElfW(Sym) *)(info->dlpi_addr + dyn->d_un.d_ptr);
+        if (dyn->d_tag == DT_HASH)
+            hashtab = (const Elf32_Word *)(info->dlpi_addr + dyn->d_un.d_ptr);
+        if (dyn->d_tag == DT_GNU_HASH)
+            gnu_hashtab = (const Elf32_Word *)(info->dlpi_addr + dyn->d_un.d_ptr);
+        dyn++;
+    }
+
+    if (!symtab || !strings) return NULL;
+
+    if (gnu_hashtab)  /* new style hash table */
+    {
+        const unsigned int hash   = gnu_hash(var);
+        const Elf32_Word nbuckets = gnu_hashtab[0];
+        const Elf32_Word symbias  = gnu_hashtab[1];
+        const Elf32_Word nwords   = gnu_hashtab[2];
+        const ElfW(Addr) *bitmask = (const ElfW(Addr) *)(gnu_hashtab + 4);
+        const Elf32_Word *buckets = (const Elf32_Word *)(bitmask + nwords);
+        const Elf32_Word *chains  = buckets + nbuckets - symbias;
+
+        if (!(idx = buckets[hash % nbuckets])) return NULL;
+        do
+        {
+            if ((chains[idx] & ~1u) == (hash & ~1u) &&
+                ELF32_ST_BIND(symtab[idx].st_info) == STB_GLOBAL &&
+                ELF32_ST_TYPE(symtab[idx].st_info) == type &&
+                !strcmp( strings + symtab[idx].st_name, var ))
+                return (void *)(info->dlpi_addr + symtab[idx].st_value);
+        } while (!(chains[idx++] & 1u));
+    }
+    else if (hashtab)  /* old style hash table */
+    {
+        const unsigned int hash   = hash_symbol( var );
+        const Elf32_Word nbuckets = hashtab[0];
+        const Elf32_Word *buckets = hashtab + 2;
+        const Elf32_Word *chains  = buckets + nbuckets;
+
+        for (idx = buckets[hash % nbuckets]; idx; idx = chains[idx])
+        {
+            if (ELF32_ST_BIND(symtab[idx].st_info) == STB_GLOBAL &&
+                ELF32_ST_TYPE(symtab[idx].st_info) == type &&
+                !strcmp( strings + symtab[idx].st_name, var ))
+                return (void *)(info->dlpi_addr + symtab[idx].st_value);
+        }
+    }
+    return NULL;
+}
+
+static int enum_libs( struct dl_phdr_info* info, size_t size, void* data )
+{
+    const char *p;
+
+    if (!info->dlpi_name) return 0;
+    if (!(p = strrchr( info->dlpi_name, '/' ))) return 0;
+    if (strcmp( p, "/libhardware.so" )) return 0;
+    TRACE( "found libhardware at %p\n", info->dlpi_phdr );
+    phw_get_module = find_symbol( info, "hw_get_module", STT_FUNC );
+    return 1;
+}
+
+static void load_hardware_libs(void)
+{
+    const struct hw_module_t *module;
+    int ret;
+    void *libhardware;
+
+    if ((libhardware = dlopen( "libhardware.so", RTLD_GLOBAL )))
+    {
+        LOAD_FUNCPTR( libhardware, hw_get_module );
+    }
+    else
+    {
+        /* Android >= N disallows loading libhardware, so we load libbroadway (which imports
+         * libhardware), and then we can find libhardware in the list of loaded libraries.
+         */
+        if (!dlopen( "libbroadway.so", RTLD_GLOBAL ))
+        {
+            ERR( "failed to load libbroadway.so: %s\n", dlerror() );
+            return;
+        }
+        dl_iterate_phdr( enum_libs, 0 );
+        if (!phw_get_module)
+        {
+            ERR( "failed to find hw_get_module\n" );
+            return;
+        }
+    }
+
+    if ((ret = phw_get_module( GRALLOC_HARDWARE_MODULE_ID, &module )))
+    {
+        ERR( "failed to load gralloc module err %d\n", ret );
+        return;
+    }
+
+    init_gralloc( module );
+}
+
+static void load_broadway_libs(void)
+{
+    void *libbroadway, *liblog;
+
+    if (!(libbroadway = dlopen( "libbroadway.so", RTLD_GLOBAL )))
+    {
+        ERR( "failed to load libbroadway.so: %s\n", dlerror() );
+        return;
+    }
+    if (!(liblog = dlopen( "liblog.so", RTLD_GLOBAL )))
+    {
+        ERR( "failed to load liblog.so: %s\n", dlerror() );
+        return;
+    }
+    LOAD_FUNCPTR( liblog, __broadway_log_print );
+    LOAD_FUNCPTR( libbroadway, ANativeWindow_fromSurface );
+    LOAD_FUNCPTR( libbroadway, ANativeWindow_release );
+}
+
+#undef DECL_FUNCPTR
+#undef LOAD_FUNCPTR
+
+JavaVM **p_java_vm = NULL;
+jobject *p_java_object = NULL;
+unsigned short *p_java_gdt_sel = NULL;
+
+static HRESULT broadway_init( void *arg )
+{
+    struct init_params *params = arg;
+    pthread_mutexattr_t attr;
+    jclass class;
+    jobject object;
+    JNIEnv *jni_env;
+    JavaVM *java_vm;
+    void *ntdll;
+
+    if (!(ntdll = dlopen( "ntdll.so", RTLD_NOW ))) return STATUS_UNSUCCESSFUL;
+
+    p_java_vm = dlsym( ntdll, "java_vm" );
+    p_java_object = dlsym( ntdll, "java_object" );
+    p_java_gdt_sel = dlsym( ntdll, "java_gdt_sel" );
+
+    object = *p_java_object;
+
+    load_hardware_libs();
+
+    pthread_mutexattr_init( &attr );
+    pthread_mutexattr_settype( &attr, PTHREAD_MUTEX_RECURSIVE );
+    pthread_mutex_init( &drawable_mutex, &attr );
+    pthread_mutex_init( &win_data_mutex, &attr );
+    pthread_mutexattr_destroy( &attr );
+
+    register_window_callback = params->register_window_callback;
+
+    if ((java_vm = *p_java_vm))  /* running under Java */
+    {
+#ifdef __i386__
+        WORD old_fs;
+        __asm__( "mov %%fs,%0" : "=r" (old_fs) );
+#endif
+        load_broadway_libs();
+        (*java_vm)->AttachCurrentThread( java_vm, &jni_env, 0 );
+        class = (*jni_env)->GetObjectClass( jni_env, object );
+        (*jni_env)->RegisterNatives( jni_env, class, methods, ARRAY_SIZE( methods ));
+        (*jni_env)->DeleteLocalRef( jni_env, class );
+#ifdef __i386__
+        /* the Java VM hijacks %fs for its own purposes, restore it */
+        __asm__( "mov %0,%%fs" :: "r" (old_fs) );
+#endif
+    }
+    __wine_set_user_driver( &broadway_drv_funcs, WINE_GDI_DRIVER_VERSION );
+    return STATUS_SUCCESS;
+}
+
+const unixlib_entry_t __wine_unix_call_funcs[] =
+{
+    broadway_dispatch_ioctl,
+    broadway_init,
+    broadway_java_init,
+    broadway_java_uninit,
+    broadway_register_window,
+};
+
+
+C_ASSERT( ARRAYSIZE(__wine_unix_call_funcs) == unix_funcs_count );

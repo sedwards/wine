@@ -1,5 +1,5 @@
 /*
- * winex11.drv entry points
+ * winebroadway.drv entry points
  *
  * Copyright 2022 Jacek Caban for CodeWeavers
  *
@@ -18,94 +18,117 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#include "broadwaydrv_dll.h"
+#include <stdarg.h>
+#include "ntstatus.h"
+#define WIN32_NO_STATUS
+#include "windef.h"
+#include "winbase.h"
+#include "winternl.h"
+#include "winioctl.h"
+#include "ddk/wdm.h"
+#include "unixlib.h"
 #include "wine/debug.h"
 
+WINE_DEFAULT_DEBUG_CHANNEL(broadway);
 
-HMODULE broadwaydrv_module = 0;
+
+extern NTSTATUS CDECL wine_ntoskrnl_main_loop( HANDLE stop_event );
+static HANDLE stop_event;
+static HANDLE thread;
 
 
-typedef NTSTATUS (*callback_func)( UINT arg );
-static const callback_func callback_funcs[] =
+static NTSTATUS WINAPI ioctl_callback( DEVICE_OBJECT *device, IRP *irp )
 {
-    broadwaydrv_dnd_drop_event,
-    broadwaydrv_dnd_leave_event,
-};
-
-C_ASSERT( ARRAYSIZE(callback_funcs) == client_funcs_count );
-
-static NTSTATUS WINAPI broadwaydrv_callback( void *arg, ULONG size )
-{
-    struct client_callback_params *params = arg;
-    return callback_funcs[params->id]( params->arg );
+    struct ioctl_params params = { .irp = irp, .client_id = HandleToUlong(PsGetCurrentProcessId()) };
+    NTSTATUS status = BROADWAY_CALL( dispatch_ioctl, &params );
+    IoCompleteRequest( irp, IO_NO_INCREMENT );
+    return status;
 }
 
-typedef NTSTATUS (WINAPI *kernel_callback)( void *params, ULONG size );
-static const kernel_callback kernel_callbacks[] =
+static NTSTATUS CALLBACK init_broadway_driver( DRIVER_OBJECT *driver, UNICODE_STRING *name )
 {
-    broadwaydrv_callback,
-    broadwaydrv_dnd_enter_event,
-    broadwaydrv_dnd_position_event,
-    broadwaydrv_dnd_post_drop,
-    broadwaydrv_systray_change_owner,
-};
+    static const WCHAR device_nameW[] = {'\\','D','e','v','i','c','e','\\','W','i','n','e','A','n','d','r','o','i','d',0 };
+    static const WCHAR device_linkW[] = {'\\','?','?','\\','W','i','n','e','A','n','d','r','o','i','d',0 };
 
-C_ASSERT( NtUserDriverCallbackFirst + ARRAYSIZE(kernel_callbacks) == client_func_last );
+    UNICODE_STRING nameW, linkW;
+    DEVICE_OBJECT *device;
+    NTSTATUS status;
 
+    driver->MajorFunction[IRP_MJ_DEVICE_CONTROL] = ioctl_callback;
 
-BOOL WINAPI DllMain( HINSTANCE instance, DWORD reason, void *reserved )
+    RtlInitUnicodeString( &nameW, device_nameW );
+    RtlInitUnicodeString( &linkW, device_linkW );
+
+    if ((status = IoCreateDevice( driver, 0, &nameW, 0, 0, FALSE, &device ))) return status;
+    return IoCreateSymbolicLink( &linkW, &nameW );
+}
+
+static DWORD CALLBACK device_thread( void *arg )
 {
-    void **callback_table;
-    struct init_params params =
+    static const WCHAR driver_nameW[] = {'\\','D','r','i','v','e','r','\\','W','i','n','e','A','n','d','r','o','i','d',0 };
+
+    HANDLE start_event = arg;
+    UNICODE_STRING nameW;
+    NTSTATUS status;
+    DWORD ret;
+
+    TRACE( "starting process %lx\n", GetCurrentProcessId() );
+
+    if (BROADWAY_CALL( java_init, NULL )) return 0;  /* not running under Java */
+
+    RtlInitUnicodeString( &nameW, driver_nameW );
+    if ((status = IoCreateDriver( &nameW, init_broadway_driver )))
     {
-        foreign_window_proc,
-        &show_systray,
-    };
+        FIXME( "failed to create driver error %lx\n", status );
+        return status;
+    }
 
-    if (reason != DLL_PROCESS_ATTACH) return TRUE;
+    stop_event = CreateEventW( NULL, TRUE, FALSE, NULL );
+    SetEvent( start_event );
 
-    DisableThreadLibraryCalls( instance );
-    broadwaydrv_module = instance;
+    ret = wine_ntoskrnl_main_loop( stop_event );
+
+    BROADWAY_CALL( java_uninit, NULL );
+    return ret;
+}
+
+static NTSTATUS WINAPI broadway_start_device(void *param, ULONG size)
+{
+    HANDLE handles[2];
+
+    handles[0] = CreateEventW( NULL, TRUE, FALSE, NULL );
+    handles[1] = thread = CreateThread( NULL, 0, device_thread, handles[0], 0, NULL );
+    WaitForMultipleObjects( 2, handles, FALSE, INFINITE );
+    CloseHandle( handles[0] );
+    return HandleToULong( thread );
+}
+
+
+static void CALLBACK register_window_callback( ULONG_PTR arg1, ULONG_PTR arg2, ULONG_PTR arg3 )
+{
+    struct register_window_params params = { .arg1 = arg1, .arg2 = arg2, .arg3 = arg3 };
+    BROADWAY_CALL( register_window, &params );
+}
+
+
+/***********************************************************************
+ *       dll initialisation routine
+ */
+BOOL WINAPI DllMain( HINSTANCE inst, DWORD reason, LPVOID reserved )
+{
+    struct init_params params;
+    void **callback_table;
+
+    if (reason == DLL_PROCESS_ATTACH) return TRUE;
+
+    DisableThreadLibraryCalls( inst );
     if (__wine_init_unix_call()) return FALSE;
-    if (BROADWAYDRV_CALL( init, &params )) return FALSE;
+
+    params.register_window_callback = register_window_callback;
+    if (BROADWAY_CALL( init, &params )) return FALSE;
 
     callback_table = NtCurrentTeb()->Peb->KernelCallbackTable;
-    memcpy( callback_table + NtUserDriverCallbackFirst, kernel_callbacks, sizeof(kernel_callbacks) );
+    callback_table[client_start_device] = broadway_start_device;
+
     return TRUE;
-}
-
-/***********************************************************************
- *           AttachEventQueueToTablet (winex11.@)
- */
-int CDECL BROADWAYDRV_AttachEventQueueToTablet( HWND owner )
-{
-    return BROADWAYDRV_CALL( tablet_attach_queue, owner );
-}
-
-/***********************************************************************
- *           GetCurrentPacket (winex11.@)
- */
-int CDECL BROADWAYDRV_GetCurrentPacket( void *packet )
-{
-    return BROADWAYDRV_CALL( tablet_get_packet, packet );
-}
-
-/***********************************************************************
- *           LoadTabletInfo (winex11.@)
- */
-BOOL CDECL BROADWAYDRV_LoadTabletInfo( HWND hwnd )
-{
-    return BROADWAYDRV_CALL( tablet_load_info, hwnd );
-}
-
-/***********************************************************************
- *          WTInfoW (winex11.@)
- */
-UINT CDECL BROADWAYDRV_WTInfoW( UINT category, UINT index, void *output )
-{
-    struct tablet_info_params params;
-    params.category = category;
-    params.index = index;
-    params.output = output;
-    return BROADWAYDRV_CALL( tablet_info, &params );
 }

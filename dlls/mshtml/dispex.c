@@ -113,16 +113,19 @@ struct dispex_dynamic_data_t {
 static ITypeLib *typelib, *typelib_private;
 static ITypeInfo *typeinfos[LAST_tid];
 static struct list dispex_data_list = LIST_INIT(dispex_data_list);
+#if 0
+//static REFIID tid_ids[] = {
 
-static REFIID tid_ids[] = {
-#define XIID(iface) &IID_ ## iface,
-#define XDIID(iface) &DIID_ ## iface,
-TID_LIST
-    NULL,
-PRIVATE_TID_LIST
-#undef XIID
-#undef XDIID
-};
+#define tid_ids NULL()
+
+//#define XIID(iface) &IID_ ## iface,
+//#define XDIID(iface) &DIID_ ## iface,
+//TID_LIST
+//    NULL,
+//PRIVATE_TID_LIST
+//#undef XIID
+//#undef XDIID
+//};
 
 static HRESULT load_typelib(void)
 {
@@ -2092,12 +2095,12 @@ destructor:
     if(This->info->desc->vtbl && This->info->desc->vtbl->destructor)
         This->info->desc->vtbl->destructor(This);
 }
-
+#endif
 void init_dispatch(DispatchEx *dispex, IUnknown *outer, dispex_static_data_t *data, compat_mode_t compat_mode)
 {
     assert(compat_mode < COMPAT_MODE_CNT);
 
-    dispex->IDispatchEx_iface.lpVtbl = &DispatchExVtbl;
+    //dispex->IDispatchEx_iface.lpVtbl = &DispatchExVtbl;
     dispex->outer = outer;
     dispex->dynamic_data = NULL;
 

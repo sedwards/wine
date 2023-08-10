@@ -19,98 +19,43 @@
 #include "ntuser.h"
 #include "wine/unixlib.h"
 
-enum broadwaydrv_funcs
+enum broadway_funcs
 {
+    unix_dispatch_ioctl,
     unix_init,
-    unix_systray_clear,
-    unix_systray_dock,
-    unix_systray_hide,
-    unix_systray_init,
-    unix_tablet_attach_queue,
-    unix_tablet_get_packet,
-    unix_tablet_info,
-    unix_tablet_load_info,
-    unix_funcs_count,
+    unix_java_init,
+    unix_java_uninit,
+    unix_register_window,
+    unix_funcs_count
 };
 
-#define BROADWAYDRV_CALL(func, params) WINE_UNIX_CALL( unix_ ## func, params )
+#define BROADWAY_CALL(func, params) WINE_UNIX_CALL( unix_ ## func, params )
 
-/* broadwaydrv_init params */
+/* broadway_init params */
 struct init_params
 {
-    WNDPROC foreign_window_proc;
-    BOOL *show_systray;
+    PNTAPCFUNC register_window_callback;
 };
 
-struct systray_dock_params
+
+/* broadway_ioctl params */
+struct ioctl_params
 {
-    UINT64 event_handle;
-    void *icon;
-    int cx;
-    int cy;
-    BOOL *layered;
+    struct _IRP *irp;
+    DWORD client_id;
 };
 
-/* broadwaydrv_tablet_info params */
-struct tablet_info_params
+
+/* broadway_register_window params */
+struct register_window_params
 {
-    UINT category;
-    UINT index;
-    void *output;
+    UINT_PTR arg1;
+    UINT_PTR arg2;
+    UINT_PTR arg3;
 };
 
-/* broadwaydrv_xim_preedit_state params */
-struct xim_preedit_state_params
-{
-    HWND hwnd;
-    BOOL open;
-};
 
-/* driver client callbacks exposed with KernelCallbackTable interface */
-enum broadwaydrv_client_funcs
+enum
 {
-    client_func_callback = NtUserDriverCallbackFirst,
-    client_func_dnd_enter_event,
-    client_func_dnd_position_event,
-    client_func_dnd_post_drop,
-    client_func_systray_change_owner,
-    client_func_last
-};
-
-C_ASSERT( client_func_last <= NtUserDriverCallbackLast + 1 );
-
-/* simplified interface for client callbacks requiring only a single UINT parameter */
-enum client_callback
-{
-    client_dnd_drop_event,
-    client_dnd_leave_event,
-    client_funcs_count
-};
-
-/* broadwaydrv_callback params */
-struct client_callback_params
-{
-    UINT id;
-    UINT arg;
-};
-
-/* broadwaydrv_dnd_enter_event and broadwaydrv_dnd_post_drop params */
-struct format_entry
-{
-    UINT format;
-    UINT size;
-    char data[1];
-};
-
-/* broadwaydrv_dnd_position_event params */
-struct dnd_position_event_params
-{
-    ULONG hwnd;
-    POINT point;
-    DWORD effect;
-};
-
-struct systray_change_owner_params
-{
-    UINT64 event_handle;
+    client_start_device = NtUserDriverCallbackFirst,
 };

@@ -1,35 +1,20 @@
-MODULE    = broadwaydrv.drv
-UNIXLIB   = broadwaydrv.so
-IMPORTS   = uuid user32 gdi32 win32u
-DELAYIMPORTS = comctl32 ole32 shell32 imm32
-UNIX_CFLAGS  = $(X_CFLAGS)
-UNIX_LIBS    = -lwin32u $(X_LIBS) $(X_EXTRA_LIBS) $(PTHREAD_LIBS) -lm
+MODULE    = winebroadway.drv
+UNIXLIB   = winebroadway.so
+IMPORTS   = ntoskrnl
+UNIX_LIBS = -lwin32u $(PTHREAD_LIBS)
 
 C_SRCS = \
-	bitblt.c \
-	brush.c \
-	clipboard.c \
-	desktop.c \
-	display.c \
+	device.c \
 	dllmain.c \
-	event.c \
-	graphics.c \
 	init.c \
 	keyboard.c \
-	mouse.c \
 	opengl.c \
-	palette.c \
-	pen.c \
-	systray.c \
-	vulkan.c \
-	window.c \
-	wintab.c \
-	broadwaydrv_main.c \
-	xdnd.c \
-	xim.c \
-	xinerama.c \
-	xrandr.c \
-	xrender.c \
-	xvidmode.c
+	window.c
 
-RC_SRCS = version.rc
+#IN_SRCS = \
+#	build.gradle.in
+
+#SVG_SRCS = \
+#	wine.svg
+
+#EXTRA_TARGETS = wine-debug.apk
