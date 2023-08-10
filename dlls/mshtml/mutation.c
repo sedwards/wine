@@ -1078,13 +1078,13 @@ void init_mutation(nsIComponentManager *component_manager)
 }
 
 struct mutation_observer {
+    IWineMSHTMLMutationObserver IWineMSHTMLMutationObserver_iface;
 
     LONG ref;
     DispatchEx dispex;
     IDispatch *callback;
 };
 
-#if 0
 static inline struct mutation_observer *impl_from_IWineMSHTMLMutationObserver(IWineMSHTMLMutationObserver *iface)
 {
     return CONTAINING_RECORD(iface, struct mutation_observer, IWineMSHTMLMutationObserver_iface);
@@ -1096,7 +1096,7 @@ static HRESULT WINAPI MutationObserver_QueryInterface(IWineMSHTMLMutationObserve
 
     TRACE("(%p)->(%s %p)\n", This, debugstr_mshtml_guid(riid), ppv);
 
-    if(IsEqualGUID(&IID_IUnknown, riid), riid) {
+    if(IsEqualGUID(&IID_IUnknown, riid) || IsEqualGUID(&IID_IWineMSHTMLMutationObserver, riid)) {
         *ppv = &This->IWineMSHTMLMutationObserver_iface;
     } else if(dispex_query_interface(&This->dispex, riid, ppv)) {
         return *ppv ? S_OK : E_NOINTERFACE;
@@ -1206,7 +1206,8 @@ static const IWineMSHTMLMutationObserverVtbl WineMSHTMLMutationObserverVtbl = {
     MutationObserver_GetIDsOfNames,
     MutationObserver_Invoke,
     MutationObserver_disconnect,
-    MutationObserver_observe
+    MutationObserver_observe,
+    MutationObserver_takeRecords
 };
 
 static inline struct mutation_observer *mutation_observer_from_DispatchEx(DispatchEx *iface)
@@ -1402,12 +1403,10 @@ static dispex_static_data_t mutation_observer_ctor_dispex = {
     NULL_tid,
     mutation_observer_ctor_iface_tids
 };
-#endif
 
 HRESULT create_mutation_observer_ctor(compat_mode_t compat_mode, IDispatch **ret)
 {
-#if 0
-    	struct mutation_observer_ctor *obj;
+    struct mutation_observer_ctor *obj;
 
     TRACE("(compat_mode = %d, ret = %p)\n", compat_mode, ret);
 
@@ -1424,6 +1423,5 @@ HRESULT create_mutation_observer_ctor(compat_mode_t compat_mode, IDispatch **ret
                   &mutation_observer_ctor_dispex, compat_mode);
 
     *ret = (IDispatch *)&obj->dispex.IDispatchEx_iface;
-   #endif
     return S_OK;
 }

@@ -83,8 +83,10 @@ void init_monitors( int width, int height )
     else monitor_rc_work.top = rect.bottom;
     TRACE( "found tray %p %s work area %s\n", hwnd,
            wine_dbgstr_rect( &rect ), wine_dbgstr_rect( &monitor_rc_work ));
-#if 0
-    if (*p_java_vm) /* if we're notified from Java thread, update registry */
+
+#if 0 
+    /* if we're notified from Java thread, update registry */
+    if (*p_java_vm)
     {
         UINT32 num_path, num_mode;
         force_display_devices_refresh = TRUE;
@@ -175,7 +177,8 @@ void set_screen_dpi( DWORD dpi )
  */
 static void fetch_display_metrics(void)
 {
-    //if (*p_java_vm) return;  /* for Java threads it will be set when the top view is created */
+    /* for Java threads it will be set when the top view is created */
+    //if (*p_java_vm) return;  
 
     SERVER_START_REQ( get_window_rectangles )
     {
@@ -557,10 +560,6 @@ static void load_broadway_libs(void)
 #undef DECL_FUNCPTR
 #undef LOAD_FUNCPTR
 
-//JavaVM **p_java_vm = NULL;
-//jobject *p_java_object = NULL;
-//unsigned short *p_java_gdt_sel = NULL;
-
 static HRESULT broadway_init( void *arg )
 {
 #if 0
@@ -613,11 +612,11 @@ static HRESULT broadway_init( void *arg )
 
 const unixlib_entry_t __wine_unix_call_funcs[] =
 {
-    broadway_dispatch_ioctl,
+//    broadway_dispatch_ioctl,
     broadway_init,
-    broadway_java_init,
-    broadway_java_uninit,
-    broadway_register_window,
+//    broadway_java_init,
+//    broadway_java_uninit,
+//    broadway_register_window,
 };
 
 

@@ -65,7 +65,7 @@ static NTSTATUS CALLBACK init_broadway_driver( DRIVER_OBJECT *driver, UNICODE_ST
 
 static DWORD CALLBACK device_thread( void *arg )
 {
-    static const WCHAR driver_nameW[] = {'\\','D','r','i','v','e','r','\\','W','i','n','e','A','n','d','r','o','i','d',0 };
+    static const WCHAR driver_nameW[] = {'\\','D','r','i','v','e','r','\\','W','i','n','e','B','r','o','a','d','w','a','y',0 };
 
     HANDLE start_event = arg;
     UNICODE_STRING nameW;
@@ -74,7 +74,8 @@ static DWORD CALLBACK device_thread( void *arg )
 
     TRACE( "starting process %lx\n", GetCurrentProcessId() );
 
-    if (BROADWAY_CALL( java_init, NULL )) return 0;  /* not running under Java */
+    /* not running under Java */
+    //if (BROADWAY_CALL( java_init, NULL )) return 0;
 
     RtlInitUnicodeString( &nameW, driver_nameW );
     if ((status = IoCreateDriver( &nameW, init_broadway_driver )))
