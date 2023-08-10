@@ -1,5 +1,5 @@
 /*
- * X11DRV OpenGL functions
+ * BROADWAYDRV OpenGL functions
  *
  * Copyright 2000 Lionel Ulmer
  * Copyright 2005 Alex Woods
@@ -287,7 +287,7 @@ static struct opengl_funcs opengl_funcs;
 static const char *opengl_func_names[] = { ALL_WGL_FUNCS };
 #undef USE_GL_FUNC
 
-static void X11DRV_WineGL_LoadExtensions(void);
+static void BROADWAYDRV_WineGL_LoadExtensions(void);
 static void init_pixel_formats( Display *display );
 static BOOL glxRequireVersion(int requiredVersion);
 
@@ -411,7 +411,7 @@ static int GLXErrorHandler(Display *dpy, XErrorEvent *event, void *arg)
     return 1;
 }
 
-static BOOL X11DRV_WineGL_InitOpenglInfo(void)
+static BOOL BROADWAYDRV_WineGL_InitOpenglInfo(void)
 {
     static const char legacy_extensions[] = " WGL_EXT_extensions_string WGL_EXT_swap_control";
 
@@ -627,7 +627,7 @@ static void init_opengl(void)
     LOAD_FUNCPTR(glXFreeMemoryNV);
 #undef LOAD_FUNCPTR
 
-    if(!X11DRV_WineGL_InitOpenglInfo()) goto failed;
+    if(!BROADWAYDRV_WineGL_InitOpenglInfo()) goto failed;
 
     if (XQueryExtension( gdi_display, "GLX", &glx_opcode, &event_base, &error_base ))
     {
@@ -715,7 +715,7 @@ static void init_opengl(void)
         pglXSwapBuffersMscOML = pglXGetProcAddressARB( (const GLubyte *)"glXSwapBuffersMscOML" );
     }
 
-    X11DRV_WineGL_LoadExtensions();
+    BROADWAYDRV_WineGL_LoadExtensions();
     init_pixel_formats( gdi_display );
     return;
 
@@ -1235,10 +1235,10 @@ static BOOL set_swap_interval(GLXDrawable drawable, int interval)
     switch (swap_control_method)
     {
     case GLX_SWAP_CONTROL_EXT:
-        X11DRV_expect_error(gdi_display, GLXErrorHandler, NULL);
+        BROADWAYDRV_expect_error(gdi_display, GLXErrorHandler, NULL);
         pglXSwapIntervalEXT(gdi_display, drawable, interval);
         XSync(gdi_display, False);
-        ret = !X11DRV_check_error();
+        ret = !BROADWAYDRV_check_error();
         break;
 
     case GLX_SWAP_CONTROL_MESA:
@@ -1717,10 +1717,10 @@ static BOOL glxdrv_wglCopyContext(struct wgl_context *src, struct wgl_context *d
 {
     TRACE("%p -> %p mask %#x\n", src, dst, mask);
 
-    X11DRV_expect_error( gdi_display, GLXErrorHandler, NULL );
+    BROADWAYDRV_expect_error( gdi_display, GLXErrorHandler, NULL );
     pglXCopyContext( gdi_display, src->ctx, dst->ctx, mask );
     XSync( gdi_display, False );
-    if (X11DRV_check_error())
+    if (BROADWAYDRV_check_error())
     {
         static unsigned int once;
 
@@ -1869,9 +1869,9 @@ done:
 }
 
 /***********************************************************************
- *		X11DRV_wglMakeContextCurrentARB
+ *		BROADWAYDRV_wglMakeContextCurrentARB
  */
-static BOOL X11DRV_wglMakeContextCurrentARB( HDC draw_hdc, HDC read_hdc, struct wgl_context *ctx )
+static BOOL BROADWAYDRV_wglMakeContextCurrentARB( HDC draw_hdc, HDC read_hdc, struct wgl_context *ctx )
 {
     BOOL ret = FALSE;
     struct gl_drawable *draw_gl, *read_gl = NULL;
@@ -1968,7 +1968,7 @@ static void wglFinish(void)
     struct gl_drawable *gl;
     struct wgl_context *ctx = NtCurrentTeb()->glContext;
 
-    escape.code = X11DRV_FLUSH_GL_DRAWABLE;
+    escape.code = BROADWAYDRV_FLUSH_GL_DRAWABLE;
     escape.gl_drawable = 0;
     escape.flush = FALSE;
 
@@ -1986,7 +1986,7 @@ static void wglFinish(void)
 
     pglFinish();
     if (escape.gl_drawable)
-        NtGdiExtEscape( ctx->hdc, NULL, 0, X11DRV_ESCAPE, sizeof(escape), (LPSTR)&escape, 0, NULL );
+        NtGdiExtEscape( ctx->hdc, NULL, 0, BROADWAYDRV_ESCAPE, sizeof(escape), (LPSTR)&escape, 0, NULL );
 }
 
 static void wglFlush(void)
@@ -1995,7 +1995,7 @@ static void wglFlush(void)
     struct gl_drawable *gl;
     struct wgl_context *ctx = NtCurrentTeb()->glContext;
 
-    escape.code = X11DRV_FLUSH_GL_DRAWABLE;
+    escape.code = BROADWAYDRV_FLUSH_GL_DRAWABLE;
     escape.gl_drawable = 0;
     escape.flush = FALSE;
 
@@ -2013,7 +2013,7 @@ static void wglFlush(void)
 
     pglFlush();
     if (escape.gl_drawable)
-        NtGdiExtEscape( ctx->hdc, NULL, 0, X11DRV_ESCAPE, sizeof(escape), (LPSTR)&escape, 0, NULL );
+        NtGdiExtEscape( ctx->hdc, NULL, 0, BROADWAYDRV_ESCAPE, sizeof(escape), (LPSTR)&escape, 0, NULL );
 }
 
 static const GLubyte *wglGetString(GLenum name)
@@ -2023,9 +2023,9 @@ static const GLubyte *wglGetString(GLenum name)
 }
 
 /***********************************************************************
- *		X11DRV_wglCreateContextAttribsARB
+ *		BROADWAYDRV_wglCreateContextAttribsARB
  */
-static struct wgl_context *X11DRV_wglCreateContextAttribsARB( HDC hdc, struct wgl_context *hShareContext,
+static struct wgl_context *BROADWAYDRV_wglCreateContextAttribsARB( HDC hdc, struct wgl_context *hShareContext,
                                                               const int* attribList )
 {
     struct wgl_context *ret;
@@ -2099,10 +2099,10 @@ static struct wgl_context *X11DRV_wglCreateContextAttribsARB( HDC hdc, struct wg
             }
         }
 
-        X11DRV_expect_error(gdi_display, GLXErrorHandler, NULL);
+        BROADWAYDRV_expect_error(gdi_display, GLXErrorHandler, NULL);
         ret->ctx = create_glxcontext(gdi_display, ret, hShareContext ? hShareContext->ctx : NULL);
         XSync(gdi_display, False);
-        if ((err = X11DRV_check_error()) || !ret->ctx)
+        if ((err = BROADWAYDRV_check_error()) || !ret->ctx)
         {
             /* In the future we should convert the GLX error to a win32 one here if needed */
             WARN("Context creation failed (error %#x).\n", err);
@@ -2123,22 +2123,22 @@ static struct wgl_context *X11DRV_wglCreateContextAttribsARB( HDC hdc, struct wg
 }
 
 /**
- * X11DRV_wglGetExtensionsStringARB
+ * BROADWAYDRV_wglGetExtensionsStringARB
  *
  * WGL_ARB_extensions_string: wglGetExtensionsStringARB
  */
-static const char *X11DRV_wglGetExtensionsStringARB(HDC hdc)
+static const char *BROADWAYDRV_wglGetExtensionsStringARB(HDC hdc)
 {
     TRACE("() returning \"%s\"\n", wglExtensions);
     return wglExtensions;
 }
 
 /**
- * X11DRV_wglCreatePbufferARB
+ * BROADWAYDRV_wglCreatePbufferARB
  *
  * WGL_ARB_pbuffer: wglCreatePbufferARB
  */
-static struct wgl_pbuffer *X11DRV_wglCreatePbufferARB( HDC hdc, int iPixelFormat, int iWidth, int iHeight,
+static struct wgl_pbuffer *BROADWAYDRV_wglCreatePbufferARB( HDC hdc, int iPixelFormat, int iWidth, int iHeight,
                                                        const int *piAttribList )
 {
     struct wgl_pbuffer* object;
@@ -2330,11 +2330,11 @@ create_failed:
 }
 
 /**
- * X11DRV_wglDestroyPbufferARB
+ * BROADWAYDRV_wglDestroyPbufferARB
  *
  * WGL_ARB_pbuffer: wglDestroyPbufferARB
  */
-static BOOL X11DRV_wglDestroyPbufferARB( struct wgl_pbuffer *object )
+static BOOL BROADWAYDRV_wglDestroyPbufferARB( struct wgl_pbuffer *object )
 {
     TRACE("(%p)\n", object);
 
@@ -2349,11 +2349,11 @@ static BOOL X11DRV_wglDestroyPbufferARB( struct wgl_pbuffer *object )
 }
 
 /**
- * X11DRV_wglGetPbufferDCARB
+ * BROADWAYDRV_wglGetPbufferDCARB
  *
  * WGL_ARB_pbuffer: wglGetPbufferDCARB
  */
-static HDC X11DRV_wglGetPbufferDCARB( struct wgl_pbuffer *object )
+static HDC BROADWAYDRV_wglGetPbufferDCARB( struct wgl_pbuffer *object )
 {
     struct broadwaydrv_escape_set_drawable escape;
     struct gl_drawable *prev;
@@ -2369,22 +2369,22 @@ static HDC X11DRV_wglGetPbufferDCARB( struct wgl_pbuffer *object )
     XSaveContext( gdi_display, (XID)hdc, gl_pbuffer_context, (char *)object->gl );
     pthread_mutex_unlock( &context_mutex );
 
-    escape.code = X11DRV_SET_DRAWABLE;
+    escape.code = BROADWAYDRV_SET_DRAWABLE;
     escape.drawable = object->gl->drawable;
     escape.mode = IncludeInferiors;
     SetRect( &escape.dc_rect, 0, 0, object->width, object->height );
-    NtGdiExtEscape( hdc, NULL, 0, X11DRV_ESCAPE, sizeof(escape), (LPSTR)&escape, 0, NULL );
+    NtGdiExtEscape( hdc, NULL, 0, BROADWAYDRV_ESCAPE, sizeof(escape), (LPSTR)&escape, 0, NULL );
 
     TRACE( "(%p)->(%p)\n", object, hdc );
     return hdc;
 }
 
 /**
- * X11DRV_wglQueryPbufferARB
+ * BROADWAYDRV_wglQueryPbufferARB
  *
  * WGL_ARB_pbuffer: wglQueryPbufferARB
  */
-static BOOL X11DRV_wglQueryPbufferARB( struct wgl_pbuffer *object, int iAttribute, int *piValue )
+static BOOL BROADWAYDRV_wglQueryPbufferARB( struct wgl_pbuffer *object, int iAttribute, int *piValue )
 {
     TRACE("(%p, 0x%x, %p)\n", object, iAttribute, piValue);
 
@@ -2469,11 +2469,11 @@ static BOOL X11DRV_wglQueryPbufferARB( struct wgl_pbuffer *object, int iAttribut
 }
 
 /**
- * X11DRV_wglReleasePbufferDCARB
+ * BROADWAYDRV_wglReleasePbufferDCARB
  *
  * WGL_ARB_pbuffer: wglReleasePbufferDCARB
  */
-static int X11DRV_wglReleasePbufferDCARB( struct wgl_pbuffer *object, HDC hdc )
+static int BROADWAYDRV_wglReleasePbufferDCARB( struct wgl_pbuffer *object, HDC hdc )
 {
     struct gl_drawable *gl;
 
@@ -2494,11 +2494,11 @@ static int X11DRV_wglReleasePbufferDCARB( struct wgl_pbuffer *object, HDC hdc )
 }
 
 /**
- * X11DRV_wglSetPbufferAttribARB
+ * BROADWAYDRV_wglSetPbufferAttribARB
  *
  * WGL_ARB_pbuffer: wglSetPbufferAttribARB
  */
-static BOOL X11DRV_wglSetPbufferAttribARB( struct wgl_pbuffer *object, const int *piAttribList )
+static BOOL BROADWAYDRV_wglSetPbufferAttribARB( struct wgl_pbuffer *object, const int *piAttribList )
 {
     GLboolean ret = GL_FALSE;
 
@@ -2546,11 +2546,11 @@ static int compare_formats(const void *a, const void *b)
 }
 
 /**
- * X11DRV_wglChoosePixelFormatARB
+ * BROADWAYDRV_wglChoosePixelFormatARB
  *
  * WGL_ARB_pixel_format: wglChoosePixelFormatARB
  */
-static BOOL X11DRV_wglChoosePixelFormatARB( HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList,
+static BOOL BROADWAYDRV_wglChoosePixelFormatARB( HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList,
                                             UINT nMaxFormats, int *piFormats, UINT *nNumFormats )
 {
     struct choose_pixel_format_arb_format *formats;
@@ -2677,11 +2677,11 @@ static BOOL X11DRV_wglChoosePixelFormatARB( HDC hdc, const int *piAttribIList, c
 }
 
 /**
- * X11DRV_wglGetPixelFormatAttribivARB
+ * BROADWAYDRV_wglGetPixelFormatAttribivARB
  *
  * WGL_ARB_pixel_format: wglGetPixelFormatAttribivARB
  */
-static BOOL X11DRV_wglGetPixelFormatAttribivARB( HDC hdc, int iPixelFormat, int iLayerPlane,
+static BOOL BROADWAYDRV_wglGetPixelFormatAttribivARB( HDC hdc, int iPixelFormat, int iLayerPlane,
                                                  UINT nAttributes, const int *piAttributes, int *piValues )
 {
     UINT i;
@@ -2941,11 +2941,11 @@ pix_error:
 }
 
 /**
- * X11DRV_wglGetPixelFormatAttribfvARB
+ * BROADWAYDRV_wglGetPixelFormatAttribfvARB
  *
  * WGL_ARB_pixel_format: wglGetPixelFormatAttribfvARB
  */
-static BOOL X11DRV_wglGetPixelFormatAttribfvARB( HDC hdc, int iPixelFormat, int iLayerPlane,
+static BOOL BROADWAYDRV_wglGetPixelFormatAttribfvARB( HDC hdc, int iPixelFormat, int iLayerPlane,
                                                  UINT nAttributes, const int *piAttributes, FLOAT *pfValues )
 {
     int *attr;
@@ -2962,7 +2962,7 @@ static BOOL X11DRV_wglGetPixelFormatAttribfvARB( HDC hdc, int iPixelFormat, int 
     }
 
     /* Piggy-back on wglGetPixelFormatAttribivARB */
-    ret = X11DRV_wglGetPixelFormatAttribivARB(hdc, iPixelFormat, iLayerPlane, nAttributes, piAttributes, attr);
+    ret = BROADWAYDRV_wglGetPixelFormatAttribivARB(hdc, iPixelFormat, iLayerPlane, nAttributes, piAttributes, attr);
     if (ret) {
         /* Convert integer values to float. Should also check for attributes
            that can give decimal values here */
@@ -2976,11 +2976,11 @@ static BOOL X11DRV_wglGetPixelFormatAttribfvARB( HDC hdc, int iPixelFormat, int 
 }
 
 /**
- * X11DRV_wglBindTexImageARB
+ * BROADWAYDRV_wglBindTexImageARB
  *
  * WGL_ARB_render_texture: wglBindTexImageARB
  */
-static BOOL X11DRV_wglBindTexImageARB( struct wgl_pbuffer *object, int iBuffer )
+static BOOL BROADWAYDRV_wglBindTexImageARB( struct wgl_pbuffer *object, int iBuffer )
 {
     GLboolean ret = GL_FALSE;
 
@@ -3036,11 +3036,11 @@ static BOOL X11DRV_wglBindTexImageARB( struct wgl_pbuffer *object, int iBuffer )
 }
 
 /**
- * X11DRV_wglReleaseTexImageARB
+ * BROADWAYDRV_wglReleaseTexImageARB
  *
  * WGL_ARB_render_texture: wglReleaseTexImageARB
  */
-static BOOL X11DRV_wglReleaseTexImageARB( struct wgl_pbuffer *object, int iBuffer )
+static BOOL BROADWAYDRV_wglReleaseTexImageARB( struct wgl_pbuffer *object, int iBuffer )
 {
     GLboolean ret = GL_FALSE;
 
@@ -3057,22 +3057,22 @@ static BOOL X11DRV_wglReleaseTexImageARB( struct wgl_pbuffer *object, int iBuffe
 }
 
 /**
- * X11DRV_wglGetExtensionsStringEXT
+ * BROADWAYDRV_wglGetExtensionsStringEXT
  *
  * WGL_EXT_extensions_string: wglGetExtensionsStringEXT
  */
-static const char *X11DRV_wglGetExtensionsStringEXT(void)
+static const char *BROADWAYDRV_wglGetExtensionsStringEXT(void)
 {
     TRACE("() returning \"%s\"\n", wglExtensions);
     return wglExtensions;
 }
 
 /**
- * X11DRV_wglGetSwapIntervalEXT
+ * BROADWAYDRV_wglGetSwapIntervalEXT
  *
  * WGL_EXT_swap_control: wglGetSwapIntervalEXT
  */
-static int X11DRV_wglGetSwapIntervalEXT(void)
+static int BROADWAYDRV_wglGetSwapIntervalEXT(void)
 {
     struct wgl_context *ctx = NtCurrentTeb()->glContext;
     struct gl_drawable *gl;
@@ -3096,11 +3096,11 @@ static int X11DRV_wglGetSwapIntervalEXT(void)
 }
 
 /**
- * X11DRV_wglSwapIntervalEXT
+ * BROADWAYDRV_wglSwapIntervalEXT
  *
  * WGL_EXT_swap_control: wglSwapIntervalEXT
  */
-static BOOL X11DRV_wglSwapIntervalEXT(int interval)
+static BOOL BROADWAYDRV_wglSwapIntervalEXT(int interval)
 {
     struct wgl_context *ctx = NtCurrentTeb()->glContext;
     struct gl_drawable *gl;
@@ -3138,32 +3138,32 @@ static BOOL X11DRV_wglSwapIntervalEXT(int interval)
 }
 
 /**
- * X11DRV_wglSetPixelFormatWINE
+ * BROADWAYDRV_wglSetPixelFormatWINE
  *
  * WGL_WINE_pixel_format_passthrough: wglSetPixelFormatWINE
  * This is a WINE-specific wglSetPixelFormat which can set the pixel format multiple times.
  */
-static BOOL X11DRV_wglSetPixelFormatWINE(HDC hdc, int format)
+static BOOL BROADWAYDRV_wglSetPixelFormatWINE(HDC hdc, int format)
 {
     return set_pixel_format(hdc, format, TRUE);
 }
 
-static BOOL X11DRV_wglQueryCurrentRendererIntegerWINE( GLenum attribute, GLuint *value )
+static BOOL BROADWAYDRV_wglQueryCurrentRendererIntegerWINE( GLenum attribute, GLuint *value )
 {
     return pglXQueryCurrentRendererIntegerMESA( attribute, value );
 }
 
-static const char *X11DRV_wglQueryCurrentRendererStringWINE( GLenum attribute )
+static const char *BROADWAYDRV_wglQueryCurrentRendererStringWINE( GLenum attribute )
 {
     return pglXQueryCurrentRendererStringMESA( attribute );
 }
 
-static BOOL X11DRV_wglQueryRendererIntegerWINE( HDC dc, GLint renderer, GLenum attribute, GLuint *value )
+static BOOL BROADWAYDRV_wglQueryRendererIntegerWINE( HDC dc, GLint renderer, GLenum attribute, GLuint *value )
 {
     return pglXQueryRendererIntegerMESA( gdi_display, DefaultScreen(gdi_display), renderer, attribute, value );
 }
 
-static const char *X11DRV_wglQueryRendererStringWINE( HDC dc, GLint renderer, GLenum attribute )
+static const char *BROADWAYDRV_wglQueryRendererStringWINE( HDC dc, GLint renderer, GLenum attribute )
 {
     return pglXQueryRendererStringMESA( gdi_display, DefaultScreen(gdi_display), renderer, attribute );
 }
@@ -3189,9 +3189,9 @@ static void register_extension(const char *ext)
 }
 
 /**
- * X11DRV_WineGL_LoadExtensions
+ * BROADWAYDRV_WineGL_LoadExtensions
  */
-static void X11DRV_WineGL_LoadExtensions(void)
+static void BROADWAYDRV_WineGL_LoadExtensions(void)
 {
     wglExtensions[0] = 0;
 
@@ -3200,7 +3200,7 @@ static void X11DRV_WineGL_LoadExtensions(void)
     if (has_extension( glxExtensions, "GLX_ARB_create_context"))
     {
         register_extension( "WGL_ARB_create_context" );
-        opengl_funcs.ext.p_wglCreateContextAttribsARB = X11DRV_wglCreateContextAttribsARB;
+        opengl_funcs.ext.p_wglCreateContextAttribsARB = BROADWAYDRV_wglCreateContextAttribsARB;
 
         if (has_extension( glxExtensions, "GLX_ARB_create_context_no_error" ))
             register_extension( "WGL_ARB_create_context_no_error" );
@@ -3210,13 +3210,13 @@ static void X11DRV_WineGL_LoadExtensions(void)
 
 
     register_extension( "WGL_ARB_extensions_string" );
-    opengl_funcs.ext.p_wglGetExtensionsStringARB = X11DRV_wglGetExtensionsStringARB;
+    opengl_funcs.ext.p_wglGetExtensionsStringARB = BROADWAYDRV_wglGetExtensionsStringARB;
 
     if (glxRequireVersion(3))
     {
         register_extension( "WGL_ARB_make_current_read" );
         opengl_funcs.ext.p_wglGetCurrentReadDCARB   = (void *)1;  /* never called */
-        opengl_funcs.ext.p_wglMakeContextCurrentARB = X11DRV_wglMakeContextCurrentARB;
+        opengl_funcs.ext.p_wglMakeContextCurrentARB = BROADWAYDRV_wglMakeContextCurrentARB;
     }
 
     if (has_extension( glxExtensions, "GLX_ARB_multisample")) register_extension( "WGL_ARB_multisample" );
@@ -3224,18 +3224,18 @@ static void X11DRV_WineGL_LoadExtensions(void)
     if (glxRequireVersion(3))
     {
         register_extension( "WGL_ARB_pbuffer" );
-        opengl_funcs.ext.p_wglCreatePbufferARB    = X11DRV_wglCreatePbufferARB;
-        opengl_funcs.ext.p_wglDestroyPbufferARB   = X11DRV_wglDestroyPbufferARB;
-        opengl_funcs.ext.p_wglGetPbufferDCARB     = X11DRV_wglGetPbufferDCARB;
-        opengl_funcs.ext.p_wglQueryPbufferARB     = X11DRV_wglQueryPbufferARB;
-        opengl_funcs.ext.p_wglReleasePbufferDCARB = X11DRV_wglReleasePbufferDCARB;
-        opengl_funcs.ext.p_wglSetPbufferAttribARB = X11DRV_wglSetPbufferAttribARB;
+        opengl_funcs.ext.p_wglCreatePbufferARB    = BROADWAYDRV_wglCreatePbufferARB;
+        opengl_funcs.ext.p_wglDestroyPbufferARB   = BROADWAYDRV_wglDestroyPbufferARB;
+        opengl_funcs.ext.p_wglGetPbufferDCARB     = BROADWAYDRV_wglGetPbufferDCARB;
+        opengl_funcs.ext.p_wglQueryPbufferARB     = BROADWAYDRV_wglQueryPbufferARB;
+        opengl_funcs.ext.p_wglReleasePbufferDCARB = BROADWAYDRV_wglReleasePbufferDCARB;
+        opengl_funcs.ext.p_wglSetPbufferAttribARB = BROADWAYDRV_wglSetPbufferAttribARB;
     }
 
     register_extension( "WGL_ARB_pixel_format" );
-    opengl_funcs.ext.p_wglChoosePixelFormatARB      = X11DRV_wglChoosePixelFormatARB;
-    opengl_funcs.ext.p_wglGetPixelFormatAttribfvARB = X11DRV_wglGetPixelFormatAttribfvARB;
-    opengl_funcs.ext.p_wglGetPixelFormatAttribivARB = X11DRV_wglGetPixelFormatAttribivARB;
+    opengl_funcs.ext.p_wglChoosePixelFormatARB      = BROADWAYDRV_wglChoosePixelFormatARB;
+    opengl_funcs.ext.p_wglGetPixelFormatAttribfvARB = BROADWAYDRV_wglGetPixelFormatAttribfvARB;
+    opengl_funcs.ext.p_wglGetPixelFormatAttribivARB = BROADWAYDRV_wglGetPixelFormatAttribivARB;
 
     if (has_extension( glxExtensions, "GLX_ARB_fbconfig_float"))
     {
@@ -3248,8 +3248,8 @@ static void X11DRV_WineGL_LoadExtensions(void)
         (glxRequireVersion(3) && use_render_texture_emulation))
     {
         register_extension( "WGL_ARB_render_texture" );
-        opengl_funcs.ext.p_wglBindTexImageARB    = X11DRV_wglBindTexImageARB;
-        opengl_funcs.ext.p_wglReleaseTexImageARB = X11DRV_wglReleaseTexImageARB;
+        opengl_funcs.ext.p_wglBindTexImageARB    = BROADWAYDRV_wglBindTexImageARB;
+        opengl_funcs.ext.p_wglReleaseTexImageARB = BROADWAYDRV_wglReleaseTexImageARB;
 
         /* The WGL version of GLX_NV_float_buffer requires render_texture */
         if (has_extension( glxExtensions, "GLX_NV_float_buffer"))
@@ -3263,13 +3263,13 @@ static void X11DRV_WineGL_LoadExtensions(void)
     /* EXT Extensions */
 
     register_extension( "WGL_EXT_extensions_string" );
-    opengl_funcs.ext.p_wglGetExtensionsStringEXT = X11DRV_wglGetExtensionsStringEXT;
+    opengl_funcs.ext.p_wglGetExtensionsStringEXT = BROADWAYDRV_wglGetExtensionsStringEXT;
 
     /* Load this extension even when it isn't backed by a GLX extension because it is has been around for ages.
      * Games like Call of Duty and K.O.T.O.R. rely on it. Further our emulation is good enough. */
     register_extension( "WGL_EXT_swap_control" );
-    opengl_funcs.ext.p_wglSwapIntervalEXT = X11DRV_wglSwapIntervalEXT;
-    opengl_funcs.ext.p_wglGetSwapIntervalEXT = X11DRV_wglGetSwapIntervalEXT;
+    opengl_funcs.ext.p_wglSwapIntervalEXT = BROADWAYDRV_wglSwapIntervalEXT;
+    opengl_funcs.ext.p_wglGetSwapIntervalEXT = BROADWAYDRV_wglGetSwapIntervalEXT;
 
     if (has_extension( glxExtensions, "GLX_EXT_framebuffer_sRGB"))
         register_extension("WGL_EXT_framebuffer_sRGB");
@@ -3312,15 +3312,15 @@ static void X11DRV_WineGL_LoadExtensions(void)
      * The default wglSetPixelFormat doesn't allow this, so add our own which allows it.
      */
     register_extension( "WGL_WINE_pixel_format_passthrough" );
-    opengl_funcs.ext.p_wglSetPixelFormatWINE = X11DRV_wglSetPixelFormatWINE;
+    opengl_funcs.ext.p_wglSetPixelFormatWINE = BROADWAYDRV_wglSetPixelFormatWINE;
 
     if (has_extension( glxExtensions, "GLX_MESA_query_renderer" ))
     {
         register_extension( "WGL_WINE_query_renderer" );
-        opengl_funcs.ext.p_wglQueryCurrentRendererIntegerWINE = X11DRV_wglQueryCurrentRendererIntegerWINE;
-        opengl_funcs.ext.p_wglQueryCurrentRendererStringWINE = X11DRV_wglQueryCurrentRendererStringWINE;
-        opengl_funcs.ext.p_wglQueryRendererIntegerWINE = X11DRV_wglQueryRendererIntegerWINE;
-        opengl_funcs.ext.p_wglQueryRendererStringWINE = X11DRV_wglQueryRendererStringWINE;
+        opengl_funcs.ext.p_wglQueryCurrentRendererIntegerWINE = BROADWAYDRV_wglQueryCurrentRendererIntegerWINE;
+        opengl_funcs.ext.p_wglQueryCurrentRendererStringWINE = BROADWAYDRV_wglQueryCurrentRendererStringWINE;
+        opengl_funcs.ext.p_wglQueryRendererIntegerWINE = BROADWAYDRV_wglQueryRendererIntegerWINE;
+        opengl_funcs.ext.p_wglQueryRendererStringWINE = BROADWAYDRV_wglQueryRendererStringWINE;
     }
 }
 
@@ -3339,7 +3339,7 @@ static BOOL glxdrv_wglSwapBuffers( HDC hdc )
 
     TRACE("(%p)\n", hdc);
 
-    escape.code = X11DRV_FLUSH_GL_DRAWABLE;
+    escape.code = BROADWAYDRV_FLUSH_GL_DRAWABLE;
     escape.gl_drawable = 0;
     escape.flush = !pglXWaitForSbcOML;
 
@@ -3401,7 +3401,7 @@ static BOOL glxdrv_wglSwapBuffers( HDC hdc )
     release_gl_drawable( gl );
 
     if (escape.gl_drawable)
-        NtGdiExtEscape( ctx->hdc, NULL, 0, X11DRV_ESCAPE, sizeof(escape), (LPSTR)&escape, 0, NULL );
+        NtGdiExtEscape( ctx->hdc, NULL, 0, BROADWAYDRV_ESCAPE, sizeof(escape), (LPSTR)&escape, 0, NULL );
     return TRUE;
 }
 

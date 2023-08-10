@@ -81,16 +81,16 @@ Bool (*pXGetEventData)( Display *display, XEvent /*XGenericEventCookie*/ *event 
 void (*pXFreeEventData)( Display *display, XEvent /*XGenericEventCookie*/ *event ) = NULL;
 
   /* Event handlers */
-static BOOL X11DRV_FocusIn( HWND hwnd, XEvent *event );
-static BOOL X11DRV_FocusOut( HWND hwnd, XEvent *event );
-static BOOL X11DRV_Expose( HWND hwnd, XEvent *event );
-static BOOL X11DRV_MapNotify( HWND hwnd, XEvent *event );
-static BOOL X11DRV_UnmapNotify( HWND hwnd, XEvent *event );
-static BOOL X11DRV_ReparentNotify( HWND hwnd, XEvent *event );
-static BOOL X11DRV_ConfigureNotify( HWND hwnd, XEvent *event );
-static BOOL X11DRV_PropertyNotify( HWND hwnd, XEvent *event );
-static BOOL X11DRV_ClientMessage( HWND hwnd, XEvent *event );
-static BOOL X11DRV_GravityNotify( HWND hwnd, XEvent *event );
+static BOOL BROADWAYDRV_FocusIn( HWND hwnd, XEvent *event );
+static BOOL BROADWAYDRV_FocusOut( HWND hwnd, XEvent *event );
+static BOOL BROADWAYDRV_Expose( HWND hwnd, XEvent *event );
+static BOOL BROADWAYDRV_MapNotify( HWND hwnd, XEvent *event );
+static BOOL BROADWAYDRV_UnmapNotify( HWND hwnd, XEvent *event );
+static BOOL BROADWAYDRV_ReparentNotify( HWND hwnd, XEvent *event );
+static BOOL BROADWAYDRV_ConfigureNotify( HWND hwnd, XEvent *event );
+static BOOL BROADWAYDRV_PropertyNotify( HWND hwnd, XEvent *event );
+static BOOL BROADWAYDRV_ClientMessage( HWND hwnd, XEvent *event );
+static BOOL BROADWAYDRV_GravityNotify( HWND hwnd, XEvent *event );
 
 #define MAX_EVENT_HANDLERS 128
 
@@ -98,40 +98,40 @@ static broadwaydrv_event_handler handlers[MAX_EVENT_HANDLERS] =
 {
     NULL,                     /*  0 reserved */
     NULL,                     /*  1 reserved */
-    X11DRV_KeyEvent,          /*  2 KeyPress */
-    X11DRV_KeyEvent,          /*  3 KeyRelease */
-    X11DRV_ButtonPress,       /*  4 ButtonPress */
-    X11DRV_ButtonRelease,     /*  5 ButtonRelease */
-    X11DRV_MotionNotify,      /*  6 MotionNotify */
-    X11DRV_EnterNotify,       /*  7 EnterNotify */
+    BROADWAYDRV_KeyEvent,          /*  2 KeyPress */
+    BROADWAYDRV_KeyEvent,          /*  3 KeyRelease */
+    BROADWAYDRV_ButtonPress,       /*  4 ButtonPress */
+    BROADWAYDRV_ButtonRelease,     /*  5 ButtonRelease */
+    BROADWAYDRV_MotionNotify,      /*  6 MotionNotify */
+    BROADWAYDRV_EnterNotify,       /*  7 EnterNotify */
     NULL,                     /*  8 LeaveNotify */
-    X11DRV_FocusIn,           /*  9 FocusIn */
-    X11DRV_FocusOut,          /* 10 FocusOut */
-    X11DRV_KeymapNotify,      /* 11 KeymapNotify */
-    X11DRV_Expose,            /* 12 Expose */
+    BROADWAYDRV_FocusIn,           /*  9 FocusIn */
+    BROADWAYDRV_FocusOut,          /* 10 FocusOut */
+    BROADWAYDRV_KeymapNotify,      /* 11 KeymapNotify */
+    BROADWAYDRV_Expose,            /* 12 Expose */
     NULL,                     /* 13 GraphicsExpose */
     NULL,                     /* 14 NoExpose */
     NULL,                     /* 15 VisibilityNotify */
     NULL,                     /* 16 CreateNotify */
-    X11DRV_DestroyNotify,     /* 17 DestroyNotify */
-    X11DRV_UnmapNotify,       /* 18 UnmapNotify */
-    X11DRV_MapNotify,         /* 19 MapNotify */
+    BROADWAYDRV_DestroyNotify,     /* 17 DestroyNotify */
+    BROADWAYDRV_UnmapNotify,       /* 18 UnmapNotify */
+    BROADWAYDRV_MapNotify,         /* 19 MapNotify */
     NULL,                     /* 20 MapRequest */
-    X11DRV_ReparentNotify,    /* 21 ReparentNotify */
-    X11DRV_ConfigureNotify,   /* 22 ConfigureNotify */
+    BROADWAYDRV_ReparentNotify,    /* 21 ReparentNotify */
+    BROADWAYDRV_ConfigureNotify,   /* 22 ConfigureNotify */
     NULL,                     /* 23 ConfigureRequest */
-    X11DRV_GravityNotify,     /* 24 GravityNotify */
+    BROADWAYDRV_GravityNotify,     /* 24 GravityNotify */
     NULL,                     /* 25 ResizeRequest */
     NULL,                     /* 26 CirculateNotify */
     NULL,                     /* 27 CirculateRequest */
-    X11DRV_PropertyNotify,    /* 28 PropertyNotify */
-    X11DRV_SelectionClear,    /* 29 SelectionClear */
-    X11DRV_SelectionRequest,  /* 30 SelectionRequest */
+    BROADWAYDRV_PropertyNotify,    /* 28 PropertyNotify */
+    BROADWAYDRV_SelectionClear,    /* 29 SelectionClear */
+    BROADWAYDRV_SelectionRequest,  /* 30 SelectionRequest */
     NULL,                     /* 31 SelectionNotify */
     NULL,                     /* 32 ColormapNotify */
-    X11DRV_ClientMessage,     /* 33 ClientMessage */
-    X11DRV_MappingNotify,     /* 34 MappingNotify */
-    X11DRV_GenericEvent       /* 35 GenericEvent */
+    BROADWAYDRV_ClientMessage,     /* 33 ClientMessage */
+    BROADWAYDRV_MappingNotify,     /* 34 MappingNotify */
+    BROADWAYDRV_GenericEvent       /* 35 GenericEvent */
 };
 
 static const char * event_names[MAX_EVENT_HANDLERS] =
@@ -199,12 +199,12 @@ static void xembed_request_focus( Display *display, Window window, DWORD timesta
 }
 
 /***********************************************************************
- *           X11DRV_register_event_handler
+ *           BROADWAYDRV_register_event_handler
  *
  * Register a handler for a given event type.
  * If already registered, overwrite the previous handler.
  */
-void X11DRV_register_event_handler( int type, broadwaydrv_event_handler handler, const char *name )
+void BROADWAYDRV_register_event_handler( int type, broadwaydrv_event_handler handler, const char *name )
 {
     assert( type < MAX_EVENT_HANDLERS );
     assert( !handlers[type] || handlers[type] == handler );
@@ -470,9 +470,9 @@ static BOOL process_events( Display *display, Bool (*filter)(Display*, XEvent*,X
 
 
 /***********************************************************************
- *           ProcessEvents   (X11DRV.@)
+ *           ProcessEvents   (BROADWAYDRV.@)
  */
-BOOL X11DRV_ProcessEvents( DWORD mask )
+BOOL BROADWAYDRV_ProcessEvents( DWORD mask )
 {
     struct broadwaydrv_thread_data *data = broadwaydrv_thread_data();
 
@@ -584,7 +584,7 @@ static void set_focus( Display *display, HWND hwnd, Time time )
     focus = threadinfo.hwndFocus;
     if (!focus) focus = threadinfo.hwndActive;
     if (focus) focus = NtUserGetAncestor( focus, GA_ROOT );
-    win = X11DRV_get_whole_window(focus);
+    win = BROADWAYDRV_get_whole_window(focus);
 
     if (win)
     {
@@ -759,9 +759,9 @@ BOOL is_current_process_focused(void)
 }
 
 /**********************************************************************
- *              X11DRV_FocusIn
+ *              BROADWAYDRV_FocusIn
  */
-static BOOL X11DRV_FocusIn( HWND hwnd, XEvent *xev )
+static BOOL BROADWAYDRV_FocusIn( HWND hwnd, XEvent *xev )
 {
     XFocusChangeEvent *event = &xev->xfocus;
     BOOL was_grabbed;
@@ -831,11 +831,11 @@ static void focus_out( Display *display , HWND hwnd )
  }
 
 /**********************************************************************
- *              X11DRV_FocusOut
+ *              BROADWAYDRV_FocusOut
  *
  * Note: only top-level windows get FocusOut events.
  */
-static BOOL X11DRV_FocusOut( HWND hwnd, XEvent *xev )
+static BOOL BROADWAYDRV_FocusOut( HWND hwnd, XEvent *xev )
 {
     XFocusChangeEvent *event = &xev->xfocus;
 
@@ -860,9 +860,9 @@ static BOOL X11DRV_FocusOut( HWND hwnd, XEvent *xev )
 
 
 /***********************************************************************
- *           X11DRV_Expose
+ *           BROADWAYDRV_Expose
  */
-static BOOL X11DRV_Expose( HWND hwnd, XEvent *xev )
+static BOOL BROADWAYDRV_Expose( HWND hwnd, XEvent *xev )
 {
     XExposeEvent *event = &xev->xexpose;
     RECT rect, abs_rect;
@@ -933,9 +933,9 @@ static BOOL X11DRV_Expose( HWND hwnd, XEvent *xev )
 
 
 /**********************************************************************
- *		X11DRV_MapNotify
+ *		BROADWAYDRV_MapNotify
  */
-static BOOL X11DRV_MapNotify( HWND hwnd, XEvent *event )
+static BOOL BROADWAYDRV_MapNotify( HWND hwnd, XEvent *event )
 {
     struct broadwaydrv_win_data *data;
 
@@ -955,9 +955,9 @@ static BOOL X11DRV_MapNotify( HWND hwnd, XEvent *event )
 
 
 /**********************************************************************
- *		X11DRV_UnmapNotify
+ *		BROADWAYDRV_UnmapNotify
  */
-static BOOL X11DRV_UnmapNotify( HWND hwnd, XEvent *event )
+static BOOL BROADWAYDRV_UnmapNotify( HWND hwnd, XEvent *event )
 {
     return TRUE;
 }
@@ -996,9 +996,9 @@ static void reparent_notify( Display *display, HWND hwnd, Window xparent, int x,
 
 
 /***********************************************************************
- *           X11DRV_ReparentNotify
+ *           BROADWAYDRV_ReparentNotify
  */
-static BOOL X11DRV_ReparentNotify( HWND hwnd, XEvent *xev )
+static BOOL BROADWAYDRV_ReparentNotify( HWND hwnd, XEvent *xev )
 {
     XReparentEvent *event = &xev->xreparent;
     struct broadwaydrv_win_data *data;
@@ -1033,9 +1033,9 @@ static BOOL X11DRV_ReparentNotify( HWND hwnd, XEvent *xev )
 
 
 /***********************************************************************
- *		X11DRV_ConfigureNotify
+ *		BROADWAYDRV_ConfigureNotify
  */
-static BOOL X11DRV_ConfigureNotify( HWND hwnd, XEvent *xev )
+static BOOL BROADWAYDRV_ConfigureNotify( HWND hwnd, XEvent *xev )
 {
     XConfigureEvent *event = &xev->xconfigure;
     struct broadwaydrv_win_data *data;
@@ -1081,7 +1081,7 @@ static BOOL X11DRV_ConfigureNotify( HWND hwnd, XEvent *xev )
     }
     else pos = root_to_virtual_screen( x, y );
 
-    X11DRV_X_to_window_rect( data, &rect, pos.x, pos.y, event->width, event->height );
+    BROADWAYDRV_X_to_window_rect( data, &rect, pos.x, pos.y, event->width, event->height );
     if (root_coords) NtUserMapWindowPoints( 0, parent, (POINT *)&rect, 2 );
 
     TRACE( "win %p/%lx new X rect %d,%d,%dx%d (event %d,%d,%dx%d)\n",
@@ -1150,9 +1150,9 @@ done:
 
 
 /**********************************************************************
- *           X11DRV_GravityNotify
+ *           BROADWAYDRV_GravityNotify
  */
-static BOOL X11DRV_GravityNotify( HWND hwnd, XEvent *xev )
+static BOOL BROADWAYDRV_GravityNotify( HWND hwnd, XEvent *xev )
 {
     XGravityEvent *event = &xev->xgravity;
     struct broadwaydrv_win_data *data = get_win_data( hwnd );
@@ -1295,9 +1295,9 @@ done:
 
 
 /***********************************************************************
- *           X11DRV_PropertyNotify
+ *           BROADWAYDRV_PropertyNotify
  */
-static BOOL X11DRV_PropertyNotify( HWND hwnd, XEvent *xev )
+static BOOL BROADWAYDRV_PropertyNotify( HWND hwnd, XEvent *xev )
 {
     XPropertyEvent *event = &xev->xproperty;
 
@@ -1374,11 +1374,11 @@ void wait_for_withdrawn_state( HWND hwnd, BOOL set )
 
 
 /*****************************************************************
- *		SetFocus   (X11DRV.@)
+ *		SetFocus   (BROADWAYDRV.@)
  *
  * Set the X focus.
  */
-void X11DRV_SetFocus( HWND hwnd )
+void BROADWAYDRV_SetFocus( HWND hwnd )
 {
     struct broadwaydrv_win_data *data;
 
@@ -1826,9 +1826,9 @@ static const struct client_message_handler client_messages[] =
 
 
 /**********************************************************************
- *           X11DRV_ClientMessage
+ *           BROADWAYDRV_ClientMessage
  */
-static BOOL X11DRV_ClientMessage( HWND hwnd, XEvent *xev )
+static BOOL BROADWAYDRV_ClientMessage( HWND hwnd, XEvent *xev )
 {
     XClientMessageEvent *event = &xev->xclient;
     unsigned int i;
@@ -1843,7 +1843,7 @@ static BOOL X11DRV_ClientMessage( HWND hwnd, XEvent *xev )
 
     for (i = 0; i < ARRAY_SIZE( client_messages ); i++)
     {
-        if (event->message_type == X11DRV_Atoms[client_messages[i].atom - FIRST_XATOM])
+        if (event->message_type == BROADWAYDRV_Atoms[client_messages[i].atom - FIRST_XATOM])
         {
             client_messages[i].handler( hwnd, event );
             return TRUE;

@@ -143,7 +143,7 @@ typedef struct
 struct xrender_physdev
 {
     struct gdi_physdev dev;
-    X11DRV_PDEVICE    *x11dev;
+    BROADWAYDRV_PDEVICE    *x11dev;
     HRGN               region;
     enum wxr_format    format;
     UINT               aa_flags;
@@ -312,12 +312,12 @@ static int load_xrender_formats(void)
 }
 
 /***********************************************************************
- *   X11DRV_XRender_Init
+ *   BROADWAYDRV_XRender_Init
  *
  * Let's see if our XServer has the extension available
  *
  */
-const struct gdi_dc_funcs *X11DRV_XRender_Init(void)
+const struct gdi_dc_funcs *BROADWAYDRV_XRender_Init(void)
 {
     int event_base, i;
 
@@ -468,7 +468,7 @@ static void update_xrender_clipping( struct xrender_physdev *dev, HRGN rgn )
         pa.clip_mask = None;
         pXRenderChangePicture( gdi_display, dev->pict, CPClipMask, &pa );
     }
-    else if ((data = X11DRV_GetRegionData( rgn, 0 )))
+    else if ((data = BROADWAYDRV_GetRegionData( rgn, 0 )))
     {
         pXRenderSetPictureClipRectangles( gdi_display, dev->pict,
                                           dev->x11dev->dc_rect.left, dev->x11dev->dc_rect.top,
@@ -846,8 +846,8 @@ static HFONT xrenderdrv_SelectFont( PHYSDEV dev, HFONT hfont, UINT *aa_flags )
           (int)lfsz.lf.lfHeight, (int)lfsz.lf.lfWidth, (int)lfsz.lf.lfWeight,
           lfsz.lf.lfItalic, lfsz.lf.lfCharSet, debugstr_w(lfsz.lf.lfFaceName));
     lfsz.lf.lfWidth = abs( lfsz.lf.lfWidth );
-    lfsz.devsize.cx = X11DRV_XWStoDS( dev->hdc, lfsz.lf.lfWidth );
-    lfsz.devsize.cy = X11DRV_YWStoDS( dev->hdc, lfsz.lf.lfHeight );
+    lfsz.devsize.cx = BROADWAYDRV_XWStoDS( dev->hdc, lfsz.lf.lfWidth );
+    lfsz.devsize.cy = BROADWAYDRV_YWStoDS( dev->hdc, lfsz.lf.lfHeight );
 
     NtGdiGetTransform( dev->hdc, 0x204, &lfsz.xform );
     TRACE("font transform %f %f %f %f\n", lfsz.xform.eM11, lfsz.xform.eM12,
@@ -886,7 +886,7 @@ static void set_physdev_format( struct xrender_physdev *physdev, enum wxr_format
 
 static BOOL create_xrender_dc( PHYSDEV *pdev, enum wxr_format format )
 {
-    X11DRV_PDEVICE *x11dev = get_broadwaydrv_dev( *pdev );
+    BROADWAYDRV_PDEVICE *x11dev = get_broadwaydrv_dev( *pdev );
     struct xrender_physdev *physdev = calloc( 1, sizeof(*physdev) );
 
     if (!physdev) return FALSE;
@@ -976,9 +976,9 @@ static INT xrenderdrv_ExtEscape( PHYSDEV dev, INT escape, INT in_count, LPCVOID 
 
     dev = GET_NEXT_PHYSDEV( dev, pExtEscape );
 
-    if (escape == X11DRV_ESCAPE && in_data && in_count >= sizeof(enum broadwaydrv_escape_codes))
+    if (escape == BROADWAYDRV_ESCAPE && in_data && in_count >= sizeof(enum broadwaydrv_escape_codes))
     {
-        if (*(const enum broadwaydrv_escape_codes *)in_data == X11DRV_SET_DRAWABLE)
+        if (*(const enum broadwaydrv_escape_codes *)in_data == BROADWAYDRV_SET_DRAWABLE)
         {
             BOOL ret = dev->funcs->pExtEscape( dev, escape, in_count, in_data, out_count, out_data );
             if (ret)
@@ -1677,7 +1677,7 @@ static void xrender_put_image( Pixmap src_pixmap, Picture src_pict, Picture mask
     {
         RGNDATA *clip_data = NULL;
 
-        if (clip) clip_data = X11DRV_GetRegionData( clip, 0 );
+        if (clip) clip_data = BROADWAYDRV_GetRegionData( clip, 0 );
         x_dst = dst->x;
         y_dst = dst->y;
         dst_pict = pXRenderCreatePicture( gdi_display, drawable, dst_format, 0, NULL );
@@ -1760,7 +1760,7 @@ static BOOL xrenderdrv_StretchBlt( PHYSDEV dst_dev, struct bitblt_coords *dst,
     return TRUE;
 
 broadwaydrv_fallback:
-    return X11DRV_StretchBlt( &physdev_dst->x11dev->dev, dst, &physdev_src->x11dev->dev, src, rop );
+    return BROADWAYDRV_StretchBlt( &physdev_dst->x11dev->dev, dst, &physdev_src->x11dev->dev, src, rop );
 }
 
 
@@ -2244,7 +2244,7 @@ static const struct gdi_dc_funcs xrender_funcs =
 
 #else /* SONAME_LIBXRENDER */
 
-const struct gdi_dc_funcs *X11DRV_XRender_Init(void)
+const struct gdi_dc_funcs *BROADWAYDRV_XRender_Init(void)
 {
     TRACE("XRender support not compiled in.\n");
     return NULL;

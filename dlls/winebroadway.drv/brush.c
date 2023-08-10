@@ -1,5 +1,5 @@
 /*
- * X11DRV brush objects
+ * BROADWAYDRV brush objects
  *
  * Copyright 1993, 1994  Alexandre Julliard
  *
@@ -98,7 +98,7 @@ static const int EGAmapping[TOTAL_LEVELS] =
 };
 
 #define PIXEL_VALUE(r,g,b) \
-    X11DRV_PALETTE_mapEGAPixel[EGAmapping[((r)*PRIMARY_LEVELS+(g))*PRIMARY_LEVELS+(b)]]
+    BROADWAYDRV_PALETTE_mapEGAPixel[EGAmapping[((r)*PRIMARY_LEVELS+(g))*PRIMARY_LEVELS+(b)]]
 
 static const COLORREF BLACK = RGB(0, 0, 0);
 static const COLORREF WHITE = RGB(0xff, 0xff, 0xff);
@@ -181,10 +181,10 @@ static Pixmap BRUSH_DitherMono( COLORREF color )
 /***********************************************************************
  *           BRUSH_SelectSolidBrush
  */
-static void BRUSH_SelectSolidBrush( X11DRV_PDEVICE *physDev, COLORREF color )
+static void BRUSH_SelectSolidBrush( BROADWAYDRV_PDEVICE *physDev, COLORREF color )
 {
-    COLORREF colorRGB = X11DRV_PALETTE_GetColor( physDev, color );
-    if ((physDev->depth > 1) && (default_visual.depth <= 8) && !X11DRV_IsSolidColor( color ))
+    COLORREF colorRGB = BROADWAYDRV_PALETTE_GetColor( physDev, color );
+    if ((physDev->depth > 1) && (default_visual.depth <= 8) && !BROADWAYDRV_IsSolidColor( color ))
     {
 	  /* Dithered brush */
 	physDev->brush.pixmap = BRUSH_DitherColor( colorRGB, physDev->depth );
@@ -200,13 +200,13 @@ static void BRUSH_SelectSolidBrush( X11DRV_PDEVICE *physDev, COLORREF color )
     else
     {
 	  /* Solid brush */
-	physDev->brush.pixel = X11DRV_PALETTE_ToPhysical( physDev, color );
+	physDev->brush.pixel = BROADWAYDRV_PALETTE_ToPhysical( physDev, color );
 	physDev->brush.fillStyle = FillSolid;
     }
 }
 
 
-static BOOL select_pattern_brush( X11DRV_PDEVICE *physdev, const struct brush_pattern *pattern )
+static BOOL select_pattern_brush( BROADWAYDRV_PDEVICE *physdev, const struct brush_pattern *pattern )
 {
     XVisualInfo vis = default_visual;
     Pixmap pixmap;
@@ -234,11 +234,11 @@ static BOOL select_pattern_brush( X11DRV_PDEVICE *physdev, const struct brush_pa
 }
 
 /***********************************************************************
- *           SelectBrush   (X11DRV.@)
+ *           SelectBrush   (BROADWAYDRV.@)
  */
-HBRUSH X11DRV_SelectBrush( PHYSDEV dev, HBRUSH hbrush, const struct brush_pattern *pattern )
+HBRUSH BROADWAYDRV_SelectBrush( PHYSDEV dev, HBRUSH hbrush, const struct brush_pattern *pattern )
 {
-    X11DRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
+    BROADWAYDRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
     LOGBRUSH logbrush;
 
     if (pattern)  /* pattern brush */
@@ -275,7 +275,7 @@ HBRUSH X11DRV_SelectBrush( PHYSDEV dev, HBRUSH hbrush, const struct brush_patter
 
       case BS_HATCHED:
 	TRACE("BS_HATCHED\n" );
-	physDev->brush.pixel = X11DRV_PALETTE_ToPhysical( physDev, logbrush.lbColor );
+	physDev->brush.pixel = BROADWAYDRV_PALETTE_ToPhysical( physDev, logbrush.lbColor );
         physDev->brush.pixmap = XCreateBitmapFromData( gdi_display, root_window,
                                                        HatchBrushes[logbrush.lbHatch], 8, 8 );
 	physDev->brush.fillStyle = FillStippled;
@@ -286,11 +286,11 @@ HBRUSH X11DRV_SelectBrush( PHYSDEV dev, HBRUSH hbrush, const struct brush_patter
 
 
 /***********************************************************************
- *           SetDCBrushColor (X11DRV.@)
+ *           SetDCBrushColor (BROADWAYDRV.@)
  */
-COLORREF X11DRV_SetDCBrushColor( PHYSDEV dev, COLORREF crColor )
+COLORREF BROADWAYDRV_SetDCBrushColor( PHYSDEV dev, COLORREF crColor )
 {
-    X11DRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
+    BROADWAYDRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
 
     if (NtGdiGetDCObject( dev->hdc, NTGDI_OBJ_BRUSH ) == GetStockObject( DC_BRUSH ))
         BRUSH_SelectSolidBrush( physDev, crColor );

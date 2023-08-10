@@ -33,7 +33,7 @@ enum broadwaydrv_funcs
     unix_funcs_count,
 };
 
-#define X11DRV_CALL(func, params) WINE_UNIX_CALL( unix_ ## func, params )
+#define BROADWAYDRV_CALL(func, params) WINE_UNIX_CALL( unix_ ## func, params )
 
 /* broadwaydrv_init params */
 struct init_params

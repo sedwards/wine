@@ -407,7 +407,7 @@ static void sync_window_region( struct broadwaydrv_win_data *data, HRGN win_regi
 
         if (NtUserGetWindowLongW( data->hwnd, GWL_EXSTYLE ) & WS_EX_LAYOUTRTL)
             NtUserMirrorRgn( data->hwnd, hrgn );
-        if ((pRegionData = X11DRV_GetRegionData( hrgn, 0 )))
+        if ((pRegionData = BROADWAYDRV_GetRegionData( hrgn, 0 )))
         {
             XShapeCombineRectangles( data->display, data->whole_window, ShapeBounding,
                                      data->window_rect.left - data->whole_rect.left,
@@ -794,7 +794,7 @@ static void set_style_hints( struct broadwaydrv_win_data *data, DWORD style, DWO
     if (owner)
     {
         owner = NtUserGetAncestor( owner, GA_ROOT );
-        owner_win = X11DRV_get_whole_window( owner );
+        owner_win = BROADWAYDRV_get_whole_window( owner );
     }
 
     if (owner_win)
@@ -848,6 +848,7 @@ static void set_style_hints( struct broadwaydrv_win_data *data, DWORD style, DWO
  */
 static void set_initial_wm_hints( Display *display, Window window )
 {
+#if 0
     long i;
     Atom protocols[3];
     Atom dndVersion = WINE_XDND_VERSION;
@@ -884,6 +885,7 @@ static void set_initial_wm_hints( Display *display, Window window )
     if (user_time_window)
         XChangeProperty( display, window, broadwaydrv_atom(_NET_WM_USER_TIME_WINDOW),
                          XA_WINDOW, 32, PropModeReplace, (unsigned char *)&user_time_window, 1 );
+#endif
 }
 
 
@@ -987,7 +989,7 @@ static void update_net_wm_fullscreen_monitors( struct broadwaydrv_win_data *data
     /* If the current display device handler cannot detect dynamic device changes, do not use
      * _NET_WM_FULLSCREEN_MONITORS because xinerama_get_fullscreen_monitors() may report wrong
      * indices because of stale xinerama monitor information */
-    if (!X11DRV_DisplayDevices_SupportEventHandlers())
+    if (!BROADWAYDRV_DisplayDevices_SupportEventHandlers())
         return;
 
     if (!xinerama_get_fullscreen_monitors( &data->whole_rect, monitors ))
@@ -1059,7 +1061,7 @@ void update_net_wm_states( struct broadwaydrv_win_data *data )
             if (!(new_state & (1 << i))) continue;
             TRACE( "setting wm state %u for unmapped window %p/%lx\n",
                    i, data->hwnd, data->whole_window );
-            atoms[count++] = X11DRV_Atoms[net_wm_state_atoms[i] - FIRST_XATOM];
+            atoms[count++] = BROADWAYDRV_Atoms[net_wm_state_atoms[i] - FIRST_XATOM];
             if (net_wm_state_atoms[i] == XATOM__NET_WM_STATE_MAXIMIZED_VERT)
                 atoms[count++] = broadwaydrv_atom(_NET_WM_STATE_MAXIMIZED_HORZ);
         }
@@ -1087,7 +1089,7 @@ void update_net_wm_states( struct broadwaydrv_win_data *data )
                    (new_state & (1 << i)) != 0, (data->net_wm_state & (1 << i)) != 0 );
 
             xev.xclient.data.l[0] = (new_state & (1 << i)) ? _NET_WM_STATE_ADD : _NET_WM_STATE_REMOVE;
-            xev.xclient.data.l[1] = X11DRV_Atoms[net_wm_state_atoms[i] - FIRST_XATOM];
+            xev.xclient.data.l[1] = BROADWAYDRV_Atoms[net_wm_state_atoms[i] - FIRST_XATOM];
             xev.xclient.data.l[2] = ((net_wm_state_atoms[i] == XATOM__NET_WM_STATE_MAXIMIZED_VERT) ?
                                      broadwaydrv_atom(_NET_WM_STATE_MAXIMIZED_HORZ) : 0);
             XSendEvent( data->display, root_window, False,
@@ -1123,7 +1125,7 @@ void read_net_wm_states( Display* display, struct broadwaydrv_win_data *data )
                     maximized_horz = TRUE;
                 for (j=0; j < NB_NET_WM_STATES; j++)
                 {
-                    if (state[i] == X11DRV_Atoms[net_wm_state_atoms[j] - FIRST_XATOM])
+                    if (state[i] == BROADWAYDRV_Atoms[net_wm_state_atoms[j] - FIRST_XATOM])
                     {
                         new_state |= 1 << j;
                     }
@@ -1267,11 +1269,11 @@ static void get_decoration_rect( struct broadwaydrv_win_data *data, RECT *rect,
 
 
 /***********************************************************************
- *		X11DRV_window_to_X_rect
+ *		BROADWAYDRV_window_to_X_rect
  *
  * Convert a rect from client to X window coordinates
  */
-static void X11DRV_window_to_X_rect( struct broadwaydrv_win_data *data, RECT *rect,
+static void BROADWAYDRV_window_to_X_rect( struct broadwaydrv_win_data *data, RECT *rect,
                                      const RECT *window_rect, const RECT *client_rect )
 {
     RECT rc;
@@ -1289,11 +1291,11 @@ static void X11DRV_window_to_X_rect( struct broadwaydrv_win_data *data, RECT *re
 
 
 /***********************************************************************
- *		X11DRV_X_to_window_rect
+ *		BROADWAYDRV_X_to_window_rect
  *
- * Opposite of X11DRV_window_to_X_rect
+ * Opposite of BROADWAYDRV_window_to_X_rect
  */
-void X11DRV_X_to_window_rect( struct broadwaydrv_win_data *data, RECT *rect, int x, int y, int cx, int cy )
+void BROADWAYDRV_X_to_window_rect( struct broadwaydrv_win_data *data, RECT *rect, int x, int y, int cx, int cy )
 {
     RECT rc;
 
@@ -1464,8 +1466,8 @@ static void move_window_bits( HWND hwnd, Window window, const RECT *old_rect, co
     if (!(NtUserGetWindowLongW( hwnd, GWL_STYLE ) & WS_CLIPCHILDREN ))
         NtUserExcludeUpdateRgn( hdc_dst, hwnd );
 
-    code = X11DRV_START_EXPOSURES;
-    NtGdiExtEscape( hdc_dst, NULL, 0, X11DRV_ESCAPE, sizeof(code), (LPSTR)&code, 0, NULL );
+    code = BROADWAYDRV_START_EXPOSURES;
+    NtGdiExtEscape( hdc_dst, NULL, 0, BROADWAYDRV_ESCAPE, sizeof(code), (LPSTR)&code, 0, NULL );
 
     TRACE( "copying bits for win %p/%lx %s -> %s\n",
            hwnd, window, wine_dbgstr_rect(&src_rect), wine_dbgstr_rect(&dst_rect) );
@@ -1474,8 +1476,8 @@ static void move_window_bits( HWND hwnd, Window window, const RECT *old_rect, co
                  hdc_src, src_rect.left, src_rect.top, SRCCOPY, 0, 0 );
 
     rgn = 0;
-    code = X11DRV_END_EXPOSURES;
-    NtGdiExtEscape( hdc_dst, NULL, 0, X11DRV_ESCAPE, sizeof(code), (LPSTR)&code, sizeof(rgn), (LPSTR)&rgn );
+    code = BROADWAYDRV_END_EXPOSURES;
+    NtGdiExtEscape( hdc_dst, NULL, 0, BROADWAYDRV_ESCAPE, sizeof(code), (LPSTR)&code, sizeof(rgn), (LPSTR)&rgn );
 
     NtUserReleaseDC( hwnd, hdc_dst );
     if (hdc_src != hdc_dst) NtUserReleaseDC( parent, hdc_src );
@@ -1768,13 +1770,13 @@ void set_window_visual( struct broadwaydrv_win_data *data, const XVisualInfo *vi
 
 
 /*****************************************************************
- *		SetWindowText   (X11DRV.@)
+ *		SetWindowText   (BROADWAYDRV.@)
  */
-void X11DRV_SetWindowText( HWND hwnd, LPCWSTR text )
+void BROADWAYDRV_SetWindowText( HWND hwnd, LPCWSTR text )
 {
     Window win;
 
-    if ((win = X11DRV_get_whole_window( hwnd )) && win != DefaultRootWindow(gdi_display))
+    if ((win = BROADWAYDRV_get_whole_window( hwnd )) && win != DefaultRootWindow(gdi_display))
     {
         Display *display = thread_init_display();
         sync_window_text( display, win, text );
@@ -1783,11 +1785,11 @@ void X11DRV_SetWindowText( HWND hwnd, LPCWSTR text )
 
 
 /***********************************************************************
- *		SetWindowStyle   (X11DRV.@)
+ *		SetWindowStyle   (BROADWAYDRV.@)
  *
  * Update the X state of a window to reflect a style change
  */
-void X11DRV_SetWindowStyle( HWND hwnd, INT offset, STYLESTRUCT *style )
+void BROADWAYDRV_SetWindowStyle( HWND hwnd, INT offset, STYLESTRUCT *style )
 {
     struct broadwaydrv_win_data *data;
     DWORD changed = style->styleNew ^ style->styleOld;
@@ -1811,9 +1813,9 @@ done:
 
 
 /***********************************************************************
- *		DestroyWindow   (X11DRV.@)
+ *		DestroyWindow   (BROADWAYDRV.@)
  */
-void X11DRV_DestroyWindow( HWND hwnd )
+void BROADWAYDRV_DestroyWindow( HWND hwnd )
 {
     struct broadwaydrv_thread_data *thread_data = broadwaydrv_thread_data();
     struct broadwaydrv_win_data *data;
@@ -1836,9 +1838,9 @@ void X11DRV_DestroyWindow( HWND hwnd )
 
 
 /***********************************************************************
- *		X11DRV_DestroyNotify
+ *		BROADWAYDRV_DestroyNotify
  */
-BOOL X11DRV_DestroyNotify( HWND hwnd, XEvent *event )
+BOOL BROADWAYDRV_DestroyNotify( HWND hwnd, XEvent *event )
 {
     struct broadwaydrv_win_data *data;
     BOOL embedded;
@@ -1872,9 +1874,9 @@ static BOOL create_desktop_win_data( Window win, HWND hwnd )
 }
 
 /**********************************************************************
- *		SetDesktopWindow   (X11DRV.@)
+ *		SetDesktopWindow   (BROADWAYDRV.@)
  */
-void X11DRV_SetDesktopWindow( HWND hwnd )
+void BROADWAYDRV_SetDesktopWindow( HWND hwnd )
 {
     unsigned int width, height;
 
@@ -1893,7 +1895,7 @@ void X11DRV_SetDesktopWindow( HWND hwnd )
     {
         RECT rect;
 
-        X11DRV_DisplayDevices_Init( TRUE );
+        BROADWAYDRV_DisplayDevices_Init( TRUE );
         rect = NtUserGetVirtualScreenRect();
 
         SERVER_START_REQ( set_window_pos )
@@ -1929,8 +1931,8 @@ void X11DRV_SetDesktopWindow( HWND hwnd )
         Window win = (Window)NtUserGetProp( hwnd, whole_window_prop );
         if (win && win != root_window)
         {
-            X11DRV_init_desktop( win, width, height );
-            X11DRV_DisplayDevices_Init( TRUE );
+            BROADWAYDRV_init_desktop( win, width, height );
+            BROADWAYDRV_DisplayDevices_Init( TRUE );
         }
     }
 }
@@ -1941,9 +1943,9 @@ void X11DRV_SetDesktopWindow( HWND hwnd )
 #define WM_WINE_ADD_TAB         (WM_USER + 2)
 
 /**********************************************************************
- *           DesktopWindowProc   (X11DRV.@)
+ *           DesktopWindowProc   (BROADWAYDRV.@)
  */
-LRESULT X11DRV_DesktopWindowProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
+LRESULT BROADWAYDRV_DesktopWindowProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 {
     switch (msg)
     {
@@ -1962,22 +1964,22 @@ LRESULT X11DRV_DesktopWindowProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
         break;
     }
     case WM_WINE_DELETE_TAB:
-        send_notify_message( (HWND)wp, WM_X11DRV_DELETE_TAB, 0, 0 );
+        send_notify_message( (HWND)wp, WM_BROADWAYDRV_DELETE_TAB, 0, 0 );
         break;
     case WM_WINE_ADD_TAB:
-        send_notify_message( (HWND)wp, WM_X11DRV_ADD_TAB, 0, 0 );
+        send_notify_message( (HWND)wp, WM_BROADWAYDRV_ADD_TAB, 0, 0 );
         break;
     case WM_DISPLAYCHANGE:
-        X11DRV_resize_desktop();
+        BROADWAYDRV_resize_desktop();
         break;
     }
     return NtUserMessageCall( hwnd, msg, wp, lp, 0, NtUserDefWindowProc, FALSE );
 }
 
 /**********************************************************************
- *		CreateWindow   (X11DRV.@)
+ *		CreateWindow   (BROADWAYDRV.@)
  */
-BOOL X11DRV_CreateWindow( HWND hwnd )
+BOOL BROADWAYDRV_CreateWindow( HWND hwnd )
 {
     if (hwnd == NtUserGetDesktopWindow())
     {
@@ -1992,7 +1994,7 @@ BOOL X11DRV_CreateWindow( HWND hwnd )
                                            CWOverrideRedirect | CWEventMask, &attr );
         XFlush( data->display );
         NtUserSetProp( hwnd, clip_window_prop, (HANDLE)data->clip_window );
-        X11DRV_DisplayDevices_RegisterEventHandlers();
+        BROADWAYDRV_DisplayDevices_RegisterEventHandlers();
     }
     return TRUE;
 }
@@ -2028,11 +2030,11 @@ void release_win_data( struct broadwaydrv_win_data *data )
 
 
 /***********************************************************************
- *		X11DRV_create_win_data
+ *		BROADWAYDRV_create_win_data
  *
  * Create an X11 data window structure for an existing window.
  */
-static struct broadwaydrv_win_data *X11DRV_create_win_data( HWND hwnd, const RECT *window_rect,
+static struct broadwaydrv_win_data *BROADWAYDRV_create_win_data( HWND hwnd, const RECT *window_rect,
                                                        const RECT *client_rect )
 {
     Display *display;
@@ -2185,7 +2187,7 @@ NTSTATUS broadwaydrv_systray_init( void *arg )
 NTSTATUS broadwaydrv_systray_clear( void *arg )
 {
     HWND hwnd = *(HWND*)arg;
-    Window win = X11DRV_get_whole_window( hwnd );
+    Window win = BROADWAYDRV_get_whole_window( hwnd );
     if (win) XClearArea( gdi_display, win, 0, 0, 0, 0, True );
     return 0;
 }
@@ -2319,11 +2321,11 @@ NTSTATUS broadwaydrv_systray_dock( void *arg )
 
 
 /***********************************************************************
- *		X11DRV_get_whole_window
+ *		BROADWAYDRV_get_whole_window
  *
  * Return the X window associated with the full area of a window
  */
-Window X11DRV_get_whole_window( HWND hwnd )
+Window BROADWAYDRV_get_whole_window( HWND hwnd )
 {
     struct broadwaydrv_win_data *data = get_win_data( hwnd );
     Window ret;
@@ -2340,15 +2342,15 @@ Window X11DRV_get_whole_window( HWND hwnd )
 
 
 /***********************************************************************
- *		X11DRV_GetDC   (X11DRV.@)
+ *		BROADWAYDRV_GetDC   (BROADWAYDRV.@)
  */
-void X11DRV_GetDC( HDC hdc, HWND hwnd, HWND top, const RECT *win_rect,
+void BROADWAYDRV_GetDC( HDC hdc, HWND hwnd, HWND top, const RECT *win_rect,
                    const RECT *top_rect, DWORD flags )
 {
     struct broadwaydrv_escape_set_drawable escape;
     HWND parent;
 
-    escape.code = X11DRV_SET_DRAWABLE;
+    escape.code = BROADWAYDRV_SET_DRAWABLE;
     escape.mode = IncludeInferiors;
     escape.drawable = 0;
 
@@ -2361,7 +2363,7 @@ void X11DRV_GetDC( HDC hdc, HWND hwnd, HWND top, const RECT *win_rect,
     {
         struct broadwaydrv_win_data *data = get_win_data( hwnd );
 
-        escape.drawable = data ? data->whole_window : X11DRV_get_whole_window( hwnd );
+        escape.drawable = data ? data->whole_window : BROADWAYDRV_get_whole_window( hwnd );
 
         /* special case: when repainting the root window, clip out top-level windows */
         if (data && data->whole_window == root_window) escape.mode = ClipByChildren;
@@ -2371,7 +2373,7 @@ void X11DRV_GetDC( HDC hdc, HWND hwnd, HWND top, const RECT *win_rect,
     {
         /* find the first ancestor that has a drawable */
         for (parent = hwnd; parent && parent != top; parent = NtUserGetAncestor( parent, GA_PARENT ))
-            if ((escape.drawable = X11DRV_get_whole_window( parent ))) break;
+            if ((escape.drawable = BROADWAYDRV_get_whole_window( parent ))) break;
 
         if (escape.drawable)
         {
@@ -2381,33 +2383,33 @@ void X11DRV_GetDC( HDC hdc, HWND hwnd, HWND top, const RECT *win_rect,
             OffsetRect( &escape.dc_rect, pt.x, pt.y );
             if (flags & DCX_CLIPCHILDREN) escape.mode = ClipByChildren;
         }
-        else escape.drawable = X11DRV_get_whole_window( top );
+        else escape.drawable = BROADWAYDRV_get_whole_window( top );
     }
 
-    NtGdiExtEscape( hdc, NULL, 0, X11DRV_ESCAPE, sizeof(escape), (LPSTR)&escape, 0, NULL );
+    NtGdiExtEscape( hdc, NULL, 0, BROADWAYDRV_ESCAPE, sizeof(escape), (LPSTR)&escape, 0, NULL );
 }
 
 
 /***********************************************************************
- *		X11DRV_ReleaseDC  (X11DRV.@)
+ *		BROADWAYDRV_ReleaseDC  (BROADWAYDRV.@)
  */
-void X11DRV_ReleaseDC( HWND hwnd, HDC hdc )
+void BROADWAYDRV_ReleaseDC( HWND hwnd, HDC hdc )
 {
     struct broadwaydrv_escape_set_drawable escape;
 
-    escape.code = X11DRV_SET_DRAWABLE;
+    escape.code = BROADWAYDRV_SET_DRAWABLE;
     escape.drawable = root_window;
     escape.mode = IncludeInferiors;
     escape.dc_rect = NtUserGetVirtualScreenRect();
     OffsetRect( &escape.dc_rect, -2 * escape.dc_rect.left, -2 * escape.dc_rect.top );
-    NtGdiExtEscape( hdc, NULL, 0, X11DRV_ESCAPE, sizeof(escape), (LPSTR)&escape, 0, NULL );
+    NtGdiExtEscape( hdc, NULL, 0, BROADWAYDRV_ESCAPE, sizeof(escape), (LPSTR)&escape, 0, NULL );
 }
 
 
 /*************************************************************************
- *		ScrollDC   (X11DRV.@)
+ *		ScrollDC   (BROADWAYDRV.@)
  */
-BOOL X11DRV_ScrollDC( HDC hdc, INT dx, INT dy, HRGN update )
+BOOL BROADWAYDRV_ScrollDC( HDC hdc, INT dx, INT dy, HRGN update )
 {
     RECT rect;
     BOOL ret;
@@ -2417,14 +2419,14 @@ BOOL X11DRV_ScrollDC( HDC hdc, INT dx, INT dy, HRGN update )
 
     if (update)
     {
-        INT code = X11DRV_START_EXPOSURES;
-        NtGdiExtEscape( hdc, NULL, 0, X11DRV_ESCAPE, sizeof(code), (LPSTR)&code, 0, NULL );
+        INT code = BROADWAYDRV_START_EXPOSURES;
+        NtGdiExtEscape( hdc, NULL, 0, BROADWAYDRV_ESCAPE, sizeof(code), (LPSTR)&code, 0, NULL );
 
         ret = NtGdiBitBlt( hdc, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
                            hdc, rect.left - dx, rect.top - dy, SRCCOPY, 0, 0 );
 
-        code = X11DRV_END_EXPOSURES;
-        NtGdiExtEscape( hdc, NULL, 0, X11DRV_ESCAPE, sizeof(code), (LPSTR)&code,
+        code = BROADWAYDRV_END_EXPOSURES;
+        NtGdiExtEscape( hdc, NULL, 0, BROADWAYDRV_ESCAPE, sizeof(code), (LPSTR)&code,
                         sizeof(expose_rgn), (LPSTR)&expose_rgn );
         if (expose_rgn)
         {
@@ -2440,9 +2442,9 @@ BOOL X11DRV_ScrollDC( HDC hdc, INT dx, INT dy, HRGN update )
 
 
 /***********************************************************************
- *		SetCapture  (X11DRV.@)
+ *		SetCapture  (BROADWAYDRV.@)
  */
-void X11DRV_SetCapture( HWND hwnd, UINT flags )
+void BROADWAYDRV_SetCapture( HWND hwnd, UINT flags )
 {
     struct broadwaydrv_thread_data *thread_data = broadwaydrv_thread_data();
     struct broadwaydrv_win_data *data;
@@ -2475,9 +2477,9 @@ void X11DRV_SetCapture( HWND hwnd, UINT flags )
 
 
 /*****************************************************************
- *		SetParent   (X11DRV.@)
+ *		SetParent   (BROADWAYDRV.@)
  */
-void X11DRV_SetParent( HWND hwnd, HWND parent, HWND old_parent )
+void BROADWAYDRV_SetParent( HWND hwnd, HWND parent, HWND old_parent )
 {
     struct broadwaydrv_win_data *data;
 
@@ -2526,9 +2528,9 @@ static inline BOOL get_surface_rect( const RECT *visible_rect, RECT *surface_rec
 
 
 /***********************************************************************
- *		WindowPosChanging   (X11DRV.@)
+ *		WindowPosChanging   (BROADWAYDRV.@)
  */
-BOOL X11DRV_WindowPosChanging( HWND hwnd, HWND insert_after, UINT swp_flags,
+BOOL BROADWAYDRV_WindowPosChanging( HWND hwnd, HWND insert_after, UINT swp_flags,
                                const RECT *window_rect, const RECT *client_rect, RECT *visible_rect,
                                struct window_surface **surface )
 {
@@ -2538,7 +2540,7 @@ BOOL X11DRV_WindowPosChanging( HWND hwnd, HWND insert_after, UINT swp_flags,
     COLORREF key;
     BOOL layered = NtUserGetWindowLongW( hwnd, GWL_EXSTYLE ) & WS_EX_LAYERED;
 
-    if (!data && !(data = X11DRV_create_win_data( hwnd, window_rect, client_rect ))) return TRUE;
+    if (!data && !(data = BROADWAYDRV_create_win_data( hwnd, window_rect, client_rect ))) return TRUE;
 
     /* check if we need to switch the window to managed */
     if (!data->managed && data->whole_window && is_window_managed( hwnd, swp_flags, window_rect ))
@@ -2551,7 +2553,7 @@ BOOL X11DRV_WindowPosChanging( HWND hwnd, HWND insert_after, UINT swp_flags,
     }
 
     *visible_rect = *window_rect;
-    X11DRV_window_to_X_rect( data, visible_rect, window_rect, client_rect );
+    BROADWAYDRV_window_to_X_rect( data, visible_rect, window_rect, client_rect );
 
     /* create the window surface if necessary */
 
@@ -2592,9 +2594,9 @@ done:
 
 
 /***********************************************************************
- *		WindowPosChanged   (X11DRV.@)
+ *		WindowPosChanged   (BROADWAYDRV.@)
  */
-void X11DRV_WindowPosChanged( HWND hwnd, HWND insert_after, UINT swp_flags,
+void BROADWAYDRV_WindowPosChanged( HWND hwnd, HWND insert_after, UINT swp_flags,
                               const RECT *rectWindow, const RECT *rectClient,
                               const RECT *visible_rect, const RECT *valid_rects,
                               struct window_surface *surface )
@@ -2759,9 +2761,9 @@ static BOOL hide_icon( struct broadwaydrv_win_data *data )
 }
 
 /***********************************************************************
- *           ShowWindow   (X11DRV.@)
+ *           ShowWindow   (BROADWAYDRV.@)
  */
-UINT X11DRV_ShowWindow( HWND hwnd, INT cmd, RECT *rect, UINT swp )
+UINT BROADWAYDRV_ShowWindow( HWND hwnd, INT cmd, RECT *rect, UINT swp )
 {
     int x, y;
     unsigned int width, height, border, depth;
@@ -2799,7 +2801,7 @@ UINT X11DRV_ShowWindow( HWND hwnd, INT cmd, RECT *rect, UINT swp )
                   &root, &x, &y, &width, &height, &border, &depth );
     XTranslateCoordinates( thread_data->display, data->whole_window, root, 0, 0, &x, &y, &top );
     pos = root_to_virtual_screen( x, y );
-    X11DRV_X_to_window_rect( data, rect, pos.x, pos.y, width, height );
+    BROADWAYDRV_X_to_window_rect( data, rect, pos.x, pos.y, width, height );
     swp &= ~(SWP_NOMOVE | SWP_NOCLIENTMOVE | SWP_NOSIZE | SWP_NOCLIENTSIZE);
 
 done:
@@ -2809,13 +2811,13 @@ done:
 
 
 /**********************************************************************
- *		SetWindowIcon (X11DRV.@)
+ *		SetWindowIcon (BROADWAYDRV.@)
  *
  * hIcon or hIconSm has changed (or is being initialised for the
  * first time). Complete the X11 driver-specific initialisation
  * and set the window hints.
  */
-void X11DRV_SetWindowIcon( HWND hwnd, UINT type, HICON icon )
+void BROADWAYDRV_SetWindowIcon( HWND hwnd, UINT type, HICON icon )
 {
     struct broadwaydrv_win_data *data;
 
@@ -2834,11 +2836,11 @@ done:
 
 
 /***********************************************************************
- *		SetWindowRgn  (X11DRV.@)
+ *		SetWindowRgn  (BROADWAYDRV.@)
  *
  * Assign specified region to window (for non-rectangular windows)
  */
-void X11DRV_SetWindowRgn( HWND hwnd, HRGN hrgn, BOOL redraw )
+void BROADWAYDRV_SetWindowRgn( HWND hwnd, HRGN hrgn, BOOL redraw )
 {
     struct broadwaydrv_win_data *data;
 
@@ -2847,19 +2849,19 @@ void X11DRV_SetWindowRgn( HWND hwnd, HRGN hrgn, BOOL redraw )
         sync_window_region( data, hrgn );
         release_win_data( data );
     }
-    else if (X11DRV_get_whole_window( hwnd ))
+    else if (BROADWAYDRV_get_whole_window( hwnd ))
     {
-        send_message( hwnd, WM_X11DRV_SET_WIN_REGION, 0, 0 );
+        send_message( hwnd, WM_BROADWAYDRV_SET_WIN_REGION, 0, 0 );
     }
 }
 
 
 /***********************************************************************
- *		SetLayeredWindowAttributes  (X11DRV.@)
+ *		SetLayeredWindowAttributes  (BROADWAYDRV.@)
  *
  * Set transparency attributes for a layered window.
  */
-void X11DRV_SetLayeredWindowAttributes( HWND hwnd, COLORREF key, BYTE alpha, DWORD flags )
+void BROADWAYDRV_SetLayeredWindowAttributes( HWND hwnd, COLORREF key, BYTE alpha, DWORD flags )
 {
     struct broadwaydrv_win_data *data = get_win_data( hwnd );
 
@@ -2889,7 +2891,7 @@ void X11DRV_SetLayeredWindowAttributes( HWND hwnd, COLORREF key, BYTE alpha, DWO
     }
     else
     {
-        Window win = X11DRV_get_whole_window( hwnd );
+        Window win = BROADWAYDRV_get_whole_window( hwnd );
         if (win)
         {
             sync_window_opacity( gdi_display, win, key, alpha, flags );
@@ -2901,9 +2903,9 @@ void X11DRV_SetLayeredWindowAttributes( HWND hwnd, COLORREF key, BYTE alpha, DWO
 
 
 /*****************************************************************************
- *              UpdateLayeredWindow  (X11DRV.@)
+ *              UpdateLayeredWindow  (BROADWAYDRV.@)
  */
-BOOL X11DRV_UpdateLayeredWindow( HWND hwnd, const UPDATELAYEREDWINDOWINFO *info,
+BOOL BROADWAYDRV_UpdateLayeredWindow( HWND hwnd, const UPDATELAYEREDWINDOWINFO *info,
                                  const RECT *window_rect )
 {
     struct window_surface *surface;
@@ -3032,24 +3034,24 @@ static void taskbar_delete_tab( HWND hwnd )
 }
 
 /**********************************************************************
- *           X11DRV_WindowMessage   (X11DRV.@)
+ *           BROADWAYDRV_WindowMessage   (BROADWAYDRV.@)
  */
-LRESULT X11DRV_WindowMessage( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
+LRESULT BROADWAYDRV_WindowMessage( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 {
     struct broadwaydrv_win_data *data;
 
     switch(msg)
     {
-    case WM_X11DRV_UPDATE_CLIPBOARD:
+    case WM_BROADWAYDRV_UPDATE_CLIPBOARD:
         return update_clipboard( hwnd );
-    case WM_X11DRV_SET_WIN_REGION:
+    case WM_BROADWAYDRV_SET_WIN_REGION:
         if ((data = get_win_data( hwnd )))
         {
             sync_window_region( data, (HRGN)1 );
             release_win_data( data );
         }
         return 0;
-    case WM_X11DRV_DESKTOP_RESIZED:
+    case WM_BROADWAYDRV_DESKTOP_RESIZED:
         if ((data = get_win_data( hwnd )))
         {
             /* update the full screen state */
@@ -3072,10 +3074,10 @@ LRESULT X11DRV_WindowMessage( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
             release_win_data( data );
         }
         return 0;
-    case WM_X11DRV_DELETE_TAB:
+    case WM_BROADWAYDRV_DELETE_TAB:
         taskbar_delete_tab( hwnd );
         return 0;
-    case WM_X11DRV_ADD_TAB:
+    case WM_BROADWAYDRV_ADD_TAB:
         taskbar_add_tab( hwnd );
         return 0;
     default:
@@ -3119,26 +3121,16 @@ static BOOL is_netwm_supported( Display *display, Atom atom )
  */
 static LRESULT start_screensaver(void)
 {
-    if (!is_virtual_desktop())
-    {
-        const char *argv[3] = { "xdg-screensaver", "activate", NULL };
-        int pid = __wine_unix_spawnvp( (char **)argv, FALSE );
-        if (pid > 0)
-        {
-            TRACE( "started process %d\n", pid );
-            return 0;
-        }
-    }
     return -1;
 }
 
 
 /***********************************************************************
- *           SysCommand   (X11DRV.@)
+ *           SysCommand   (BROADWAYDRV.@)
  *
  * Perform WM_SYSCOMMAND handling.
  */
-LRESULT X11DRV_SysCommand( HWND hwnd, WPARAM wparam, LPARAM lparam )
+LRESULT BROADWAYDRV_SysCommand( HWND hwnd, WPARAM wparam, LPARAM lparam )
 {
     WPARAM hittest = wparam & 0x0f;
     int dir;
@@ -3207,7 +3199,7 @@ failed:
     return -1;
 }
 
-void X11DRV_FlashWindowEx( FLASHWINFO *pfinfo )
+void BROADWAYDRV_FlashWindowEx( FLASHWINFO *pfinfo )
 {
     struct broadwaydrv_win_data *data = get_win_data( pfinfo->hwnd );
     XEvent xev;

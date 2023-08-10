@@ -67,7 +67,7 @@ BOOL WINAPI DllMain( HINSTANCE instance, DWORD reason, void *reserved )
     DisableThreadLibraryCalls( instance );
     broadwaydrv_module = instance;
     if (__wine_init_unix_call()) return FALSE;
-    if (X11DRV_CALL( init, &params )) return FALSE;
+    if (BROADWAYDRV_CALL( init, &params )) return FALSE;
 
     callback_table = NtCurrentTeb()->Peb->KernelCallbackTable;
     memcpy( callback_table + NtUserDriverCallbackFirst, kernel_callbacks, sizeof(kernel_callbacks) );
@@ -77,35 +77,35 @@ BOOL WINAPI DllMain( HINSTANCE instance, DWORD reason, void *reserved )
 /***********************************************************************
  *           AttachEventQueueToTablet (winex11.@)
  */
-int CDECL X11DRV_AttachEventQueueToTablet( HWND owner )
+int CDECL BROADWAYDRV_AttachEventQueueToTablet( HWND owner )
 {
-    return X11DRV_CALL( tablet_attach_queue, owner );
+    return BROADWAYDRV_CALL( tablet_attach_queue, owner );
 }
 
 /***********************************************************************
  *           GetCurrentPacket (winex11.@)
  */
-int CDECL X11DRV_GetCurrentPacket( void *packet )
+int CDECL BROADWAYDRV_GetCurrentPacket( void *packet )
 {
-    return X11DRV_CALL( tablet_get_packet, packet );
+    return BROADWAYDRV_CALL( tablet_get_packet, packet );
 }
 
 /***********************************************************************
  *           LoadTabletInfo (winex11.@)
  */
-BOOL CDECL X11DRV_LoadTabletInfo( HWND hwnd )
+BOOL CDECL BROADWAYDRV_LoadTabletInfo( HWND hwnd )
 {
-    return X11DRV_CALL( tablet_load_info, hwnd );
+    return BROADWAYDRV_CALL( tablet_load_info, hwnd );
 }
 
 /***********************************************************************
  *          WTInfoW (winex11.@)
  */
-UINT CDECL X11DRV_WTInfoW( UINT category, UINT index, void *output )
+UINT CDECL BROADWAYDRV_WTInfoW( UINT category, UINT index, void *output )
 {
     struct tablet_info_params params;
     params.category = category;
     params.index = index;
     params.output = output;
-    return X11DRV_CALL( tablet_info, &params );
+    return BROADWAYDRV_CALL( tablet_info, &params );
 }

@@ -66,20 +66,20 @@ void init_recursive_mutex( pthread_mutex_t *mutex )
 static void device_init(void)
 {
     /* Initialize XRender */
-    xrender_funcs = X11DRV_XRender_Init();
+    xrender_funcs = BROADWAYDRV_XRender_Init();
 
     /* Init Xcursor */
-    X11DRV_Xcursor_Init();
+    BROADWAYDRV_Xcursor_Init();
 
-    palette_size = X11DRV_PALETTE_Init();
+    palette_size = BROADWAYDRV_PALETTE_Init();
 
     stock_bitmap_pixmap = XCreatePixmap( gdi_display, root_window, 1, 1, 1 );
 }
 
 
-static X11DRV_PDEVICE *create_x11_physdev( Drawable drawable )
+static BROADWAYDRV_PDEVICE *create_x11_physdev( Drawable drawable )
 {
-    X11DRV_PDEVICE *physDev;
+    BROADWAYDRV_PDEVICE *physDev;
 
     pthread_once( &init_once, device_init );
 
@@ -94,16 +94,16 @@ static X11DRV_PDEVICE *create_x11_physdev( Drawable drawable )
 }
 
 /**********************************************************************
- *	     X11DRV_CreateDC
+ *	     BROADWAYDRV_CreateDC
  */
-static BOOL X11DRV_CreateDC( PHYSDEV *pdev, LPCWSTR device, LPCWSTR output, const DEVMODEW* initData )
+static BOOL BROADWAYDRV_CreateDC( PHYSDEV *pdev, LPCWSTR device, LPCWSTR output, const DEVMODEW* initData )
 {
-    X11DRV_PDEVICE *physDev = create_x11_physdev( root_window );
+    BROADWAYDRV_PDEVICE *physDev = create_x11_physdev( root_window );
 
     if (!physDev) return FALSE;
 
     physDev->depth         = default_visual.depth;
-    physDev->color_shifts  = &X11DRV_PALETTE_default_shifts;
+    physDev->color_shifts  = &BROADWAYDRV_PALETTE_default_shifts;
     physDev->dc_rect       = NtUserGetVirtualScreenRect();
     OffsetRect( &physDev->dc_rect, -physDev->dc_rect.left, -physDev->dc_rect.top );
     push_dc_driver( pdev, &physDev->dev, &broadwaydrv_funcs.dc_funcs );
@@ -113,11 +113,11 @@ static BOOL X11DRV_CreateDC( PHYSDEV *pdev, LPCWSTR device, LPCWSTR output, cons
 
 
 /**********************************************************************
- *	     X11DRV_CreateCompatibleDC
+ *	     BROADWAYDRV_CreateCompatibleDC
  */
-static BOOL X11DRV_CreateCompatibleDC( PHYSDEV orig, PHYSDEV *pdev )
+static BOOL BROADWAYDRV_CreateCompatibleDC( PHYSDEV orig, PHYSDEV *pdev )
 {
-    X11DRV_PDEVICE *physDev = create_x11_physdev( stock_bitmap_pixmap );
+    BROADWAYDRV_PDEVICE *physDev = create_x11_physdev( stock_bitmap_pixmap );
 
     if (!physDev) return FALSE;
 
@@ -131,11 +131,11 @@ static BOOL X11DRV_CreateCompatibleDC( PHYSDEV orig, PHYSDEV *pdev )
 
 
 /**********************************************************************
- *	     X11DRV_DeleteDC
+ *	     BROADWAYDRV_DeleteDC
  */
-static BOOL X11DRV_DeleteDC( PHYSDEV dev )
+static BOOL BROADWAYDRV_DeleteDC( PHYSDEV dev )
 {
-    X11DRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
+    BROADWAYDRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
 
     XFreeGC( gdi_display, physDev->gc );
     free( physDev );
@@ -143,7 +143,7 @@ static BOOL X11DRV_DeleteDC( PHYSDEV dev )
 }
 
 
-void add_device_bounds( X11DRV_PDEVICE *dev, const RECT *rect )
+void add_device_bounds( BROADWAYDRV_PDEVICE *dev, const RECT *rect )
 {
     RECT rc;
 
@@ -156,11 +156,11 @@ void add_device_bounds( X11DRV_PDEVICE *dev, const RECT *rect )
 }
 
 /***********************************************************************
- *           X11DRV_SetBoundsRect
+ *           BROADWAYDRV_SetBoundsRect
  */
-static UINT X11DRV_SetBoundsRect( PHYSDEV dev, RECT *rect, UINT flags )
+static UINT BROADWAYDRV_SetBoundsRect( PHYSDEV dev, RECT *rect, UINT flags )
 {
-    X11DRV_PDEVICE *pdev = get_broadwaydrv_dev( dev );
+    BROADWAYDRV_PDEVICE *pdev = get_broadwaydrv_dev( dev );
 
     if (flags & DCB_DISABLE) pdev->bounds = NULL;
     else if (flags & DCB_ENABLE) pdev->bounds = rect;
@@ -169,9 +169,9 @@ static UINT X11DRV_SetBoundsRect( PHYSDEV dev, RECT *rect, UINT flags )
 
 
 /***********************************************************************
- *           GetDeviceCaps    (X11DRV.@)
+ *           GetDeviceCaps    (BROADWAYDRV.@)
  */
-static INT X11DRV_GetDeviceCaps( PHYSDEV dev, INT cap )
+static INT BROADWAYDRV_GetDeviceCaps( PHYSDEV dev, INT cap )
 {
     switch(cap)
     {
@@ -187,7 +187,7 @@ static INT X11DRV_GetDeviceCaps( PHYSDEV dev, INT cap )
 /***********************************************************************
  *           SelectFont
  */
-static HFONT X11DRV_SelectFont( PHYSDEV dev, HFONT hfont, UINT *aa_flags )
+static HFONT BROADWAYDRV_SelectFont( PHYSDEV dev, HFONT hfont, UINT *aa_flags )
 {
     if (default_visual.depth <= 8) *aa_flags = GGO_BITMAP;  /* no anti-aliasing on <= 8bpp */
     dev = GET_NEXT_PHYSDEV( dev, pSelectFont );
@@ -195,12 +195,12 @@ static HFONT X11DRV_SelectFont( PHYSDEV dev, HFONT hfont, UINT *aa_flags )
 }
 
 /**********************************************************************
- *           ExtEscape  (X11DRV.@)
+ *           ExtEscape  (BROADWAYDRV.@)
  */
-static INT X11DRV_ExtEscape( PHYSDEV dev, INT escape, INT in_count, LPCVOID in_data,
+static INT BROADWAYDRV_ExtEscape( PHYSDEV dev, INT escape, INT in_count, LPCVOID in_data,
                              INT out_count, LPVOID out_data )
 {
-    X11DRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
+    BROADWAYDRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
 
     switch(escape)
     {
@@ -209,18 +209,18 @@ static INT X11DRV_ExtEscape( PHYSDEV dev, INT escape, INT in_count, LPCVOID in_d
         {
             switch (*(const INT *)in_data)
             {
-            case X11DRV_ESCAPE:
+            case BROADWAYDRV_ESCAPE:
                 return TRUE;
             }
         }
         break;
 
-    case X11DRV_ESCAPE:
+    case BROADWAYDRV_ESCAPE:
         if (in_data && in_count >= sizeof(enum broadwaydrv_escape_codes))
         {
             switch(*(const enum broadwaydrv_escape_codes *)in_data)
             {
-            case X11DRV_SET_DRAWABLE:
+            case BROADWAYDRV_SET_DRAWABLE:
                 if (in_count >= sizeof(struct broadwaydrv_escape_set_drawable))
                 {
                     const struct broadwaydrv_escape_set_drawable *data = in_data;
@@ -235,7 +235,7 @@ static INT X11DRV_ExtEscape( PHYSDEV dev, INT escape, INT in_count, LPCVOID in_d
                     return TRUE;
                 }
                 break;
-            case X11DRV_GET_DRAWABLE:
+            case BROADWAYDRV_GET_DRAWABLE:
                 if (out_count >= sizeof(struct broadwaydrv_escape_get_drawable))
                 {
                     struct broadwaydrv_escape_get_drawable *data = out_data;
@@ -243,7 +243,7 @@ static INT X11DRV_ExtEscape( PHYSDEV dev, INT escape, INT in_count, LPCVOID in_d
                     return TRUE;
                 }
                 break;
-            case X11DRV_FLUSH_GL_DRAWABLE:
+            case BROADWAYDRV_FLUSH_GL_DRAWABLE:
                 if (in_count >= sizeof(struct broadwaydrv_escape_flush_gl_drawable))
                 {
                     const struct broadwaydrv_escape_flush_gl_drawable *data = in_data;
@@ -259,11 +259,11 @@ static INT X11DRV_ExtEscape( PHYSDEV dev, INT escape, INT in_count, LPCVOID in_d
                     return TRUE;
                 }
                 break;
-            case X11DRV_START_EXPOSURES:
+            case BROADWAYDRV_START_EXPOSURES:
                 XSetGraphicsExposures( gdi_display, physDev->gc, True );
                 physDev->exposures = 0;
                 return TRUE;
-            case X11DRV_END_EXPOSURES:
+            case BROADWAYDRV_END_EXPOSURES:
                 if (out_count >= sizeof(HRGN))
                 {
                     HRGN hrgn = 0, tmp = 0;
@@ -326,17 +326,17 @@ static INT X11DRV_ExtEscape( PHYSDEV dev, INT escape, INT in_count, LPCVOID in_d
 }
 
 /**********************************************************************
- *           X11DRV_wine_get_wgl_driver
+ *           BROADWAYDRV_wine_get_wgl_driver
  */
-static struct opengl_funcs *X11DRV_wine_get_wgl_driver( UINT version )
+static struct opengl_funcs *BROADWAYDRV_wine_get_wgl_driver( UINT version )
 {
     return get_glx_driver( version );
 }
 
 /**********************************************************************
- *           X11DRV_wine_get_vulkan_driver
+ *           BROADWAYDRV_wine_get_vulkan_driver
  */
-static const struct vulkan_funcs *X11DRV_wine_get_vulkan_driver( UINT version )
+static const struct vulkan_funcs *BROADWAYDRV_wine_get_vulkan_driver( UINT version )
 {
     return get_vulkan_driver( version );
 }
@@ -344,100 +344,100 @@ static const struct vulkan_funcs *X11DRV_wine_get_vulkan_driver( UINT version )
 
 static const struct user_driver_funcs broadwaydrv_funcs =
 {
-    .dc_funcs.pArc = X11DRV_Arc,
-    .dc_funcs.pChord = X11DRV_Chord,
-    .dc_funcs.pCreateCompatibleDC = X11DRV_CreateCompatibleDC,
-    .dc_funcs.pCreateDC = X11DRV_CreateDC,
-    .dc_funcs.pDeleteDC = X11DRV_DeleteDC,
-    .dc_funcs.pEllipse = X11DRV_Ellipse,
-    .dc_funcs.pExtEscape = X11DRV_ExtEscape,
-    .dc_funcs.pExtFloodFill = X11DRV_ExtFloodFill,
-    .dc_funcs.pFillPath = X11DRV_FillPath,
-    .dc_funcs.pGetDeviceCaps = X11DRV_GetDeviceCaps,
-    .dc_funcs.pGetDeviceGammaRamp = X11DRV_GetDeviceGammaRamp,
-    .dc_funcs.pGetICMProfile = X11DRV_GetICMProfile,
-    .dc_funcs.pGetImage = X11DRV_GetImage,
-    .dc_funcs.pGetNearestColor = X11DRV_GetNearestColor,
-    .dc_funcs.pGetSystemPaletteEntries = X11DRV_GetSystemPaletteEntries,
-    .dc_funcs.pGradientFill = X11DRV_GradientFill,
-    .dc_funcs.pLineTo = X11DRV_LineTo,
-    .dc_funcs.pPaintRgn = X11DRV_PaintRgn,
-    .dc_funcs.pPatBlt = X11DRV_PatBlt,
-    .dc_funcs.pPie = X11DRV_Pie,
-    .dc_funcs.pPolyPolygon = X11DRV_PolyPolygon,
-    .dc_funcs.pPolyPolyline = X11DRV_PolyPolyline,
-    .dc_funcs.pPutImage = X11DRV_PutImage,
-    .dc_funcs.pRealizeDefaultPalette = X11DRV_RealizeDefaultPalette,
-    .dc_funcs.pRealizePalette = X11DRV_RealizePalette,
-    .dc_funcs.pRectangle = X11DRV_Rectangle,
-    .dc_funcs.pRoundRect = X11DRV_RoundRect,
-    .dc_funcs.pSelectBrush = X11DRV_SelectBrush,
-    .dc_funcs.pSelectFont = X11DRV_SelectFont,
-    .dc_funcs.pSelectPen = X11DRV_SelectPen,
-    .dc_funcs.pSetBoundsRect = X11DRV_SetBoundsRect,
-    .dc_funcs.pSetDCBrushColor = X11DRV_SetDCBrushColor,
-    .dc_funcs.pSetDCPenColor = X11DRV_SetDCPenColor,
-    .dc_funcs.pSetDeviceClipping = X11DRV_SetDeviceClipping,
-    .dc_funcs.pSetDeviceGammaRamp = X11DRV_SetDeviceGammaRamp,
-    .dc_funcs.pSetPixel = X11DRV_SetPixel,
-    .dc_funcs.pStretchBlt = X11DRV_StretchBlt,
-    .dc_funcs.pStrokeAndFillPath = X11DRV_StrokeAndFillPath,
-    .dc_funcs.pStrokePath = X11DRV_StrokePath,
-    .dc_funcs.pUnrealizePalette = X11DRV_UnrealizePalette,
-    .dc_funcs.pD3DKMTCheckVidPnExclusiveOwnership = X11DRV_D3DKMTCheckVidPnExclusiveOwnership,
-    .dc_funcs.pD3DKMTCloseAdapter = X11DRV_D3DKMTCloseAdapter,
-    .dc_funcs.pD3DKMTOpenAdapterFromLuid = X11DRV_D3DKMTOpenAdapterFromLuid,
-    .dc_funcs.pD3DKMTQueryVideoMemoryInfo = X11DRV_D3DKMTQueryVideoMemoryInfo,
-    .dc_funcs.pD3DKMTSetVidPnSourceOwner = X11DRV_D3DKMTSetVidPnSourceOwner,
+    .dc_funcs.pArc = BROADWAYDRV_Arc,
+    .dc_funcs.pChord = BROADWAYDRV_Chord,
+    .dc_funcs.pCreateCompatibleDC = BROADWAYDRV_CreateCompatibleDC,
+    .dc_funcs.pCreateDC = BROADWAYDRV_CreateDC,
+    .dc_funcs.pDeleteDC = BROADWAYDRV_DeleteDC,
+    .dc_funcs.pEllipse = BROADWAYDRV_Ellipse,
+    .dc_funcs.pExtEscape = BROADWAYDRV_ExtEscape,
+    .dc_funcs.pExtFloodFill = BROADWAYDRV_ExtFloodFill,
+    .dc_funcs.pFillPath = BROADWAYDRV_FillPath,
+    .dc_funcs.pGetDeviceCaps = BROADWAYDRV_GetDeviceCaps,
+    .dc_funcs.pGetDeviceGammaRamp = BROADWAYDRV_GetDeviceGammaRamp,
+    .dc_funcs.pGetICMProfile = BROADWAYDRV_GetICMProfile,
+    .dc_funcs.pGetImage = BROADWAYDRV_GetImage,
+    .dc_funcs.pGetNearestColor = BROADWAYDRV_GetNearestColor,
+    .dc_funcs.pGetSystemPaletteEntries = BROADWAYDRV_GetSystemPaletteEntries,
+    .dc_funcs.pGradientFill = BROADWAYDRV_GradientFill,
+    .dc_funcs.pLineTo = BROADWAYDRV_LineTo,
+    .dc_funcs.pPaintRgn = BROADWAYDRV_PaintRgn,
+    .dc_funcs.pPatBlt = BROADWAYDRV_PatBlt,
+    .dc_funcs.pPie = BROADWAYDRV_Pie,
+    .dc_funcs.pPolyPolygon = BROADWAYDRV_PolyPolygon,
+    .dc_funcs.pPolyPolyline = BROADWAYDRV_PolyPolyline,
+    .dc_funcs.pPutImage = BROADWAYDRV_PutImage,
+    .dc_funcs.pRealizeDefaultPalette = BROADWAYDRV_RealizeDefaultPalette,
+    .dc_funcs.pRealizePalette = BROADWAYDRV_RealizePalette,
+    .dc_funcs.pRectangle = BROADWAYDRV_Rectangle,
+    .dc_funcs.pRoundRect = BROADWAYDRV_RoundRect,
+    .dc_funcs.pSelectBrush = BROADWAYDRV_SelectBrush,
+    .dc_funcs.pSelectFont = BROADWAYDRV_SelectFont,
+    .dc_funcs.pSelectPen = BROADWAYDRV_SelectPen,
+    .dc_funcs.pSetBoundsRect = BROADWAYDRV_SetBoundsRect,
+    .dc_funcs.pSetDCBrushColor = BROADWAYDRV_SetDCBrushColor,
+    .dc_funcs.pSetDCPenColor = BROADWAYDRV_SetDCPenColor,
+    .dc_funcs.pSetDeviceClipping = BROADWAYDRV_SetDeviceClipping,
+    .dc_funcs.pSetDeviceGammaRamp = BROADWAYDRV_SetDeviceGammaRamp,
+    .dc_funcs.pSetPixel = BROADWAYDRV_SetPixel,
+    .dc_funcs.pStretchBlt = BROADWAYDRV_StretchBlt,
+    .dc_funcs.pStrokeAndFillPath = BROADWAYDRV_StrokeAndFillPath,
+    .dc_funcs.pStrokePath = BROADWAYDRV_StrokePath,
+    .dc_funcs.pUnrealizePalette = BROADWAYDRV_UnrealizePalette,
+    .dc_funcs.pD3DKMTCheckVidPnExclusiveOwnership = BROADWAYDRV_D3DKMTCheckVidPnExclusiveOwnership,
+    .dc_funcs.pD3DKMTCloseAdapter = BROADWAYDRV_D3DKMTCloseAdapter,
+    .dc_funcs.pD3DKMTOpenAdapterFromLuid = BROADWAYDRV_D3DKMTOpenAdapterFromLuid,
+    .dc_funcs.pD3DKMTQueryVideoMemoryInfo = BROADWAYDRV_D3DKMTQueryVideoMemoryInfo,
+    .dc_funcs.pD3DKMTSetVidPnSourceOwner = BROADWAYDRV_D3DKMTSetVidPnSourceOwner,
     .dc_funcs.priority = GDI_PRIORITY_GRAPHICS_DRV,
 
-    .pActivateKeyboardLayout = X11DRV_ActivateKeyboardLayout,
-    .pBeep = X11DRV_Beep,
-    .pGetKeyNameText = X11DRV_GetKeyNameText,
-    .pMapVirtualKeyEx = X11DRV_MapVirtualKeyEx,
-    .pToUnicodeEx = X11DRV_ToUnicodeEx,
-    .pVkKeyScanEx = X11DRV_VkKeyScanEx,
-    .pImeToAsciiEx = X11DRV_ImeToAsciiEx,
-    .pNotifyIMEStatus = X11DRV_NotifyIMEStatus,
-    .pDestroyCursorIcon = X11DRV_DestroyCursorIcon,
-    .pSetCursor = X11DRV_SetCursor,
-    .pGetCursorPos = X11DRV_GetCursorPos,
-    .pSetCursorPos = X11DRV_SetCursorPos,
-    .pClipCursor = X11DRV_ClipCursor,
-    .pChangeDisplaySettings = X11DRV_ChangeDisplaySettings,
-    .pGetCurrentDisplaySettings = X11DRV_GetCurrentDisplaySettings,
-    .pGetDisplayDepth = X11DRV_GetDisplayDepth,
-    .pUpdateDisplayDevices = X11DRV_UpdateDisplayDevices,
-    .pCreateDesktop = X11DRV_CreateDesktop,
-    .pCreateWindow = X11DRV_CreateWindow,
-    .pDesktopWindowProc = X11DRV_DesktopWindowProc,
-    .pDestroyWindow = X11DRV_DestroyWindow,
-    .pFlashWindowEx = X11DRV_FlashWindowEx,
-    .pGetDC = X11DRV_GetDC,
-    .pProcessEvents = X11DRV_ProcessEvents,
-    .pReleaseDC = X11DRV_ReleaseDC,
-    .pScrollDC = X11DRV_ScrollDC,
-    .pSetCapture = X11DRV_SetCapture,
-    .pSetDesktopWindow = X11DRV_SetDesktopWindow,
-    .pSetFocus = X11DRV_SetFocus,
-    .pSetLayeredWindowAttributes = X11DRV_SetLayeredWindowAttributes,
-    .pSetParent = X11DRV_SetParent,
-    .pSetWindowIcon = X11DRV_SetWindowIcon,
-    .pSetWindowRgn = X11DRV_SetWindowRgn,
-    .pSetWindowStyle = X11DRV_SetWindowStyle,
-    .pSetWindowText = X11DRV_SetWindowText,
-    .pShowWindow = X11DRV_ShowWindow,
-    .pSysCommand = X11DRV_SysCommand,
-    .pClipboardWindowProc = X11DRV_ClipboardWindowProc,
-    .pUpdateClipboard = X11DRV_UpdateClipboard,
-    .pUpdateLayeredWindow = X11DRV_UpdateLayeredWindow,
-    .pWindowMessage = X11DRV_WindowMessage,
-    .pWindowPosChanging = X11DRV_WindowPosChanging,
-    .pWindowPosChanged = X11DRV_WindowPosChanged,
-    .pSystemParametersInfo = X11DRV_SystemParametersInfo,
-    .pwine_get_vulkan_driver = X11DRV_wine_get_vulkan_driver,
-    .pwine_get_wgl_driver = X11DRV_wine_get_wgl_driver,
-    .pThreadDetach = X11DRV_ThreadDetach,
+    .pActivateKeyboardLayout = BROADWAYDRV_ActivateKeyboardLayout,
+    .pBeep = BROADWAYDRV_Beep,
+    .pGetKeyNameText = BROADWAYDRV_GetKeyNameText,
+    .pMapVirtualKeyEx = BROADWAYDRV_MapVirtualKeyEx,
+    .pToUnicodeEx = BROADWAYDRV_ToUnicodeEx,
+    .pVkKeyScanEx = BROADWAYDRV_VkKeyScanEx,
+    .pImeToAsciiEx = BROADWAYDRV_ImeToAsciiEx,
+    .pNotifyIMEStatus = BROADWAYDRV_NotifyIMEStatus,
+    .pDestroyCursorIcon = BROADWAYDRV_DestroyCursorIcon,
+    .pSetCursor = BROADWAYDRV_SetCursor,
+    .pGetCursorPos = BROADWAYDRV_GetCursorPos,
+    .pSetCursorPos = BROADWAYDRV_SetCursorPos,
+    .pClipCursor = BROADWAYDRV_ClipCursor,
+    .pChangeDisplaySettings = BROADWAYDRV_ChangeDisplaySettings,
+    .pGetCurrentDisplaySettings = BROADWAYDRV_GetCurrentDisplaySettings,
+    .pGetDisplayDepth = BROADWAYDRV_GetDisplayDepth,
+    .pUpdateDisplayDevices = BROADWAYDRV_UpdateDisplayDevices,
+    .pCreateDesktop = BROADWAYDRV_CreateDesktop,
+    .pCreateWindow = BROADWAYDRV_CreateWindow,
+    .pDesktopWindowProc = BROADWAYDRV_DesktopWindowProc,
+    .pDestroyWindow = BROADWAYDRV_DestroyWindow,
+    .pFlashWindowEx = BROADWAYDRV_FlashWindowEx,
+    .pGetDC = BROADWAYDRV_GetDC,
+    .pProcessEvents = BROADWAYDRV_ProcessEvents,
+    .pReleaseDC = BROADWAYDRV_ReleaseDC,
+    .pScrollDC = BROADWAYDRV_ScrollDC,
+    .pSetCapture = BROADWAYDRV_SetCapture,
+    .pSetDesktopWindow = BROADWAYDRV_SetDesktopWindow,
+    .pSetFocus = BROADWAYDRV_SetFocus,
+    .pSetLayeredWindowAttributes = BROADWAYDRV_SetLayeredWindowAttributes,
+    .pSetParent = BROADWAYDRV_SetParent,
+    .pSetWindowIcon = BROADWAYDRV_SetWindowIcon,
+    .pSetWindowRgn = BROADWAYDRV_SetWindowRgn,
+    .pSetWindowStyle = BROADWAYDRV_SetWindowStyle,
+    .pSetWindowText = BROADWAYDRV_SetWindowText,
+    .pShowWindow = BROADWAYDRV_ShowWindow,
+    .pSysCommand = BROADWAYDRV_SysCommand,
+    .pClipboardWindowProc = BROADWAYDRV_ClipboardWindowProc,
+    .pUpdateClipboard = BROADWAYDRV_UpdateClipboard,
+    .pUpdateLayeredWindow = BROADWAYDRV_UpdateLayeredWindow,
+    .pWindowMessage = BROADWAYDRV_WindowMessage,
+    .pWindowPosChanging = BROADWAYDRV_WindowPosChanging,
+    .pWindowPosChanged = BROADWAYDRV_WindowPosChanged,
+    .pSystemParametersInfo = BROADWAYDRV_SystemParametersInfo,
+    .pwine_get_vulkan_driver = BROADWAYDRV_wine_get_vulkan_driver,
+    .pwine_get_wgl_driver = BROADWAYDRV_wine_get_wgl_driver,
+    .pThreadDetach = BROADWAYDRV_ThreadDetach,
 };
 
 

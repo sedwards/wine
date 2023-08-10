@@ -327,7 +327,7 @@ MAKE_FUNCPTR(XSelectExtensionEvent)
 MAKE_FUNCPTR(XFreeDeviceState)
 #undef MAKE_FUNCPTR
 
-static INT X11DRV_XInput_Init(void)
+static INT BROADWAYDRV_XInput_Init(void)
 {
     xinput_handle = dlopen(SONAME_LIBXI, RTLD_NOW);
     if (xinput_handle)
@@ -506,7 +506,7 @@ NTSTATUS broadwaydrv_tablet_load_info( void *hwnd )
 
     XDevice *opendevice;
 
-    if (!X11DRV_XInput_Init())
+    if (!BROADWAYDRV_XInput_Init())
     {
         ERR("Unable to initialize the XInput library.\n");
         return FALSE;
@@ -589,17 +589,17 @@ NTSTATUS broadwaydrv_tablet_load_info( void *hwnd )
                 break;
             }
 
-            X11DRV_expect_error(data->display, Tablet_ErrorHandler, NULL);
+            BROADWAYDRV_expect_error(data->display, Tablet_ErrorHandler, NULL);
             opendevice = pXOpenDevice(data->display,target->id);
-            if (!X11DRV_check_error() && opendevice)
+            if (!BROADWAYDRV_check_error() && opendevice)
             {
                 unsigned char map[32];
                 int i;
                 int shft = 0;
 
-                X11DRV_expect_error(data->display,Tablet_ErrorHandler,NULL);
+                BROADWAYDRV_expect_error(data->display,Tablet_ErrorHandler,NULL);
                 cursor.BUTTONS = pXGetDeviceButtonMapping(data->display, opendevice, map, 32);
-                if (X11DRV_check_error() || cursor.BUTTONS <= 0)
+                if (BROADWAYDRV_check_error() || cursor.BUTTONS <= 0)
                 {
                     TRACE("No buttons, Non Tablet Device\n");
                     pXCloseDevice(data->display, opendevice);
@@ -1016,7 +1016,7 @@ NTSTATUS broadwaydrv_tablet_attach_queue( void *owner )
     XDeviceInfo     *target = NULL;
     XDevice         *the_device;
     XEventClass     event_list[7];
-    Window          win = X11DRV_get_whole_window( owner );
+    Window          win = BROADWAYDRV_get_whole_window( owner );
 
     if (!win || !xinput_handle) return 0;
 
@@ -1024,7 +1024,7 @@ NTSTATUS broadwaydrv_tablet_attach_queue( void *owner )
 
     devices = pXListInputDevices(data->display, &num_devices);
 
-    X11DRV_expect_error(data->display,Tablet_ErrorHandler,NULL);
+    BROADWAYDRV_expect_error(data->display,Tablet_ErrorHandler,NULL);
     for (cur_loop=0; cur_loop < CURSORMAX; cur_loop++)
     {
         char   cursorNameA[WT_MAX_NAME_LEN];
@@ -1071,25 +1071,25 @@ NTSTATUS broadwaydrv_tablet_attach_queue( void *owner )
             if (proximity_out_type) event_number++;
 
             if (key_press_type)
-                X11DRV_register_event_handler( key_press_type, key_event, "XInput KeyPress" );
+                BROADWAYDRV_register_event_handler( key_press_type, key_event, "XInput KeyPress" );
             if (key_release_type)
-                X11DRV_register_event_handler( key_release_type, key_event, "XInput KeyRelease" );
+                BROADWAYDRV_register_event_handler( key_release_type, key_event, "XInput KeyRelease" );
             if (button_press_type)
-                X11DRV_register_event_handler( button_press_type, button_event, "XInput ButtonPress" );
+                BROADWAYDRV_register_event_handler( button_press_type, button_event, "XInput ButtonPress" );
             if (button_release_type)
-                X11DRV_register_event_handler( button_release_type, button_event, "XInput ButtonRelease" );
+                BROADWAYDRV_register_event_handler( button_release_type, button_event, "XInput ButtonRelease" );
             if (motion_type)
-                X11DRV_register_event_handler( motion_type, motion_event, "XInput MotionNotify" );
+                BROADWAYDRV_register_event_handler( motion_type, motion_event, "XInput MotionNotify" );
             if (proximity_in_type)
-                X11DRV_register_event_handler( proximity_in_type, proximity_event, "XInput ProximityIn" );
+                BROADWAYDRV_register_event_handler( proximity_in_type, proximity_event, "XInput ProximityIn" );
             if (proximity_out_type)
-                X11DRV_register_event_handler( proximity_out_type, proximity_event, "XInput ProximityOut" );
+                BROADWAYDRV_register_event_handler( proximity_out_type, proximity_event, "XInput ProximityOut" );
 
             pXSelectExtensionEvent(data->display, win, event_list, event_number);
         }
     }
     XSync(data->display, False);
-    X11DRV_check_error();
+    BROADWAYDRV_check_error();
 
     if (NULL != devices) pXFreeDeviceList(devices);
     return 0;

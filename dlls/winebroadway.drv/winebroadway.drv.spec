@@ -1,8 +1,8 @@
 # WinTab32
-@ cdecl AttachEventQueueToTablet(long) X11DRV_AttachEventQueueToTablet
-@ cdecl GetCurrentPacket(ptr) X11DRV_GetCurrentPacket
-@ cdecl LoadTabletInfo(long) X11DRV_LoadTabletInfo
-@ cdecl WTInfoW(long long ptr) X11DRV_WTInfoW
+@ cdecl AttachEventQueueToTablet(long) BROADWAYDRV_AttachEventQueueToTablet
+@ cdecl GetCurrentPacket(ptr) BROADWAYDRV_GetCurrentPacket
+@ cdecl LoadTabletInfo(long) BROADWAYDRV_LoadTabletInfo
+@ cdecl WTInfoW(long long ptr) BROADWAYDRV_WTInfoW
 
 # System tray
 @ cdecl wine_notify_icon(long ptr)

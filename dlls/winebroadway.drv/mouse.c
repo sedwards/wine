@@ -139,11 +139,11 @@ MAKE_FUNCPTR(XISelectEvents);
 #endif
 
 /***********************************************************************
- *		X11DRV_Xcursor_Init
+ *		BROADWAYDRV_Xcursor_Init
  *
  * Load the Xcursor library for use.
  */
-void X11DRV_Xcursor_Init(void)
+void BROADWAYDRV_Xcursor_Init(void)
 {
 #ifdef SONAME_LIBXCURSOR
     xcursor_handle = dlopen(SONAME_LIBXCURSOR, RTLD_NOW);
@@ -1336,9 +1336,9 @@ static Cursor create_cursor( HANDLE handle )
 }
 
 /***********************************************************************
- *		DestroyCursorIcon (X11DRV.@)
+ *		DestroyCursorIcon (BROADWAYDRV.@)
  */
-void X11DRV_DestroyCursorIcon( HCURSOR handle )
+void BROADWAYDRV_DestroyCursorIcon( HCURSOR handle )
 {
     Cursor cursor;
 
@@ -1351,9 +1351,9 @@ void X11DRV_DestroyCursorIcon( HCURSOR handle )
 }
 
 /***********************************************************************
- *		SetCursor (X11DRV.@)
+ *		SetCursor (BROADWAYDRV.@)
  */
-void X11DRV_SetCursor( HWND hwnd, HCURSOR handle )
+void BROADWAYDRV_SetCursor( HWND hwnd, HCURSOR handle )
 {
     struct broadwaydrv_win_data *data;
 
@@ -1367,9 +1367,9 @@ void X11DRV_SetCursor( HWND hwnd, HCURSOR handle )
 }
 
 /***********************************************************************
- *		SetCursorPos (X11DRV.@)
+ *		SetCursorPos (BROADWAYDRV.@)
  */
-BOOL X11DRV_SetCursorPos( INT x, INT y )
+BOOL BROADWAYDRV_SetCursorPos( INT x, INT y )
 {
     struct broadwaydrv_thread_data *data = broadwaydrv_init_thread_data();
     POINT pos = virtual_screen_to_root( x, y );
@@ -1402,9 +1402,9 @@ BOOL X11DRV_SetCursorPos( INT x, INT y )
 }
 
 /***********************************************************************
- *		GetCursorPos (X11DRV.@)
+ *		GetCursorPos (BROADWAYDRV.@)
  */
-BOOL X11DRV_GetCursorPos(LPPOINT pos)
+BOOL BROADWAYDRV_GetCursorPos(LPPOINT pos)
 {
     Display *display = thread_init_display();
     Window root, child;
@@ -1423,9 +1423,9 @@ BOOL X11DRV_GetCursorPos(LPPOINT pos)
 }
 
 /***********************************************************************
- *		ClipCursor (X11DRV.@)
+ *		ClipCursor (BROADWAYDRV.@)
  */
-BOOL X11DRV_ClipCursor( const RECT *clip, BOOL reset )
+BOOL BROADWAYDRV_ClipCursor( const RECT *clip, BOOL reset )
 {
     if (!reset && clip && grab_clipping_window( clip )) return TRUE;
     ungrab_clipping_window();
@@ -1445,7 +1445,7 @@ void move_resize_window( HWND hwnd, int dir )
     Window win, root, child;
     unsigned int xstate;
 
-    if (!(win = X11DRV_get_whole_window( hwnd ))) return;
+    if (!(win = BROADWAYDRV_get_whole_window( hwnd ))) return;
 
     pt = NtUserGetThreadInfo()->message_pos;
     pos = virtual_screen_to_root( (short)LOWORD( pt ), (short)HIWORD( pt ) );
@@ -1521,9 +1521,9 @@ void move_resize_window( HWND hwnd, int dir )
 
 
 /***********************************************************************
- *           X11DRV_ButtonPress
+ *           BROADWAYDRV_ButtonPress
  */
-BOOL X11DRV_ButtonPress( HWND hwnd, XEvent *xev )
+BOOL BROADWAYDRV_ButtonPress( HWND hwnd, XEvent *xev )
 {
     XButtonEvent *event = &xev->xbutton;
     int buttonNum = event->button - 1;
@@ -1548,9 +1548,9 @@ BOOL X11DRV_ButtonPress( HWND hwnd, XEvent *xev )
 
 
 /***********************************************************************
- *           X11DRV_ButtonRelease
+ *           BROADWAYDRV_ButtonRelease
  */
-BOOL X11DRV_ButtonRelease( HWND hwnd, XEvent *xev )
+BOOL BROADWAYDRV_ButtonRelease( HWND hwnd, XEvent *xev )
 {
     XButtonEvent *event = &xev->xbutton;
     int buttonNum = event->button - 1;
@@ -1574,9 +1574,9 @@ BOOL X11DRV_ButtonRelease( HWND hwnd, XEvent *xev )
 
 
 /***********************************************************************
- *           X11DRV_MotionNotify
+ *           BROADWAYDRV_MotionNotify
  */
-BOOL X11DRV_MotionNotify( HWND hwnd, XEvent *xev )
+BOOL BROADWAYDRV_MotionNotify( HWND hwnd, XEvent *xev )
 {
     XMotionEvent *event = &xev->xmotion;
     INPUT input;
@@ -1603,9 +1603,9 @@ BOOL X11DRV_MotionNotify( HWND hwnd, XEvent *xev )
 
 
 /***********************************************************************
- *           X11DRV_EnterNotify
+ *           BROADWAYDRV_EnterNotify
  */
-BOOL X11DRV_EnterNotify( HWND hwnd, XEvent *xev )
+BOOL BROADWAYDRV_EnterNotify( HWND hwnd, XEvent *xev )
 {
     XCrossingEvent *event = &xev->xcrossing;
     INPUT input;
@@ -1635,9 +1635,9 @@ BOOL X11DRV_EnterNotify( HWND hwnd, XEvent *xev )
 #ifdef HAVE_X11_EXTENSIONS_XINPUT2_H
 
 /***********************************************************************
- *           X11DRV_DeviceChanged
+ *           BROADWAYDRV_DeviceChanged
  */
-static BOOL X11DRV_DeviceChanged( XGenericEventCookie *xev )
+static BOOL BROADWAYDRV_DeviceChanged( XGenericEventCookie *xev )
 {
     XIDeviceChangedEvent *event = xev->data;
     struct broadwaydrv_thread_data *data = broadwaydrv_thread_data();
@@ -1724,9 +1724,9 @@ static BOOL map_raw_event_coords( XIRawEvent *event, INPUT *input )
 }
 
 /***********************************************************************
- *           X11DRV_RawMotion
+ *           BROADWAYDRV_RawMotion
  */
-static BOOL X11DRV_RawMotion( XGenericEventCookie *xev )
+static BOOL BROADWAYDRV_RawMotion( XGenericEventCookie *xev )
 {
     XIRawEvent *event = xev->data;
     INPUT input;
@@ -1754,9 +1754,9 @@ static BOOL X11DRV_RawMotion( XGenericEventCookie *xev )
 
 
 /***********************************************************************
- *              X11DRV_XInput2_Init
+ *              BROADWAYDRV_XInput2_Init
  */
-void X11DRV_XInput2_Init(void)
+void BROADWAYDRV_XInput2_Init(void)
 {
 #if defined(SONAME_LIBXI) && defined(HAVE_X11_EXTENSIONS_XINPUT2_H)
     int event, error;
@@ -1795,9 +1795,9 @@ void X11DRV_XInput2_Init(void)
 
 
 /***********************************************************************
- *           X11DRV_GenericEvent
+ *           BROADWAYDRV_GenericEvent
  */
-BOOL X11DRV_GenericEvent( HWND hwnd, XEvent *xev )
+BOOL BROADWAYDRV_GenericEvent( HWND hwnd, XEvent *xev )
 {
     BOOL ret = FALSE;
 #ifdef HAVE_X11_EXTENSIONS_XINPUT2_H
@@ -1809,10 +1809,10 @@ BOOL X11DRV_GenericEvent( HWND hwnd, XEvent *xev )
     switch (event->evtype)
     {
     case XI_DeviceChanged:
-        ret = X11DRV_DeviceChanged( event );
+        ret = BROADWAYDRV_DeviceChanged( event );
         break;
     case XI_RawMotion:
-        ret = X11DRV_RawMotion( event );
+        ret = BROADWAYDRV_RawMotion( event );
         break;
 
     default:

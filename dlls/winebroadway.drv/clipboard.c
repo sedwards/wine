@@ -187,7 +187,7 @@ static const struct
 
 static struct list format_list = LIST_INIT( format_list );
 
-#define GET_ATOM(prop)  (((prop) < FIRST_XATOM) ? (Atom)(prop) : X11DRV_Atoms[(prop) - FIRST_XATOM])
+#define GET_ATOM(prop)  (((prop) < FIRST_XATOM) ? (Atom)(prop) : BROADWAYDRV_Atoms[(prop) - FIRST_XATOM])
 
 static DWORD clipboard_thread_id;
 static HWND clipboard_hwnd;
@@ -400,9 +400,9 @@ static void register_x11_formats( const Atom *atoms, UINT size )
 
         if (!count) return;
 
-        X11DRV_expect_error( display, is_atom_error, NULL );
+        BROADWAYDRV_expect_error( display, is_atom_error, NULL );
         if (!XGetAtomNames( display, new_atoms, count, names )) count = 0;
-        if (X11DRV_check_error())
+        if (BROADWAYDRV_check_error())
         {
             WARN( "got some bad atoms, ignoring\n" );
             count = 0;
@@ -1842,10 +1842,10 @@ static BOOL export_timestamp( Display *display, Window win, Atom prop, Atom targ
 
 
 /**************************************************************************
- *		X11DRV_CLIPBOARD_GetProperty
+ *		BROADWAYDRV_CLIPBOARD_GetProperty
  *  Gets type, data and size.
  */
-static BOOL X11DRV_CLIPBOARD_GetProperty(Display *display, Window w, Atom prop,
+static BOOL BROADWAYDRV_CLIPBOARD_GetProperty(Display *display, Window w, Atom prop,
     Atom *atype, unsigned char **data, size_t *datasize)
 {
     int aformat;
@@ -1915,7 +1915,7 @@ static BOOL read_property( Display *display, Window w, Atom prop,
     while (XCheckTypedWindowEvent(display, w, PropertyNotify, &xe))
         ;
 
-    if (!X11DRV_CLIPBOARD_GetProperty(display, w, prop, type, data, datasize))
+    if (!BROADWAYDRV_CLIPBOARD_GetProperty(display, w, prop, type, data, datasize))
         return FALSE;
 
     if (*type == broadwaydrv_atom(INCR))
@@ -1950,7 +1950,7 @@ static BOOL read_property( Display *display, Window w, Atom prop,
             }
 
             if (i >= SELECTION_RETRIES ||
-                !X11DRV_CLIPBOARD_GetProperty(display, w, prop, type, &prop_data, &prop_size))
+                !BROADWAYDRV_CLIPBOARD_GetProperty(display, w, prop, type, &prop_data, &prop_size))
             {
                 res = FALSE;
                 break;
@@ -2206,7 +2206,7 @@ static void xfixes_init(void)
                 XFixesSelectionWindowDestroyNotifyMask |
                 XFixesSelectionClientCloseNotifyMask);
     }
-    X11DRV_register_event_handler(event_base + XFixesSelectionNotify,
+    BROADWAYDRV_register_event_handler(event_base + XFixesSelectionNotify,
             selection_notify_event, "XFixesSelectionNotify");
     TRACE("xfixes succesully initialized\n");
 #else
@@ -2251,7 +2251,7 @@ static BOOL clipboard_init( HWND hwnd )
 /**************************************************************************
  *           broadwaydrv_clipboard_message
  */
-LRESULT X11DRV_ClipboardWindowProc( HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam )
+LRESULT BROADWAYDRV_ClipboardWindowProc( HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam )
 {
     switch (msg)
     {
@@ -2280,9 +2280,9 @@ LRESULT X11DRV_ClipboardWindowProc( HWND hwnd, UINT msg, WPARAM wparam, LPARAM l
 
 
 /**************************************************************************
- *		X11DRV_UpdateClipboard
+ *		BROADWAYDRV_UpdateClipboard
  */
-void X11DRV_UpdateClipboard(void)
+void BROADWAYDRV_UpdateClipboard(void)
 {
     static ULONG last_update;
     ULONG now;
@@ -2292,16 +2292,16 @@ void X11DRV_UpdateClipboard(void)
     if (GetCurrentThreadId() == clipboard_thread_id) return;
     now = NtGetTickCount();
     if ((int)(now - last_update) <= SELECTION_UPDATE_DELAY) return;
-    if (send_message_timeout( NtUserGetClipboardOwner(), WM_X11DRV_UPDATE_CLIPBOARD, 0, 0,
+    if (send_message_timeout( NtUserGetClipboardOwner(), WM_BROADWAYDRV_UPDATE_CLIPBOARD, 0, 0,
                               SMTO_ABORTIFHUNG, 5000, &ret ) && ret)
         last_update = now;
 }
 
 
 /***********************************************************************
- *           X11DRV_HandleSelectionRequest
+ *           BROADWAYDRV_HandleSelectionRequest
  */
-BOOL X11DRV_SelectionRequest( HWND hwnd, XEvent *xev )
+BOOL BROADWAYDRV_SelectionRequest( HWND hwnd, XEvent *xev )
 {
     XSelectionRequestEvent *event = &xev->xselectionrequest;
     Display *display = event->display;
@@ -2341,9 +2341,9 @@ done:
 
 
 /***********************************************************************
- *           X11DRV_SelectionClear
+ *           BROADWAYDRV_SelectionClear
  */
-BOOL X11DRV_SelectionClear( HWND hwnd, XEvent *xev )
+BOOL BROADWAYDRV_SelectionClear( HWND hwnd, XEvent *xev )
 {
     XSelectionClearEvent *event = &xev->xselectionclear;
 

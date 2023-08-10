@@ -303,9 +303,9 @@ static int xic_status_draw( XIC xic, XPointer user, XPointer arg )
 }
 
 /***********************************************************************
- *      NotifyIMEStatus (X11DRV.@)
+ *      NotifyIMEStatus (BROADWAYDRV.@)
  */
-void X11DRV_NotifyIMEStatus( HWND hwnd, UINT status )
+void BROADWAYDRV_NotifyIMEStatus( HWND hwnd, UINT status )
 {
     XIMPreeditState state = status ? XIMPreeditEnable : XIMPreeditDisable;
     XVaNestedList attr;
@@ -313,7 +313,7 @@ void X11DRV_NotifyIMEStatus( HWND hwnd, UINT status )
 
     TRACE( "hwnd %p, status %#x\n", hwnd, status );
 
-    if (!(xic = X11DRV_get_ic( hwnd ))) return;
+    if (!(xic = BROADWAYDRV_get_ic( hwnd ))) return;
 
     if ((attr = XVaCreateNestedList( 0, XNPreeditState, state, NULL )))
     {
@@ -494,7 +494,7 @@ static XIC xic_create( XIM xim, HWND hwnd, Window win )
     return xic;
 }
 
-XIC X11DRV_get_ic( HWND hwnd )
+XIC BROADWAYDRV_get_ic( HWND hwnd )
 {
     struct broadwaydrv_win_data *data;
     XIM xim;
@@ -515,7 +515,7 @@ void xim_set_focus( HWND hwnd, BOOL focus )
     struct ime_update *update, *next;
     XIC xic;
 
-    if (!(xic = X11DRV_get_ic( hwnd ))) return;
+    if (!(xic = BROADWAYDRV_get_ic( hwnd ))) return;
 
     if (focus) XSetICFocus( xic );
     else XUnsetICFocus( xic );
@@ -536,13 +536,13 @@ static struct ime_update *find_ime_update( UINT id )
 }
 
 /***********************************************************************
- *      ImeToAsciiEx (X11DRV.@)
+ *      ImeToAsciiEx (BROADWAYDRV.@)
  *
  * As XIM filters key events upfront, we don't use ImeProcessKey and ImeToAsciiEx is instead called
  * back from the IME UI window procedure when WM_IME_NOTIFY / IMN_WINE_SET_COMP_STRING messages are
  * sent to it, to retrieve composition string updates and generate WM_IME messages.
  */
-UINT X11DRV_ImeToAsciiEx( UINT vkey, UINT lparam, const BYTE *state, COMPOSITIONSTRING *compstr, HIMC himc )
+UINT BROADWAYDRV_ImeToAsciiEx( UINT vkey, UINT lparam, const BYTE *state, COMPOSITIONSTRING *compstr, HIMC himc )
 {
     UINT needed = sizeof(COMPOSITIONSTRING), comp_len, result_len;
     struct ime_update *update;

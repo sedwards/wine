@@ -706,11 +706,11 @@ static BOOL get_gpu_properties_from_vulkan( struct gdi_gpu *gpu, const XRRProvid
     {
         for (output_idx = 0; output_idx < provider_info->noutputs; ++output_idx)
         {
-            X11DRV_expect_error( gdi_display, XRandRErrorHandler, NULL );
+            BROADWAYDRV_expect_error( gdi_display, XRandRErrorHandler, NULL );
             vr = pvkGetRandROutputDisplayEXT( vk_physical_devices[device_idx], gdi_display,
                                               provider_info->outputs[output_idx], &vk_display );
             XSync( gdi_display, FALSE );
-            if (X11DRV_check_error() || vr != VK_SUCCESS || vk_display == VK_NULL_HANDLE)
+            if (BROADWAYDRV_check_error() || vr != VK_SUCCESS || vk_display == VK_NULL_HANDLE)
                 continue;
 
             memset( &id, 0, sizeof(id) );
@@ -1189,8 +1189,8 @@ static BOOL xrandr14_device_change_handler( HWND hwnd, XEvent *event )
     xrandr14_invalidate_current_mode_cache();
     if (hwnd == NtUserGetDesktopWindow() && NtUserGetWindowThread( hwnd, NULL ) == GetCurrentThreadId())
     {
-        X11DRV_DisplayDevices_Init( TRUE );
-        X11DRV_resize_desktop();
+        BROADWAYDRV_DisplayDevices_Init( TRUE );
+        BROADWAYDRV_resize_desktop();
     }
     /* Update xinerama monitors for xinerama_get_fullscreen_monitors() */
     rect = get_host_primary_monitor_rect();
@@ -1208,11 +1208,11 @@ static void xrandr14_register_event_handlers(void)
 
     pXRRSelectInput( display, root_window,
                      RRCrtcChangeNotifyMask | RROutputChangeNotifyMask | RRProviderChangeNotifyMask );
-    X11DRV_register_event_handler( event_base + RRNotify_CrtcChange, xrandr14_device_change_handler,
+    BROADWAYDRV_register_event_handler( event_base + RRNotify_CrtcChange, xrandr14_device_change_handler,
                                    "XRandR CrtcChange" );
-    X11DRV_register_event_handler( event_base + RRNotify_OutputChange, xrandr14_device_change_handler,
+    BROADWAYDRV_register_event_handler( event_base + RRNotify_OutputChange, xrandr14_device_change_handler,
                                    "XRandR OutputChange" );
-    X11DRV_register_event_handler( event_base + RRNotify_ProviderChange, xrandr14_device_change_handler,
+    BROADWAYDRV_register_event_handler( event_base + RRNotify_ProviderChange, xrandr14_device_change_handler,
                                    "XRandR ProviderChange" );
 }
 
@@ -1648,7 +1648,7 @@ done:
 
 #endif
 
-void X11DRV_XRandR_Init(void)
+void BROADWAYDRV_XRandR_Init(void)
 {
     struct broadwaydrv_display_device_handler display_handler;
     struct broadwaydrv_settings_handler settings_handler;
@@ -1663,9 +1663,9 @@ void X11DRV_XRandR_Init(void)
 
     /* see if Xrandr is available */
     if (!pXRRQueryExtension( gdi_display, &event_base, &error_base )) return;
-    X11DRV_expect_error( gdi_display, XRandRErrorHandler, NULL );
+    BROADWAYDRV_expect_error( gdi_display, XRandRErrorHandler, NULL );
     ok = pXRRQueryVersion( gdi_display, &major, &minor );
-    if (X11DRV_check_error() || !ok) return;
+    if (BROADWAYDRV_check_error() || !ok) return;
 
     TRACE("Found XRandR %d.%d.\n", major, minor);
 
@@ -1676,7 +1676,7 @@ void X11DRV_XRandR_Init(void)
     settings_handler.free_modes = xrandr10_free_modes;
     settings_handler.get_current_mode = xrandr10_get_current_mode;
     settings_handler.set_current_mode = xrandr10_set_current_mode;
-    X11DRV_Settings_SetHandler( &settings_handler );
+    BROADWAYDRV_Settings_SetHandler( &settings_handler );
 
 #ifdef HAVE_XRRGETPROVIDERRESOURCES
     if (ret >= 4 && (major > 1 || (major == 1 && minor >= 4)))
@@ -1722,7 +1722,7 @@ void X11DRV_XRandR_Init(void)
         display_handler.free_adapters = xrandr14_free_adapters;
         display_handler.free_monitors = xrandr14_free_monitors;
         display_handler.register_event_handlers = xrandr14_register_event_handlers;
-        X11DRV_DisplayDevices_SetHandler( &display_handler );
+        BROADWAYDRV_DisplayDevices_SetHandler( &display_handler );
 
         if (is_broken_driver())
             return;
@@ -1734,14 +1734,14 @@ void X11DRV_XRandR_Init(void)
         settings_handler.free_modes = xrandr14_free_modes;
         settings_handler.get_current_mode = xrandr14_get_current_mode;
         settings_handler.set_current_mode = xrandr14_set_current_mode;
-        X11DRV_Settings_SetHandler( &settings_handler );
+        BROADWAYDRV_Settings_SetHandler( &settings_handler );
     }
 #endif
 }
 
 #else /* SONAME_LIBXRANDR */
 
-void X11DRV_XRandR_Init(void)
+void BROADWAYDRV_XRandR_Init(void)
 {
     TRACE("XRandR support not compiled in.\n");
 }

@@ -1,4 +1,4 @@
-/* X11DRV Vulkan implementation
+/* BROADWAYDRV Vulkan implementation
  *
  * Copyright 2017 Roderick Colenbrander
  *
@@ -95,8 +95,8 @@ static VkBool32 (*pvkGetPhysicalDeviceXlibPresentationSupportKHR)(VkPhysicalDevi
 static VkResult (*pvkGetSwapchainImagesKHR)(VkDevice, VkSwapchainKHR, uint32_t *, VkImage *);
 static VkResult (*pvkQueuePresentKHR)(VkQueue, const VkPresentInfoKHR *);
 
-static void *X11DRV_get_vk_device_proc_addr(const char *name);
-static void *X11DRV_get_vk_instance_proc_addr(VkInstance instance, const char *name);
+static void *BROADWAYDRV_get_vk_device_proc_addr(const char *name);
+static void *BROADWAYDRV_get_vk_instance_proc_addr(VkInstance instance, const char *name);
 
 static inline struct wine_vk_surface *surface_from_handle(VkSurfaceKHR handle)
 {
@@ -253,7 +253,7 @@ void vulkan_thread_detach(void)
     pthread_mutex_unlock(&vulkan_mutex);
 }
 
-static VkResult X11DRV_vkCreateInstance(const VkInstanceCreateInfo *create_info,
+static VkResult BROADWAYDRV_vkCreateInstance(const VkInstanceCreateInfo *create_info,
         const VkAllocationCallbacks *allocator, VkInstance *instance)
 {
     VkInstanceCreateInfo create_info_host;
@@ -280,7 +280,7 @@ static VkResult X11DRV_vkCreateInstance(const VkInstanceCreateInfo *create_info,
     return res;
 }
 
-static VkResult X11DRV_vkCreateSwapchainKHR(VkDevice device,
+static VkResult BROADWAYDRV_vkCreateSwapchainKHR(VkDevice device,
         const VkSwapchainCreateInfoKHR *create_info,
         const VkAllocationCallbacks *allocator, VkSwapchainKHR *swapchain)
 {
@@ -300,7 +300,7 @@ static VkResult X11DRV_vkCreateSwapchainKHR(VkDevice device,
     return pvkCreateSwapchainKHR(device, &create_info_host, NULL /* allocator */, swapchain);
 }
 
-static VkResult X11DRV_vkCreateWin32SurfaceKHR(VkInstance instance,
+static VkResult BROADWAYDRV_vkCreateWin32SurfaceKHR(VkInstance instance,
         const VkWin32SurfaceCreateInfoKHR *create_info,
         const VkAllocationCallbacks *allocator, VkSurfaceKHR *surface)
 {
@@ -377,7 +377,7 @@ err:
     return res;
 }
 
-static void X11DRV_vkDestroyInstance(VkInstance instance, const VkAllocationCallbacks *allocator)
+static void BROADWAYDRV_vkDestroyInstance(VkInstance instance, const VkAllocationCallbacks *allocator)
 {
     TRACE("%p %p\n", instance, allocator);
 
@@ -387,7 +387,7 @@ static void X11DRV_vkDestroyInstance(VkInstance instance, const VkAllocationCall
     pvkDestroyInstance(instance, NULL /* allocator */);
 }
 
-static void X11DRV_vkDestroySurfaceKHR(VkInstance instance, VkSurfaceKHR surface,
+static void BROADWAYDRV_vkDestroySurfaceKHR(VkInstance instance, VkSurfaceKHR surface,
         const VkAllocationCallbacks *allocator)
 {
     struct wine_vk_surface *x11_surface = surface_from_handle(surface);
@@ -406,7 +406,7 @@ static void X11DRV_vkDestroySurfaceKHR(VkInstance instance, VkSurfaceKHR surface
     }
 }
 
-static void X11DRV_vkDestroySwapchainKHR(VkDevice device, VkSwapchainKHR swapchain,
+static void BROADWAYDRV_vkDestroySwapchainKHR(VkDevice device, VkSwapchainKHR swapchain,
          const VkAllocationCallbacks *allocator)
 {
     TRACE("%p, 0x%s %p\n", device, wine_dbgstr_longlong(swapchain), allocator);
@@ -417,7 +417,7 @@ static void X11DRV_vkDestroySwapchainKHR(VkDevice device, VkSwapchainKHR swapcha
     pvkDestroySwapchainKHR(device, swapchain, NULL /* allocator */);
 }
 
-static VkResult X11DRV_vkEnumerateInstanceExtensionProperties(const char *layer_name,
+static VkResult BROADWAYDRV_vkEnumerateInstanceExtensionProperties(const char *layer_name,
         uint32_t *count, VkExtensionProperties* properties)
 {
     unsigned int i;
@@ -458,7 +458,7 @@ static VkResult X11DRV_vkEnumerateInstanceExtensionProperties(const char *layer_
     return res;
 }
 
-static VkResult X11DRV_vkGetDeviceGroupSurfacePresentModesKHR(VkDevice device,
+static VkResult BROADWAYDRV_vkGetDeviceGroupSurfacePresentModesKHR(VkDevice device,
         VkSurfaceKHR surface, VkDeviceGroupPresentModeFlagsKHR *flags)
 {
     struct wine_vk_surface *x11_surface = surface_from_handle(surface);
@@ -478,7 +478,7 @@ static const char *wine_vk_native_fn_name(const char *name)
     return name;
 }
 
-static void *X11DRV_vkGetDeviceProcAddr(VkDevice device, const char *name)
+static void *BROADWAYDRV_vkGetDeviceProcAddr(VkDevice device, const char *name)
 {
     void *proc_addr;
 
@@ -487,13 +487,13 @@ static void *X11DRV_vkGetDeviceProcAddr(VkDevice device, const char *name)
     if (!pvkGetDeviceProcAddr(device, wine_vk_native_fn_name(name)))
         return NULL;
 
-    if ((proc_addr = X11DRV_get_vk_device_proc_addr(name)))
+    if ((proc_addr = BROADWAYDRV_get_vk_device_proc_addr(name)))
         return proc_addr;
 
     return pvkGetDeviceProcAddr(device, name);
 }
 
-static void *X11DRV_vkGetInstanceProcAddr(VkInstance instance, const char *name)
+static void *BROADWAYDRV_vkGetInstanceProcAddr(VkInstance instance, const char *name)
 {
     void *proc_addr;
 
@@ -502,13 +502,13 @@ static void *X11DRV_vkGetInstanceProcAddr(VkInstance instance, const char *name)
     if (!pvkGetInstanceProcAddr(instance, wine_vk_native_fn_name(name)))
         return NULL;
 
-    if ((proc_addr = X11DRV_get_vk_instance_proc_addr(instance, name)))
+    if ((proc_addr = BROADWAYDRV_get_vk_instance_proc_addr(instance, name)))
         return proc_addr;
 
     return pvkGetInstanceProcAddr(instance, name);
 }
 
-static VkResult X11DRV_vkGetPhysicalDevicePresentRectanglesKHR(VkPhysicalDevice phys_dev,
+static VkResult BROADWAYDRV_vkGetPhysicalDevicePresentRectanglesKHR(VkPhysicalDevice phys_dev,
         VkSurfaceKHR surface, uint32_t *count, VkRect2D *rects)
 {
     struct wine_vk_surface *x11_surface = surface_from_handle(surface);
@@ -527,7 +527,7 @@ static VkResult X11DRV_vkGetPhysicalDevicePresentRectanglesKHR(VkPhysicalDevice 
     return pvkGetPhysicalDevicePresentRectanglesKHR(phys_dev, x11_surface->surface, count, rects);
 }
 
-static VkResult X11DRV_vkGetPhysicalDeviceSurfaceCapabilities2KHR(VkPhysicalDevice phys_dev,
+static VkResult BROADWAYDRV_vkGetPhysicalDeviceSurfaceCapabilities2KHR(VkPhysicalDevice phys_dev,
         const VkPhysicalDeviceSurfaceInfo2KHR *surface_info, VkSurfaceCapabilities2KHR *capabilities)
 {
     VkPhysicalDeviceSurfaceInfo2KHR surface_info_host;
@@ -546,7 +546,7 @@ static VkResult X11DRV_vkGetPhysicalDeviceSurfaceCapabilities2KHR(VkPhysicalDevi
     return pvkGetPhysicalDeviceSurfaceCapabilitiesKHR(phys_dev, surface_info_host.surface, &capabilities->surfaceCapabilities);
 }
 
-static VkResult X11DRV_vkGetPhysicalDeviceSurfaceCapabilitiesKHR(VkPhysicalDevice phys_dev,
+static VkResult BROADWAYDRV_vkGetPhysicalDeviceSurfaceCapabilitiesKHR(VkPhysicalDevice phys_dev,
         VkSurfaceKHR surface, VkSurfaceCapabilitiesKHR *capabilities)
 {
     struct wine_vk_surface *x11_surface = surface_from_handle(surface);
@@ -559,7 +559,7 @@ static VkResult X11DRV_vkGetPhysicalDeviceSurfaceCapabilitiesKHR(VkPhysicalDevic
     return pvkGetPhysicalDeviceSurfaceCapabilitiesKHR(phys_dev, x11_surface->surface, capabilities);
 }
 
-static VkResult X11DRV_vkGetPhysicalDeviceSurfaceFormats2KHR(VkPhysicalDevice phys_dev,
+static VkResult BROADWAYDRV_vkGetPhysicalDeviceSurfaceFormats2KHR(VkPhysicalDevice phys_dev,
         const VkPhysicalDeviceSurfaceInfo2KHR *surface_info, uint32_t *count, VkSurfaceFormat2KHR *formats)
 {
     VkPhysicalDeviceSurfaceInfo2KHR surface_info_host = *surface_info;
@@ -594,7 +594,7 @@ static VkResult X11DRV_vkGetPhysicalDeviceSurfaceFormats2KHR(VkPhysicalDevice ph
     return result;
 }
 
-static VkResult X11DRV_vkGetPhysicalDeviceSurfaceFormatsKHR(VkPhysicalDevice phys_dev,
+static VkResult BROADWAYDRV_vkGetPhysicalDeviceSurfaceFormatsKHR(VkPhysicalDevice phys_dev,
         VkSurfaceKHR surface, uint32_t *count, VkSurfaceFormatKHR *formats)
 {
     struct wine_vk_surface *x11_surface = surface_from_handle(surface);
@@ -604,7 +604,7 @@ static VkResult X11DRV_vkGetPhysicalDeviceSurfaceFormatsKHR(VkPhysicalDevice phy
     return pvkGetPhysicalDeviceSurfaceFormatsKHR(phys_dev, x11_surface->surface, count, formats);
 }
 
-static VkResult X11DRV_vkGetPhysicalDeviceSurfacePresentModesKHR(VkPhysicalDevice phys_dev,
+static VkResult BROADWAYDRV_vkGetPhysicalDeviceSurfacePresentModesKHR(VkPhysicalDevice phys_dev,
         VkSurfaceKHR surface, uint32_t *count, VkPresentModeKHR *modes)
 {
     struct wine_vk_surface *x11_surface = surface_from_handle(surface);
@@ -614,7 +614,7 @@ static VkResult X11DRV_vkGetPhysicalDeviceSurfacePresentModesKHR(VkPhysicalDevic
     return pvkGetPhysicalDeviceSurfacePresentModesKHR(phys_dev, x11_surface->surface, count, modes);
 }
 
-static VkResult X11DRV_vkGetPhysicalDeviceSurfaceSupportKHR(VkPhysicalDevice phys_dev,
+static VkResult BROADWAYDRV_vkGetPhysicalDeviceSurfaceSupportKHR(VkPhysicalDevice phys_dev,
         uint32_t index, VkSurfaceKHR surface, VkBool32 *supported)
 {
     struct wine_vk_surface *x11_surface = surface_from_handle(surface);
@@ -624,7 +624,7 @@ static VkResult X11DRV_vkGetPhysicalDeviceSurfaceSupportKHR(VkPhysicalDevice phy
     return pvkGetPhysicalDeviceSurfaceSupportKHR(phys_dev, index, x11_surface->surface, supported);
 }
 
-static VkBool32 X11DRV_vkGetPhysicalDeviceWin32PresentationSupportKHR(VkPhysicalDevice phys_dev,
+static VkBool32 BROADWAYDRV_vkGetPhysicalDeviceWin32PresentationSupportKHR(VkPhysicalDevice phys_dev,
         uint32_t index)
 {
     TRACE("%p %u\n", phys_dev, index);
@@ -633,14 +633,14 @@ static VkBool32 X11DRV_vkGetPhysicalDeviceWin32PresentationSupportKHR(VkPhysical
             default_visual.visual->visualid);
 }
 
-static VkResult X11DRV_vkGetSwapchainImagesKHR(VkDevice device,
+static VkResult BROADWAYDRV_vkGetSwapchainImagesKHR(VkDevice device,
         VkSwapchainKHR swapchain, uint32_t *count, VkImage *images)
 {
     TRACE("%p, 0x%s %p %p\n", device, wine_dbgstr_longlong(swapchain), count, images);
     return pvkGetSwapchainImagesKHR(device, swapchain, count, images);
 }
 
-static VkResult X11DRV_vkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR *present_info)
+static VkResult BROADWAYDRV_vkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR *present_info)
 {
     VkResult res;
 
@@ -672,7 +672,7 @@ static VkResult X11DRV_vkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR *
     return res;
 }
 
-static VkSurfaceKHR X11DRV_wine_get_native_surface(VkSurfaceKHR surface)
+static VkSurfaceKHR BROADWAYDRV_wine_get_native_surface(VkSurfaceKHR surface)
 {
     struct wine_vk_surface *x11_surface = surface_from_handle(surface);
 
@@ -683,36 +683,36 @@ static VkSurfaceKHR X11DRV_wine_get_native_surface(VkSurfaceKHR surface)
 
 static const struct vulkan_funcs vulkan_funcs =
 {
-    X11DRV_vkCreateInstance,
-    X11DRV_vkCreateSwapchainKHR,
-    X11DRV_vkCreateWin32SurfaceKHR,
-    X11DRV_vkDestroyInstance,
-    X11DRV_vkDestroySurfaceKHR,
-    X11DRV_vkDestroySwapchainKHR,
-    X11DRV_vkEnumerateInstanceExtensionProperties,
-    X11DRV_vkGetDeviceGroupSurfacePresentModesKHR,
-    X11DRV_vkGetDeviceProcAddr,
-    X11DRV_vkGetInstanceProcAddr,
-    X11DRV_vkGetPhysicalDevicePresentRectanglesKHR,
-    X11DRV_vkGetPhysicalDeviceSurfaceCapabilities2KHR,
-    X11DRV_vkGetPhysicalDeviceSurfaceCapabilitiesKHR,
-    X11DRV_vkGetPhysicalDeviceSurfaceFormats2KHR,
-    X11DRV_vkGetPhysicalDeviceSurfaceFormatsKHR,
-    X11DRV_vkGetPhysicalDeviceSurfacePresentModesKHR,
-    X11DRV_vkGetPhysicalDeviceSurfaceSupportKHR,
-    X11DRV_vkGetPhysicalDeviceWin32PresentationSupportKHR,
-    X11DRV_vkGetSwapchainImagesKHR,
-    X11DRV_vkQueuePresentKHR,
+    BROADWAYDRV_vkCreateInstance,
+    BROADWAYDRV_vkCreateSwapchainKHR,
+    BROADWAYDRV_vkCreateWin32SurfaceKHR,
+    BROADWAYDRV_vkDestroyInstance,
+    BROADWAYDRV_vkDestroySurfaceKHR,
+    BROADWAYDRV_vkDestroySwapchainKHR,
+    BROADWAYDRV_vkEnumerateInstanceExtensionProperties,
+    BROADWAYDRV_vkGetDeviceGroupSurfacePresentModesKHR,
+    BROADWAYDRV_vkGetDeviceProcAddr,
+    BROADWAYDRV_vkGetInstanceProcAddr,
+    BROADWAYDRV_vkGetPhysicalDevicePresentRectanglesKHR,
+    BROADWAYDRV_vkGetPhysicalDeviceSurfaceCapabilities2KHR,
+    BROADWAYDRV_vkGetPhysicalDeviceSurfaceCapabilitiesKHR,
+    BROADWAYDRV_vkGetPhysicalDeviceSurfaceFormats2KHR,
+    BROADWAYDRV_vkGetPhysicalDeviceSurfaceFormatsKHR,
+    BROADWAYDRV_vkGetPhysicalDeviceSurfacePresentModesKHR,
+    BROADWAYDRV_vkGetPhysicalDeviceSurfaceSupportKHR,
+    BROADWAYDRV_vkGetPhysicalDeviceWin32PresentationSupportKHR,
+    BROADWAYDRV_vkGetSwapchainImagesKHR,
+    BROADWAYDRV_vkQueuePresentKHR,
 
-    X11DRV_wine_get_native_surface,
+    BROADWAYDRV_wine_get_native_surface,
 };
 
-static void *X11DRV_get_vk_device_proc_addr(const char *name)
+static void *BROADWAYDRV_get_vk_device_proc_addr(const char *name)
 {
     return get_vulkan_driver_device_proc_addr(&vulkan_funcs, name);
 }
 
-static void *X11DRV_get_vk_instance_proc_addr(VkInstance instance, const char *name)
+static void *BROADWAYDRV_get_vk_instance_proc_addr(VkInstance instance, const char *name)
 {
     return get_vulkan_driver_instance_proc_addr(&vulkan_funcs, instance, name);
 }

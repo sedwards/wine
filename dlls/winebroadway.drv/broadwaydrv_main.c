@@ -1,5 +1,5 @@
 /*
- * X11DRV initialization code
+ * BROADWAYDRV initialization code
  *
  * Copyright 1998 Patrik Stridvall
  * Copyright 2000 Alexandre Julliard
@@ -124,7 +124,7 @@ static struct list d3dkmt_vidpn_sources = LIST_INIT( d3dkmt_vidpn_sources );   /
 #define IS_OPTION_FALSE(ch) \
     ((ch) == 'n' || (ch) == 'N' || (ch) == 'f' || (ch) == 'F' || (ch) == '0')
 
-Atom X11DRV_Atoms[NB_XATOMS - FIRST_XATOM];
+Atom BROADWAYDRV_Atoms[NB_XATOMS - FIRST_XATOM];
 
 static const char * const atom_names[NB_XATOMS - FIRST_XATOM] =
 {
@@ -254,12 +254,12 @@ static inline BOOL ignore_error( Display *display, XErrorEvent *event )
 
 
 /***********************************************************************
- *		X11DRV_expect_error
+ *		BROADWAYDRV_expect_error
  *
  * Setup a callback function that will be called on an X error.  The
  * callback must return non-zero if the error is the one it expected.
  */
-void X11DRV_expect_error( Display *display, broadwaydrv_error_callback callback, void *arg )
+void BROADWAYDRV_expect_error( Display *display, broadwaydrv_error_callback callback, void *arg )
 {
     pthread_mutex_lock( &error_mutex );
     XLockDisplay( display );
@@ -272,12 +272,12 @@ void X11DRV_expect_error( Display *display, broadwaydrv_error_callback callback,
 
 
 /***********************************************************************
- *		X11DRV_check_error
+ *		BROADWAYDRV_check_error
  *
  * Check if an expected X11 error occurred; return non-zero if yes.
  * The caller is responsible for calling XSync first if necessary.
  */
-int X11DRV_check_error(void)
+int BROADWAYDRV_check_error(void)
 {
     int res = err_callback_result;
     err_callback = NULL;
@@ -550,7 +550,7 @@ MAKE_FUNCPTR(XCompositeNameWindowPixmap)
 static int xcomp_event_base;
 static int xcomp_error_base;
 
-static void X11DRV_XComposite_Init(void)
+static void BROADWAYDRV_XComposite_Init(void)
 {
     void *xcomposite_handle = dlopen(SONAME_LIBXCOMPOSITE, RTLD_NOW);
     if (!xcomposite_handle)
@@ -646,7 +646,7 @@ static void init_visuals( Display *display, int screen )
 }
 
 /***********************************************************************
- *           X11DRV process initialisation routine
+ *           BROADWAYDRV process initialisation routine
  */
 static NTSTATUS broadwaydrv_init( void *arg )
 {
@@ -683,7 +683,7 @@ static NTSTATUS broadwaydrv_init( void *arg )
     init_visuals( display, DefaultScreen( display ));
     screen_bpp = pixmap_formats[default_visual.depth]->bits_per_pixel;
 
-    XInternAtoms( display, (char **)atom_names, NB_XATOMS - FIRST_XATOM, False, X11DRV_Atoms );
+    XInternAtoms( display, (char **)atom_names, NB_XATOMS - FIRST_XATOM, False, BROADWAYDRV_Atoms );
 
     init_win_context();
 
@@ -691,32 +691,32 @@ static NTSTATUS broadwaydrv_init( void *arg )
 
     xinerama_init( DisplayWidth( display, default_visual.screen ),
                    DisplayHeight( display, default_visual.screen ));
-    X11DRV_Settings_Init();
+    BROADWAYDRV_Settings_Init();
 
     /* initialize XVidMode */
-    X11DRV_XF86VM_Init();
+    BROADWAYDRV_XF86VM_Init();
     /* initialize XRandR */
-    X11DRV_XRandR_Init();
+    BROADWAYDRV_XRandR_Init();
 #ifdef SONAME_LIBXCOMPOSITE
-    X11DRV_XComposite_Init();
+    BROADWAYDRV_XComposite_Init();
 #endif
-    X11DRV_XInput2_Init();
+    BROADWAYDRV_XInput2_Init();
 
     XkbUseExtension( gdi_display, NULL, NULL );
-    X11DRV_InitKeyboard( gdi_display );
+    BROADWAYDRV_InitKeyboard( gdi_display );
     if (use_xim) use_xim = xim_init( input_style );
 
     init_user_driver();
-    X11DRV_DisplayDevices_Init(FALSE);
+    BROADWAYDRV_DisplayDevices_Init(FALSE);
     *params->show_systray = show_systray;
     return STATUS_SUCCESS;
 }
 
 
 /***********************************************************************
- *           ThreadDetach (X11DRV.@)
+ *           ThreadDetach (BROADWAYDRV.@)
  */
-void X11DRV_ThreadDetach(void)
+void BROADWAYDRV_ThreadDetach(void)
 {
     struct broadwaydrv_thread_data *data = broadwaydrv_thread_data();
 
@@ -760,7 +760,7 @@ static void set_queue_display_fd( Display *display )
 
 
 /***********************************************************************
- *           X11DRV thread initialisation routine
+ *           BROADWAYDRV thread initialisation routine
  */
 struct broadwaydrv_thread_data *broadwaydrv_init_thread_data(void)
 {
@@ -795,9 +795,9 @@ struct broadwaydrv_thread_data *broadwaydrv_init_thread_data(void)
 
 
 /***********************************************************************
- *              SystemParametersInfo (X11DRV.@)
+ *              SystemParametersInfo (BROADWAYDRV.@)
  */
-BOOL X11DRV_SystemParametersInfo( UINT action, UINT int_param, void *ptr_param, UINT flags )
+BOOL BROADWAYDRV_SystemParametersInfo( UINT action, UINT int_param, void *ptr_param, UINT flags )
 {
     switch (action)
     {
@@ -830,7 +830,7 @@ BOOL X11DRV_SystemParametersInfo( UINT action, UINT int_param, void *ptr_param, 
     return FALSE;  /* let user32 handle it */
 }
 
-NTSTATUS X11DRV_D3DKMTCloseAdapter( const D3DKMT_CLOSEADAPTER *desc )
+NTSTATUS BROADWAYDRV_D3DKMTCloseAdapter( const D3DKMT_CLOSEADAPTER *desc )
 {
     const struct vulkan_funcs *vulkan_funcs = get_vulkan_driver(WINE_VULKAN_DRIVER_VERSION);
     struct x11_d3dkmt_adapter *adapter;
@@ -859,9 +859,9 @@ NTSTATUS X11DRV_D3DKMTCloseAdapter( const D3DKMT_CLOSEADAPTER *desc )
 }
 
 /**********************************************************************
- *           X11DRV_D3DKMTSetVidPnSourceOwner
+ *           BROADWAYDRV_D3DKMTSetVidPnSourceOwner
  */
-NTSTATUS X11DRV_D3DKMTSetVidPnSourceOwner( const D3DKMT_SETVIDPNSOURCEOWNER *desc )
+NTSTATUS BROADWAYDRV_D3DKMTSetVidPnSourceOwner( const D3DKMT_SETVIDPNSOURCEOWNER *desc )
 {
     struct d3dkmt_vidpn_source *source, *source2;
     NTSTATUS status = STATUS_SUCCESS;
@@ -974,9 +974,9 @@ done:
 }
 
 /**********************************************************************
- *           X11DRV_D3DKMTCheckVidPnExclusiveOwnership
+ *           BROADWAYDRV_D3DKMTCheckVidPnExclusiveOwnership
  */
-NTSTATUS X11DRV_D3DKMTCheckVidPnExclusiveOwnership( const D3DKMT_CHECKVIDPNEXCLUSIVEOWNERSHIP *desc )
+NTSTATUS BROADWAYDRV_D3DKMTCheckVidPnExclusiveOwnership( const D3DKMT_CHECKVIDPNEXCLUSIVEOWNERSHIP *desc )
 {
     struct d3dkmt_vidpn_source *source;
 
@@ -1127,7 +1127,7 @@ static BOOL get_vulkan_uuid_from_luid( const LUID *luid, GUID *uuid )
     return FALSE;
 }
 
-NTSTATUS X11DRV_D3DKMTOpenAdapterFromLuid( D3DKMT_OPENADAPTERFROMLUID *desc )
+NTSTATUS BROADWAYDRV_D3DKMTOpenAdapterFromLuid( D3DKMT_OPENADAPTERFROMLUID *desc )
 {
     static const char *extensions[] =
     {
@@ -1241,7 +1241,7 @@ done:
     return status;
 }
 
-NTSTATUS X11DRV_D3DKMTQueryVideoMemoryInfo( D3DKMT_QUERYVIDEOMEMORYINFO *desc )
+NTSTATUS BROADWAYDRV_D3DKMTQueryVideoMemoryInfo( D3DKMT_QUERYVIDEOMEMORYINFO *desc )
 {
     const struct vulkan_funcs *vulkan_funcs = get_vulkan_driver(WINE_VULKAN_DRIVER_VERSION);
     PFN_vkGetPhysicalDeviceMemoryProperties2KHR pvkGetPhysicalDeviceMemoryProperties2KHR;

@@ -19,8 +19,8 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#ifndef __WINE_X11DRV_H
-#define __WINE_X11DRV_H
+#ifndef __WINE_BROADWAYDRV_H
+#define __WINE_BROADWAYDRV_H
 
 #ifndef __WINE_CONFIG_H
 # error You must include config.h to use this header
@@ -121,7 +121,7 @@ typedef struct
     int           depth;       /* bit depth of the DC */
     ColorShifts  *color_shifts; /* color shifts of the DC */
     int           exposures;   /* count of graphics exposures operations */
-} X11DRV_PDEVICE;
+} BROADWAYDRV_PDEVICE;
 
 #define GAMMA_RAMP_SIZE 256
 
@@ -132,9 +132,9 @@ struct broadwaydrv_gamma_ramp
     WORD blue[GAMMA_RAMP_SIZE];
 };
 
-static inline X11DRV_PDEVICE *get_broadwaydrv_dev( PHYSDEV dev )
+static inline BROADWAYDRV_PDEVICE *get_broadwaydrv_dev( PHYSDEV dev )
 {
-    return (X11DRV_PDEVICE *)dev;
+    return (BROADWAYDRV_PDEVICE *)dev;
 }
 
 static inline void reset_bounds( RECT *bounds )
@@ -154,114 +154,114 @@ static inline void add_bounds_rect( RECT *bounds, const RECT *rect )
 
 /* Wine driver X11 functions */
 
-extern BOOL X11DRV_Arc( PHYSDEV dev, INT left, INT top, INT right,
+extern BOOL BROADWAYDRV_Arc( PHYSDEV dev, INT left, INT top, INT right,
                         INT bottom, INT xstart, INT ystart, INT xend, INT yend ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_Chord( PHYSDEV dev, INT left, INT top, INT right, INT bottom,
+extern BOOL BROADWAYDRV_Chord( PHYSDEV dev, INT left, INT top, INT right, INT bottom,
                           INT xstart, INT ystart, INT xend, INT yend ) DECLSPEC_HIDDEN;
-extern NTSTATUS X11DRV_D3DKMTCheckVidPnExclusiveOwnership( const D3DKMT_CHECKVIDPNEXCLUSIVEOWNERSHIP *desc ) DECLSPEC_HIDDEN;
-extern NTSTATUS X11DRV_D3DKMTCloseAdapter( const D3DKMT_CLOSEADAPTER *desc ) DECLSPEC_HIDDEN;
-extern NTSTATUS X11DRV_D3DKMTOpenAdapterFromLuid( D3DKMT_OPENADAPTERFROMLUID *desc ) DECLSPEC_HIDDEN;
-extern NTSTATUS X11DRV_D3DKMTQueryVideoMemoryInfo( D3DKMT_QUERYVIDEOMEMORYINFO *desc ) DECLSPEC_HIDDEN;
-extern NTSTATUS X11DRV_D3DKMTSetVidPnSourceOwner( const D3DKMT_SETVIDPNSOURCEOWNER *desc ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_Ellipse( PHYSDEV dev, INT left, INT top, INT right, INT bottom ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_ExtFloodFill( PHYSDEV dev, INT x, INT y, COLORREF color, UINT fillType ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_FillPath( PHYSDEV dev ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_GetDeviceGammaRamp( PHYSDEV dev, LPVOID ramp ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_GetICMProfile( PHYSDEV dev, BOOL allow_default, LPDWORD size, LPWSTR filename ) DECLSPEC_HIDDEN;
-extern DWORD X11DRV_GetImage( PHYSDEV dev, BITMAPINFO *info,
+extern NTSTATUS BROADWAYDRV_D3DKMTCheckVidPnExclusiveOwnership( const D3DKMT_CHECKVIDPNEXCLUSIVEOWNERSHIP *desc ) DECLSPEC_HIDDEN;
+extern NTSTATUS BROADWAYDRV_D3DKMTCloseAdapter( const D3DKMT_CLOSEADAPTER *desc ) DECLSPEC_HIDDEN;
+extern NTSTATUS BROADWAYDRV_D3DKMTOpenAdapterFromLuid( D3DKMT_OPENADAPTERFROMLUID *desc ) DECLSPEC_HIDDEN;
+extern NTSTATUS BROADWAYDRV_D3DKMTQueryVideoMemoryInfo( D3DKMT_QUERYVIDEOMEMORYINFO *desc ) DECLSPEC_HIDDEN;
+extern NTSTATUS BROADWAYDRV_D3DKMTSetVidPnSourceOwner( const D3DKMT_SETVIDPNSOURCEOWNER *desc ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_Ellipse( PHYSDEV dev, INT left, INT top, INT right, INT bottom ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_ExtFloodFill( PHYSDEV dev, INT x, INT y, COLORREF color, UINT fillType ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_FillPath( PHYSDEV dev ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_GetDeviceGammaRamp( PHYSDEV dev, LPVOID ramp ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_GetICMProfile( PHYSDEV dev, BOOL allow_default, LPDWORD size, LPWSTR filename ) DECLSPEC_HIDDEN;
+extern DWORD BROADWAYDRV_GetImage( PHYSDEV dev, BITMAPINFO *info,
                               struct gdi_image_bits *bits, struct bitblt_coords *src ) DECLSPEC_HIDDEN;
-extern COLORREF X11DRV_GetNearestColor( PHYSDEV dev, COLORREF color ) DECLSPEC_HIDDEN;
-extern UINT X11DRV_GetSystemPaletteEntries( PHYSDEV dev, UINT start, UINT count, LPPALETTEENTRY entries ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_GradientFill( PHYSDEV dev, TRIVERTEX *vert_array, ULONG nvert,
+extern COLORREF BROADWAYDRV_GetNearestColor( PHYSDEV dev, COLORREF color ) DECLSPEC_HIDDEN;
+extern UINT BROADWAYDRV_GetSystemPaletteEntries( PHYSDEV dev, UINT start, UINT count, LPPALETTEENTRY entries ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_GradientFill( PHYSDEV dev, TRIVERTEX *vert_array, ULONG nvert,
                                  void *grad_array, ULONG ngrad, ULONG mode ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_LineTo( PHYSDEV dev, INT x, INT y) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_PaintRgn( PHYSDEV dev, HRGN hrgn ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_PatBlt( PHYSDEV dev, struct bitblt_coords *dst, DWORD rop ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_Pie( PHYSDEV dev, INT left, INT top, INT right,
+extern BOOL BROADWAYDRV_LineTo( PHYSDEV dev, INT x, INT y) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_PaintRgn( PHYSDEV dev, HRGN hrgn ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_PatBlt( PHYSDEV dev, struct bitblt_coords *dst, DWORD rop ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_Pie( PHYSDEV dev, INT left, INT top, INT right,
                         INT bottom, INT xstart, INT ystart, INT xend, INT yend ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_PolyPolygon( PHYSDEV dev, const POINT* pt, const INT* counts, UINT polygons) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_PolyPolyline( PHYSDEV dev, const POINT* pt, const DWORD* counts, DWORD polylines) DECLSPEC_HIDDEN;
-extern DWORD X11DRV_PutImage( PHYSDEV dev, HRGN clip, BITMAPINFO *info,
+extern BOOL BROADWAYDRV_PolyPolygon( PHYSDEV dev, const POINT* pt, const INT* counts, UINT polygons) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_PolyPolyline( PHYSDEV dev, const POINT* pt, const DWORD* counts, DWORD polylines) DECLSPEC_HIDDEN;
+extern DWORD BROADWAYDRV_PutImage( PHYSDEV dev, HRGN clip, BITMAPINFO *info,
                               const struct gdi_image_bits *bits, struct bitblt_coords *src,
                               struct bitblt_coords *dst, DWORD rop ) DECLSPEC_HIDDEN;
-extern UINT X11DRV_RealizeDefaultPalette( PHYSDEV dev ) DECLSPEC_HIDDEN;
-extern UINT X11DRV_RealizePalette( PHYSDEV dev, HPALETTE hpal, BOOL primary ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_Rectangle(PHYSDEV dev, INT left, INT top, INT right, INT bottom) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_RoundRect( PHYSDEV dev, INT left, INT top, INT right, INT bottom,
+extern UINT BROADWAYDRV_RealizeDefaultPalette( PHYSDEV dev ) DECLSPEC_HIDDEN;
+extern UINT BROADWAYDRV_RealizePalette( PHYSDEV dev, HPALETTE hpal, BOOL primary ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_Rectangle(PHYSDEV dev, INT left, INT top, INT right, INT bottom) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_RoundRect( PHYSDEV dev, INT left, INT top, INT right, INT bottom,
                               INT ell_width, INT ell_height ) DECLSPEC_HIDDEN;
-extern HBRUSH X11DRV_SelectBrush( PHYSDEV dev, HBRUSH hbrush, const struct brush_pattern *pattern ) DECLSPEC_HIDDEN;
-extern HPEN X11DRV_SelectPen( PHYSDEV dev, HPEN hpen, const struct brush_pattern *pattern ) DECLSPEC_HIDDEN;
-extern COLORREF X11DRV_SetDCBrushColor( PHYSDEV dev, COLORREF crColor ) DECLSPEC_HIDDEN;
-extern COLORREF X11DRV_SetDCPenColor( PHYSDEV dev, COLORREF crColor ) DECLSPEC_HIDDEN;
-extern void X11DRV_SetDeviceClipping( PHYSDEV dev, HRGN rgn ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_SetDeviceGammaRamp( PHYSDEV dev, LPVOID ramp ) DECLSPEC_HIDDEN;
-extern COLORREF X11DRV_SetPixel( PHYSDEV dev, INT x, INT y, COLORREF color ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_StretchBlt( PHYSDEV dst_dev, struct bitblt_coords *dst,
+extern HBRUSH BROADWAYDRV_SelectBrush( PHYSDEV dev, HBRUSH hbrush, const struct brush_pattern *pattern ) DECLSPEC_HIDDEN;
+extern HPEN BROADWAYDRV_SelectPen( PHYSDEV dev, HPEN hpen, const struct brush_pattern *pattern ) DECLSPEC_HIDDEN;
+extern COLORREF BROADWAYDRV_SetDCBrushColor( PHYSDEV dev, COLORREF crColor ) DECLSPEC_HIDDEN;
+extern COLORREF BROADWAYDRV_SetDCPenColor( PHYSDEV dev, COLORREF crColor ) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_SetDeviceClipping( PHYSDEV dev, HRGN rgn ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_SetDeviceGammaRamp( PHYSDEV dev, LPVOID ramp ) DECLSPEC_HIDDEN;
+extern COLORREF BROADWAYDRV_SetPixel( PHYSDEV dev, INT x, INT y, COLORREF color ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_StretchBlt( PHYSDEV dst_dev, struct bitblt_coords *dst,
                                PHYSDEV src_dev, struct bitblt_coords *src, DWORD rop ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_StrokeAndFillPath( PHYSDEV dev ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_StrokePath( PHYSDEV dev ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_UnrealizePalette( HPALETTE hpal ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_StrokeAndFillPath( PHYSDEV dev ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_StrokePath( PHYSDEV dev ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_UnrealizePalette( HPALETTE hpal ) DECLSPEC_HIDDEN;
 
-extern BOOL X11DRV_ActivateKeyboardLayout( HKL hkl, UINT flags ) DECLSPEC_HIDDEN;
-extern void X11DRV_Beep(void) DECLSPEC_HIDDEN;
-extern INT X11DRV_GetKeyNameText( LONG lparam, LPWSTR buffer, INT size ) DECLSPEC_HIDDEN;
-extern UINT X11DRV_MapVirtualKeyEx( UINT code, UINT map_type, HKL hkl ) DECLSPEC_HIDDEN;
-extern INT X11DRV_ToUnicodeEx( UINT virtKey, UINT scanCode, const BYTE *lpKeyState,
+extern BOOL BROADWAYDRV_ActivateKeyboardLayout( HKL hkl, UINT flags ) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_Beep(void) DECLSPEC_HIDDEN;
+extern INT BROADWAYDRV_GetKeyNameText( LONG lparam, LPWSTR buffer, INT size ) DECLSPEC_HIDDEN;
+extern UINT BROADWAYDRV_MapVirtualKeyEx( UINT code, UINT map_type, HKL hkl ) DECLSPEC_HIDDEN;
+extern INT BROADWAYDRV_ToUnicodeEx( UINT virtKey, UINT scanCode, const BYTE *lpKeyState,
                                LPWSTR bufW, int bufW_size, UINT flags, HKL hkl ) DECLSPEC_HIDDEN;
-extern UINT X11DRV_ImeToAsciiEx( UINT vkey, UINT vsc, const BYTE *state,
+extern UINT BROADWAYDRV_ImeToAsciiEx( UINT vkey, UINT vsc, const BYTE *state,
                                  COMPOSITIONSTRING *compstr, HIMC himc ) DECLSPEC_HIDDEN;
-extern SHORT X11DRV_VkKeyScanEx( WCHAR wChar, HKL hkl ) DECLSPEC_HIDDEN;
-extern void X11DRV_NotifyIMEStatus( HWND hwnd, UINT status ) DECLSPEC_HIDDEN;
-extern void X11DRV_DestroyCursorIcon( HCURSOR handle ) DECLSPEC_HIDDEN;
-extern void X11DRV_SetCursor( HWND hwnd, HCURSOR handle ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_SetCursorPos( INT x, INT y ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_GetCursorPos( LPPOINT pos ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_ClipCursor( const RECT *clip, BOOL reset ) DECLSPEC_HIDDEN;
-extern LONG X11DRV_ChangeDisplaySettings( LPDEVMODEW displays, LPCWSTR primary_name, HWND hwnd, DWORD flags, LPVOID lpvoid ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_GetCurrentDisplaySettings( LPCWSTR name, BOOL is_primary, LPDEVMODEW devmode ) DECLSPEC_HIDDEN;
-extern INT X11DRV_GetDisplayDepth( LPCWSTR name, BOOL is_primary ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_UpdateDisplayDevices( const struct gdi_device_manager *device_manager,
+extern SHORT BROADWAYDRV_VkKeyScanEx( WCHAR wChar, HKL hkl ) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_NotifyIMEStatus( HWND hwnd, UINT status ) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_DestroyCursorIcon( HCURSOR handle ) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_SetCursor( HWND hwnd, HCURSOR handle ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_SetCursorPos( INT x, INT y ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_GetCursorPos( LPPOINT pos ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_ClipCursor( const RECT *clip, BOOL reset ) DECLSPEC_HIDDEN;
+extern LONG BROADWAYDRV_ChangeDisplaySettings( LPDEVMODEW displays, LPCWSTR primary_name, HWND hwnd, DWORD flags, LPVOID lpvoid ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_GetCurrentDisplaySettings( LPCWSTR name, BOOL is_primary, LPDEVMODEW devmode ) DECLSPEC_HIDDEN;
+extern INT BROADWAYDRV_GetDisplayDepth( LPCWSTR name, BOOL is_primary ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_UpdateDisplayDevices( const struct gdi_device_manager *device_manager,
                                          BOOL force, void *param ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_CreateDesktop( const WCHAR *name, UINT width, UINT height ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_CreateWindow( HWND hwnd ) DECLSPEC_HIDDEN;
-extern LRESULT X11DRV_DesktopWindowProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp ) DECLSPEC_HIDDEN;
-extern void X11DRV_DestroyWindow( HWND hwnd ) DECLSPEC_HIDDEN;
-extern void X11DRV_FlashWindowEx( PFLASHWINFO pfinfo ) DECLSPEC_HIDDEN;
-extern void X11DRV_GetDC( HDC hdc, HWND hwnd, HWND top, const RECT *win_rect,
+extern BOOL BROADWAYDRV_CreateDesktop( const WCHAR *name, UINT width, UINT height ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_CreateWindow( HWND hwnd ) DECLSPEC_HIDDEN;
+extern LRESULT BROADWAYDRV_DesktopWindowProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp ) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_DestroyWindow( HWND hwnd ) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_FlashWindowEx( PFLASHWINFO pfinfo ) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_GetDC( HDC hdc, HWND hwnd, HWND top, const RECT *win_rect,
                           const RECT *top_rect, DWORD flags ) DECLSPEC_HIDDEN;
-extern void X11DRV_ReleaseDC( HWND hwnd, HDC hdc ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_ScrollDC( HDC hdc, INT dx, INT dy, HRGN update ) DECLSPEC_HIDDEN;
-extern void X11DRV_SetCapture( HWND hwnd, UINT flags ) DECLSPEC_HIDDEN;
-extern void X11DRV_SetDesktopWindow( HWND hwnd ) DECLSPEC_HIDDEN;
-extern void X11DRV_SetLayeredWindowAttributes( HWND hwnd, COLORREF key, BYTE alpha,
+extern void BROADWAYDRV_ReleaseDC( HWND hwnd, HDC hdc ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_ScrollDC( HDC hdc, INT dx, INT dy, HRGN update ) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_SetCapture( HWND hwnd, UINT flags ) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_SetDesktopWindow( HWND hwnd ) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_SetLayeredWindowAttributes( HWND hwnd, COLORREF key, BYTE alpha,
                                                DWORD flags ) DECLSPEC_HIDDEN;
-extern void X11DRV_SetParent( HWND hwnd, HWND parent, HWND old_parent ) DECLSPEC_HIDDEN;
-extern void X11DRV_SetWindowIcon( HWND hwnd, UINT type, HICON icon ) DECLSPEC_HIDDEN;
-extern void X11DRV_SetWindowRgn( HWND hwnd, HRGN hrgn, BOOL redraw ) DECLSPEC_HIDDEN;
-extern void X11DRV_SetWindowStyle( HWND hwnd, INT offset, STYLESTRUCT *style ) DECLSPEC_HIDDEN;
-extern void X11DRV_SetWindowText( HWND hwnd, LPCWSTR text ) DECLSPEC_HIDDEN;
-extern UINT X11DRV_ShowWindow( HWND hwnd, INT cmd, RECT *rect, UINT swp ) DECLSPEC_HIDDEN;
-extern LRESULT X11DRV_SysCommand( HWND hwnd, WPARAM wparam, LPARAM lparam ) DECLSPEC_HIDDEN;
-extern LRESULT X11DRV_ClipboardWindowProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp ) DECLSPEC_HIDDEN;
-extern void X11DRV_UpdateClipboard(void) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_UpdateLayeredWindow( HWND hwnd, const UPDATELAYEREDWINDOWINFO *info,
+extern void BROADWAYDRV_SetParent( HWND hwnd, HWND parent, HWND old_parent ) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_SetWindowIcon( HWND hwnd, UINT type, HICON icon ) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_SetWindowRgn( HWND hwnd, HRGN hrgn, BOOL redraw ) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_SetWindowStyle( HWND hwnd, INT offset, STYLESTRUCT *style ) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_SetWindowText( HWND hwnd, LPCWSTR text ) DECLSPEC_HIDDEN;
+extern UINT BROADWAYDRV_ShowWindow( HWND hwnd, INT cmd, RECT *rect, UINT swp ) DECLSPEC_HIDDEN;
+extern LRESULT BROADWAYDRV_SysCommand( HWND hwnd, WPARAM wparam, LPARAM lparam ) DECLSPEC_HIDDEN;
+extern LRESULT BROADWAYDRV_ClipboardWindowProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp ) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_UpdateClipboard(void) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_UpdateLayeredWindow( HWND hwnd, const UPDATELAYEREDWINDOWINFO *info,
                                         const RECT *window_rect ) DECLSPEC_HIDDEN;
-extern LRESULT X11DRV_WindowMessage( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_WindowPosChanging( HWND hwnd, HWND insert_after, UINT swp_flags,
+extern LRESULT BROADWAYDRV_WindowMessage( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_WindowPosChanging( HWND hwnd, HWND insert_after, UINT swp_flags,
                                       const RECT *window_rect, const RECT *client_rect, RECT *visible_rect,
                                       struct window_surface **surface ) DECLSPEC_HIDDEN;
-extern void X11DRV_WindowPosChanged( HWND hwnd, HWND insert_after, UINT swp_flags,
+extern void BROADWAYDRV_WindowPosChanged( HWND hwnd, HWND insert_after, UINT swp_flags,
                                      const RECT *rectWindow, const RECT *rectClient,
                                      const RECT *visible_rect, const RECT *valid_rects,
                                      struct window_surface *surface ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_SystemParametersInfo( UINT action, UINT int_param, void *ptr_param,
+extern BOOL BROADWAYDRV_SystemParametersInfo( UINT action, UINT int_param, void *ptr_param,
                                          UINT flags ) DECLSPEC_HIDDEN;
-extern void X11DRV_ThreadDetach(void) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_ThreadDetach(void) DECLSPEC_HIDDEN;
 
 /* X11 driver internal functions */
 
-extern void X11DRV_Xcursor_Init(void) DECLSPEC_HIDDEN;
-extern void X11DRV_XInput2_Init(void) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_Xcursor_Init(void) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_XInput2_Init(void) DECLSPEC_HIDDEN;
 
 extern DWORD copy_image_bits( BITMAPINFO *info, BOOL is_r8g8b8, XImage *image,
                               const struct gdi_image_bits *src_bits, struct gdi_image_bits *dst_bits,
@@ -275,22 +275,22 @@ extern struct window_surface *create_surface( Window window, const XVisualInfo *
 extern void set_surface_color_key( struct window_surface *window_surface, COLORREF color_key ) DECLSPEC_HIDDEN;
 extern HRGN expose_surface( struct window_surface *window_surface, const RECT *rect ) DECLSPEC_HIDDEN;
 
-extern RGNDATA *X11DRV_GetRegionData( HRGN hrgn, HDC hdc_lptodp ) DECLSPEC_HIDDEN;
-extern BOOL add_extra_clipping_region( X11DRV_PDEVICE *dev, HRGN rgn ) DECLSPEC_HIDDEN;
-extern void restore_clipping_region( X11DRV_PDEVICE *dev ) DECLSPEC_HIDDEN;
-extern void add_device_bounds( X11DRV_PDEVICE *dev, const RECT *rect ) DECLSPEC_HIDDEN;
+extern RGNDATA *BROADWAYDRV_GetRegionData( HRGN hrgn, HDC hdc_lptodp ) DECLSPEC_HIDDEN;
+extern BOOL add_extra_clipping_region( BROADWAYDRV_PDEVICE *dev, HRGN rgn ) DECLSPEC_HIDDEN;
+extern void restore_clipping_region( BROADWAYDRV_PDEVICE *dev ) DECLSPEC_HIDDEN;
+extern void add_device_bounds( BROADWAYDRV_PDEVICE *dev, const RECT *rect ) DECLSPEC_HIDDEN;
 
-extern void execute_rop( X11DRV_PDEVICE *physdev, Pixmap src_pixmap, GC gc, const RECT *visrect, DWORD rop ) DECLSPEC_HIDDEN;
+extern void execute_rop( BROADWAYDRV_PDEVICE *physdev, Pixmap src_pixmap, GC gc, const RECT *visrect, DWORD rop ) DECLSPEC_HIDDEN;
 
-extern BOOL X11DRV_SetupGCForPatBlt( X11DRV_PDEVICE *physDev, GC gc, BOOL fMapColors ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_SetupGCForBrush( X11DRV_PDEVICE *physDev ) DECLSPEC_HIDDEN;
-extern INT X11DRV_XWStoDS( HDC hdc, INT width ) DECLSPEC_HIDDEN;
-extern INT X11DRV_YWStoDS( HDC hdc, INT height ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_SetupGCForPatBlt( BROADWAYDRV_PDEVICE *physDev, GC gc, BOOL fMapColors ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_SetupGCForBrush( BROADWAYDRV_PDEVICE *physDev ) DECLSPEC_HIDDEN;
+extern INT BROADWAYDRV_XWStoDS( HDC hdc, INT width ) DECLSPEC_HIDDEN;
+extern INT BROADWAYDRV_YWStoDS( HDC hdc, INT height ) DECLSPEC_HIDDEN;
 
 extern BOOL client_side_graphics DECLSPEC_HIDDEN;
 extern BOOL client_side_with_render DECLSPEC_HIDDEN;
 extern BOOL shape_layered_windows DECLSPEC_HIDDEN;
-extern const struct gdi_dc_funcs *X11DRV_XRender_Init(void) DECLSPEC_HIDDEN;
+extern const struct gdi_dc_funcs *BROADWAYDRV_XRender_Init(void) DECLSPEC_HIDDEN;
 
 extern struct opengl_funcs *get_glx_driver(UINT) DECLSPEC_HIDDEN;
 extern const struct vulkan_funcs *get_vulkan_driver(UINT) DECLSPEC_HIDDEN;
@@ -307,25 +307,25 @@ extern Display *gdi_display DECLSPEC_HIDDEN;  /* display to use for all GDI func
 
 /* X11 GDI palette driver */
 
-#define X11DRV_PALETTE_FIXED    0x0001 /* read-only colormap - have to use XAllocColor (if not virtual) */
-#define X11DRV_PALETTE_VIRTUAL  0x0002 /* no mapping needed - pixel == pixel color */
+#define BROADWAYDRV_PALETTE_FIXED    0x0001 /* read-only colormap - have to use XAllocColor (if not virtual) */
+#define BROADWAYDRV_PALETTE_VIRTUAL  0x0002 /* no mapping needed - pixel == pixel color */
 
-#define X11DRV_PALETTE_PRIVATE  0x1000 /* private colormap, identity mapping */
+#define BROADWAYDRV_PALETTE_PRIVATE  0x1000 /* private colormap, identity mapping */
 
-extern UINT16 X11DRV_PALETTE_PaletteFlags DECLSPEC_HIDDEN;
+extern UINT16 BROADWAYDRV_PALETTE_PaletteFlags DECLSPEC_HIDDEN;
 
-extern int *X11DRV_PALETTE_PaletteToXPixel DECLSPEC_HIDDEN;
-extern int *X11DRV_PALETTE_XPixelToPalette DECLSPEC_HIDDEN;
-extern ColorShifts X11DRV_PALETTE_default_shifts DECLSPEC_HIDDEN;
+extern int *BROADWAYDRV_PALETTE_PaletteToXPixel DECLSPEC_HIDDEN;
+extern int *BROADWAYDRV_PALETTE_XPixelToPalette DECLSPEC_HIDDEN;
+extern ColorShifts BROADWAYDRV_PALETTE_default_shifts DECLSPEC_HIDDEN;
 
-extern int X11DRV_PALETTE_mapEGAPixel[16] DECLSPEC_HIDDEN;
+extern int BROADWAYDRV_PALETTE_mapEGAPixel[16] DECLSPEC_HIDDEN;
 
-extern int X11DRV_PALETTE_Init(void) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_IsSolidColor(COLORREF color) DECLSPEC_HIDDEN;
+extern int BROADWAYDRV_PALETTE_Init(void) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_IsSolidColor(COLORREF color) DECLSPEC_HIDDEN;
 
-extern COLORREF X11DRV_PALETTE_ToLogical(X11DRV_PDEVICE *physDev, int pixel) DECLSPEC_HIDDEN;
-extern int X11DRV_PALETTE_ToPhysical(X11DRV_PDEVICE *physDev, COLORREF color) DECLSPEC_HIDDEN;
-extern COLORREF X11DRV_PALETTE_GetColor( X11DRV_PDEVICE *physDev, COLORREF color ) DECLSPEC_HIDDEN;
+extern COLORREF BROADWAYDRV_PALETTE_ToLogical(BROADWAYDRV_PDEVICE *physDev, int pixel) DECLSPEC_HIDDEN;
+extern int BROADWAYDRV_PALETTE_ToPhysical(BROADWAYDRV_PDEVICE *physDev, COLORREF color) DECLSPEC_HIDDEN;
+extern COLORREF BROADWAYDRV_PALETTE_GetColor( BROADWAYDRV_PDEVICE *physDev, COLORREF color ) DECLSPEC_HIDDEN;
 extern int *get_window_surface_mapping( int bpp, int *mapping ) DECLSPEC_HIDDEN;
 
 static inline const char *debugstr_color( COLORREF color )
@@ -339,19 +339,19 @@ static inline const char *debugstr_color( COLORREF color )
 
 /* GDI escapes */
 
-#define X11DRV_ESCAPE 6789
+#define BROADWAYDRV_ESCAPE 6789
 enum broadwaydrv_escape_codes
 {
-    X11DRV_SET_DRAWABLE,     /* set current drawable for a DC */
-    X11DRV_GET_DRAWABLE,     /* get current drawable for a DC */
-    X11DRV_START_EXPOSURES,  /* start graphics exposures */
-    X11DRV_END_EXPOSURES,    /* end graphics exposures */
-    X11DRV_FLUSH_GL_DRAWABLE /* flush changes made to the gl drawable */
+    BROADWAYDRV_SET_DRAWABLE,     /* set current drawable for a DC */
+    BROADWAYDRV_GET_DRAWABLE,     /* get current drawable for a DC */
+    BROADWAYDRV_START_EXPOSURES,  /* start graphics exposures */
+    BROADWAYDRV_END_EXPOSURES,    /* end graphics exposures */
+    BROADWAYDRV_FLUSH_GL_DRAWABLE /* flush changes made to the gl drawable */
 };
 
 struct broadwaydrv_escape_set_drawable
 {
-    enum broadwaydrv_escape_codes code;         /* escape code (X11DRV_SET_DRAWABLE) */
+    enum broadwaydrv_escape_codes code;         /* escape code (BROADWAYDRV_SET_DRAWABLE) */
     Drawable                 drawable;     /* X drawable */
     int                      mode;         /* ClipByChildren or IncludeInferiors */
     RECT                     dc_rect;      /* DC rectangle relative to drawable */
@@ -359,7 +359,7 @@ struct broadwaydrv_escape_set_drawable
 
 struct broadwaydrv_escape_get_drawable
 {
-    enum broadwaydrv_escape_codes code;         /* escape code (X11DRV_GET_DRAWABLE) */
+    enum broadwaydrv_escape_codes code;         /* escape code (BROADWAYDRV_GET_DRAWABLE) */
     Drawable                 drawable;     /* X drawable */
     Drawable                 gl_drawable;  /* GL drawable */
     int                      pixel_format; /* internal GL pixel format */
@@ -367,7 +367,7 @@ struct broadwaydrv_escape_get_drawable
 
 struct broadwaydrv_escape_flush_gl_drawable
 {
-    enum broadwaydrv_escape_codes code;         /* escape code (X11DRV_FLUSH_GL_DRAWABLE) */
+    enum broadwaydrv_escape_codes code;         /* escape code (BROADWAYDRV_FLUSH_GL_DRAWABLE) */
     Drawable                 gl_drawable;  /* GL drawable */
     BOOL                     flush;        /* flush X11 before copying */
 };
@@ -551,28 +551,28 @@ enum broadwaydrv_atoms
     NB_XATOMS
 };
 
-extern Atom X11DRV_Atoms[NB_XATOMS - FIRST_XATOM] DECLSPEC_HIDDEN;
+extern Atom BROADWAYDRV_Atoms[NB_XATOMS - FIRST_XATOM] DECLSPEC_HIDDEN;
 extern Atom systray_atom DECLSPEC_HIDDEN;
 
-#define broadwaydrv_atom(name) (X11DRV_Atoms[XATOM_##name - FIRST_XATOM])
+#define broadwaydrv_atom(name) (BROADWAYDRV_Atoms[XATOM_##name - FIRST_XATOM])
 
 /* X11 event driver */
 
 typedef BOOL (*broadwaydrv_event_handler)( HWND hwnd, XEvent *event );
 
-extern void X11DRV_register_event_handler( int type, broadwaydrv_event_handler handler, const char *name ) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_register_event_handler( int type, broadwaydrv_event_handler handler, const char *name ) DECLSPEC_HIDDEN;
 
-extern BOOL X11DRV_ButtonPress( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_ButtonRelease( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_MotionNotify( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_EnterNotify( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_KeyEvent( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_KeymapNotify( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_DestroyNotify( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_SelectionRequest( HWND hWnd, XEvent *event ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_SelectionClear( HWND hWnd, XEvent *event ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_MappingNotify( HWND hWnd, XEvent *event ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_GenericEvent( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_ButtonPress( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_ButtonRelease( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_MotionNotify( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_EnterNotify( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_KeyEvent( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_KeymapNotify( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_DestroyNotify( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_SelectionRequest( HWND hWnd, XEvent *event ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_SelectionClear( HWND hWnd, XEvent *event ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_MappingNotify( HWND hWnd, XEvent *event ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_GenericEvent( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
 
 extern int xinput2_opcode DECLSPEC_HIDDEN;
 extern Bool (*pXGetEventData)( Display *display, XEvent /*XGenericEventCookie*/ *event ) DECLSPEC_HIDDEN;
@@ -583,11 +583,11 @@ extern DWORD EVENT_x11_time_to_win32_time(Time time) DECLSPEC_HIDDEN;
 /* X11 driver private messages, must be in the range 0x80001000..0x80001fff */
 enum broadwaydrv_window_messages
 {
-    WM_X11DRV_UPDATE_CLIPBOARD = 0x80001000,
-    WM_X11DRV_SET_WIN_REGION,
-    WM_X11DRV_DESKTOP_RESIZED,
-    WM_X11DRV_DELETE_TAB,
-    WM_X11DRV_ADD_TAB
+    WM_BROADWAYDRV_UPDATE_CLIPBOARD = 0x80001000,
+    WM_BROADWAYDRV_SET_WIN_REGION,
+    WM_BROADWAYDRV_DESKTOP_RESIZED,
+    WM_BROADWAYDRV_DELETE_TAB,
+    WM_BROADWAYDRV_ADD_TAB
 };
 
 /* _NET_WM_STATE properties that we keep track of */
@@ -638,7 +638,7 @@ struct broadwaydrv_win_data
 
 extern struct broadwaydrv_win_data *get_win_data( HWND hwnd ) DECLSPEC_HIDDEN;
 extern void release_win_data( struct broadwaydrv_win_data *data ) DECLSPEC_HIDDEN;
-extern Window X11DRV_get_whole_window( HWND hwnd ) DECLSPEC_HIDDEN;
+extern Window BROADWAYDRV_get_whole_window( HWND hwnd ) DECLSPEC_HIDDEN;
 extern Window get_dummy_parent(void) DECLSPEC_HIDDEN;
 
 extern void sync_gl_drawable( HWND hwnd, BOOL known_child ) DECLSPEC_HIDDEN;
@@ -677,20 +677,20 @@ extern XContext winContext DECLSPEC_HIDDEN;
 extern XContext cursor_context DECLSPEC_HIDDEN;
 
 extern BOOL is_current_process_focused(void) DECLSPEC_HIDDEN;
-extern void X11DRV_SetFocus( HWND hwnd ) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_SetFocus( HWND hwnd ) DECLSPEC_HIDDEN;
 extern void set_window_cursor( Window window, HCURSOR handle ) DECLSPEC_HIDDEN;
 extern void retry_grab_clipping_window(void) DECLSPEC_HIDDEN;
 extern void ungrab_clipping_window(void) DECLSPEC_HIDDEN;
 extern void move_resize_window( HWND hwnd, int dir ) DECLSPEC_HIDDEN;
-extern void X11DRV_InitKeyboard( Display *display ) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_ProcessEvents( DWORD mask ) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_InitKeyboard( Display *display ) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_ProcessEvents( DWORD mask ) DECLSPEC_HIDDEN;
 extern HWND *build_hwnd_list(void) DECLSPEC_HIDDEN;
 
 typedef int (*broadwaydrv_error_callback)( Display *display, XErrorEvent *event, void *arg );
 
-extern void X11DRV_expect_error( Display *display, broadwaydrv_error_callback callback, void *arg ) DECLSPEC_HIDDEN;
-extern int X11DRV_check_error(void) DECLSPEC_HIDDEN;
-extern void X11DRV_X_to_window_rect( struct broadwaydrv_win_data *data, RECT *rect, int x, int y, int cx, int cy ) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_expect_error( Display *display, broadwaydrv_error_callback callback, void *arg ) DECLSPEC_HIDDEN;
+extern int BROADWAYDRV_check_error(void) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_X_to_window_rect( struct broadwaydrv_win_data *data, RECT *rect, int x, int y, int cx, int cy ) DECLSPEC_HIDDEN;
 extern POINT virtual_screen_to_root( INT x, INT y ) DECLSPEC_HIDDEN;
 extern POINT root_to_virtual_screen( INT x, INT y ) DECLSPEC_HIDDEN;
 extern RECT get_host_primary_monitor_rect(void) DECLSPEC_HIDDEN;
@@ -750,17 +750,17 @@ struct broadwaydrv_settings_handler
     LONG (*set_current_mode)(broadwaydrv_settings_id id, const DEVMODEW *mode);
 };
 
-extern void X11DRV_Settings_SetHandler(const struct broadwaydrv_settings_handler *handler) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_Settings_SetHandler(const struct broadwaydrv_settings_handler *handler) DECLSPEC_HIDDEN;
 
-extern void X11DRV_init_desktop( Window win, unsigned int width, unsigned int height ) DECLSPEC_HIDDEN;
-extern void X11DRV_resize_desktop(void) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_init_desktop( Window win, unsigned int width, unsigned int height ) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_resize_desktop(void) DECLSPEC_HIDDEN;
 extern BOOL is_virtual_desktop(void) DECLSPEC_HIDDEN;
 extern BOOL is_desktop_fullscreen(void) DECLSPEC_HIDDEN;
 extern BOOL is_detached_mode(const DEVMODEW *) DECLSPEC_HIDDEN;
-void X11DRV_Settings_Init(void) DECLSPEC_HIDDEN;
+void BROADWAYDRV_Settings_Init(void) DECLSPEC_HIDDEN;
 
-void X11DRV_XF86VM_Init(void) DECLSPEC_HIDDEN;
-void X11DRV_XRandR_Init(void) DECLSPEC_HIDDEN;
+void BROADWAYDRV_XF86VM_Init(void) DECLSPEC_HIDDEN;
+void BROADWAYDRV_XRandR_Init(void) DECLSPEC_HIDDEN;
 void init_user_driver(void) DECLSPEC_HIDDEN;
 
 /* X11 display device handler. Used to initialize display device registry data */
@@ -805,10 +805,10 @@ struct broadwaydrv_display_device_handler
     void (*register_event_handlers)(void);
 };
 
-extern void X11DRV_DisplayDevices_SetHandler(const struct broadwaydrv_display_device_handler *handler) DECLSPEC_HIDDEN;
-extern void X11DRV_DisplayDevices_Init(BOOL force) DECLSPEC_HIDDEN;
-extern void X11DRV_DisplayDevices_RegisterEventHandlers(void) DECLSPEC_HIDDEN;
-extern BOOL X11DRV_DisplayDevices_SupportEventHandlers(void) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_DisplayDevices_SetHandler(const struct broadwaydrv_display_device_handler *handler) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_DisplayDevices_Init(BOOL force) DECLSPEC_HIDDEN;
+extern void BROADWAYDRV_DisplayDevices_RegisterEventHandlers(void) DECLSPEC_HIDDEN;
+extern BOOL BROADWAYDRV_DisplayDevices_SupportEventHandlers(void) DECLSPEC_HIDDEN;
 /* Display device handler used in virtual desktop mode */
 extern struct broadwaydrv_display_device_handler desktop_handler DECLSPEC_HIDDEN;
 
@@ -817,7 +817,7 @@ extern BOOL xim_init( const WCHAR *input_style ) DECLSPEC_HIDDEN;
 extern void xim_thread_attach( struct broadwaydrv_thread_data *data ) DECLSPEC_HIDDEN;
 extern BOOL xim_in_compose_mode(void) DECLSPEC_HIDDEN;
 extern void xim_set_result_string( HWND hwnd, const char *str, UINT count ) DECLSPEC_HIDDEN;
-extern XIC X11DRV_get_ic( HWND hwnd ) DECLSPEC_HIDDEN;
+extern XIC BROADWAYDRV_get_ic( HWND hwnd ) DECLSPEC_HIDDEN;
 extern void xim_set_focus( HWND hwnd, BOOL focus ) DECLSPEC_HIDDEN;
 
 #define XEMBED_MAPPED  (1 << 0)
@@ -924,4 +924,4 @@ static inline UINT asciiz_to_unicode( WCHAR *dst, const char *src )
     return (p - dst) * sizeof(WCHAR);
 }
 
-#endif  /* __WINE_X11DRV_H */
+#endif  /* __WINE_BROADWAYDRV_H */

@@ -54,7 +54,7 @@ WINE_DEFAULT_DEBUG_CHANNEL(graphics);
 #define ABS(x)    ((x)<0?(-(x)):(x))
 
   /* ROP code to GC function conversion */
-static const int X11DRV_XROPfunction[16] =
+static const int BROADWAYDRV_XROPfunction[16] =
 {
     GXclear,        /* R2_BLACK */
     GXnor,          /* R2_NOTMERGEPEN */
@@ -110,7 +110,7 @@ static RECT get_device_rect( HDC hdc, int left, int top, int right, int bottom )
     return rect;
 }
 
-static void add_pen_device_bounds( X11DRV_PDEVICE *dev, const POINT *points, int count )
+static void add_pen_device_bounds( BROADWAYDRV_PDEVICE *dev, const POINT *points, int count )
 {
     RECT bounds, rect;
     int width = 0;
@@ -148,13 +148,13 @@ static void add_pen_device_bounds( X11DRV_PDEVICE *dev, const POINT *points, int
 }
 
 /***********************************************************************
- *           X11DRV_GetRegionData
+ *           BROADWAYDRV_GetRegionData
  *
  * Calls GetRegionData on the given region and converts the rectangle
  * array to XRectangle format. The returned buffer must be freed by caller.
  * If hdc_lptodp is not 0, the rectangles are converted through LPtoDP.
  */
-RGNDATA *X11DRV_GetRegionData( HRGN hrgn, HDC hdc_lptodp )
+RGNDATA *BROADWAYDRV_GetRegionData( HRGN hrgn, HDC hdc_lptodp )
 {
     RGNDATA *data;
     DWORD size;
@@ -246,7 +246,7 @@ RGNDATA *X11DRV_GetRegionData( HRGN hrgn, HDC hdc_lptodp )
 /***********************************************************************
  *           update_x11_clipping
  */
-static void update_x11_clipping( X11DRV_PDEVICE *physDev, HRGN rgn )
+static void update_x11_clipping( BROADWAYDRV_PDEVICE *physDev, HRGN rgn )
 {
     RGNDATA *data;
 
@@ -254,7 +254,7 @@ static void update_x11_clipping( X11DRV_PDEVICE *physDev, HRGN rgn )
     {
         XSetClipMask( gdi_display, physDev->gc, None );
     }
-    else if ((data = X11DRV_GetRegionData( rgn, 0 )))
+    else if ((data = BROADWAYDRV_GetRegionData( rgn, 0 )))
     {
         XSetClipRectangles( gdi_display, physDev->gc, physDev->dc_rect.left, physDev->dc_rect.top,
                             (XRectangle *)data->Buffer, data->rdh.nCount, YXBanded );
@@ -269,7 +269,7 @@ static void update_x11_clipping( X11DRV_PDEVICE *physDev, HRGN rgn )
  * Temporarily add a region to the current clipping region.
  * The region must be restored with restore_clipping_region.
  */
-BOOL add_extra_clipping_region( X11DRV_PDEVICE *dev, HRGN rgn )
+BOOL add_extra_clipping_region( BROADWAYDRV_PDEVICE *dev, HRGN rgn )
 {
     HRGN clip;
 
@@ -289,18 +289,18 @@ BOOL add_extra_clipping_region( X11DRV_PDEVICE *dev, HRGN rgn )
 /***********************************************************************
  *           restore_clipping_region
  */
-void restore_clipping_region( X11DRV_PDEVICE *dev )
+void restore_clipping_region( BROADWAYDRV_PDEVICE *dev )
 {
     update_x11_clipping( dev, dev->region );
 }
 
 
 /***********************************************************************
- *           X11DRV_SetDeviceClipping
+ *           BROADWAYDRV_SetDeviceClipping
  */
-void X11DRV_SetDeviceClipping( PHYSDEV dev, HRGN rgn )
+void BROADWAYDRV_SetDeviceClipping( PHYSDEV dev, HRGN rgn )
 {
-    X11DRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
+    BROADWAYDRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
 
     physDev->region = rgn;
     update_x11_clipping( physDev, rgn );
@@ -308,13 +308,13 @@ void X11DRV_SetDeviceClipping( PHYSDEV dev, HRGN rgn )
 
 
 /***********************************************************************
- *           X11DRV_SetupGCForPatBlt
+ *           BROADWAYDRV_SetupGCForPatBlt
  *
  * Setup the GC for a PatBlt operation using current brush.
  * If fMapColors is TRUE, X pixels are mapped to Windows colors.
  * Return FALSE if brush is BS_NULL, TRUE otherwise.
  */
-BOOL X11DRV_SetupGCForPatBlt( X11DRV_PDEVICE *physDev, GC gc, BOOL fMapColors )
+BOOL BROADWAYDRV_SetupGCForPatBlt( BROADWAYDRV_PDEVICE *physDev, GC gc, BOOL fMapColors )
 {
     DWORD bk_color, text_color, rop_mode, bk_mode, poly_fill_mode;
     XGCValues val;
@@ -334,21 +334,21 @@ BOOL X11DRV_SetupGCForPatBlt( X11DRV_PDEVICE *physDev, GC gc, BOOL fMapColors )
 	 * Windows does it the wrong way...
 	 */
         NtGdiGetDCDword( physDev->dev.hdc, NtGdiGetTextColor, &text_color );
-        val.foreground = X11DRV_PALETTE_ToPhysical( physDev, bk_color );
-        val.background = X11DRV_PALETTE_ToPhysical( physDev, text_color );
+        val.foreground = BROADWAYDRV_PALETTE_ToPhysical( physDev, bk_color );
+        val.background = BROADWAYDRV_PALETTE_ToPhysical( physDev, text_color );
     }
     else
     {
 	val.foreground = physDev->brush.pixel;
-	val.background = X11DRV_PALETTE_ToPhysical( physDev, bk_color );
+	val.background = BROADWAYDRV_PALETTE_ToPhysical( physDev, bk_color );
     }
-    if (fMapColors && X11DRV_PALETTE_XPixelToPalette)
+    if (fMapColors && BROADWAYDRV_PALETTE_XPixelToPalette)
     {
-        val.foreground = X11DRV_PALETTE_XPixelToPalette[val.foreground];
-        val.background = X11DRV_PALETTE_XPixelToPalette[val.background];
+        val.foreground = BROADWAYDRV_PALETTE_XPixelToPalette[val.foreground];
+        val.background = BROADWAYDRV_PALETTE_XPixelToPalette[val.background];
     }
 
-    val.function = X11DRV_XROPfunction[rop_mode - 1];
+    val.function = BROADWAYDRV_XROPfunction[rop_mode - 1];
     /*
     ** Let's replace GXinvert by GXxor with (black xor white)
     ** This solves the selection color and leak problems in excel
@@ -372,7 +372,7 @@ BOOL X11DRV_SetupGCForPatBlt( X11DRV_PDEVICE *physDev, GC gc, BOOL fMapColors )
         break;
 
     case FillTiled:
-        if (fMapColors && X11DRV_PALETTE_XPixelToPalette)
+        if (fMapColors && BROADWAYDRV_PALETTE_XPixelToPalette)
         {
             register int x, y;
             XImage *image;
@@ -382,7 +382,7 @@ BOOL X11DRV_SetupGCForPatBlt( X11DRV_PDEVICE *physDev, GC gc, BOOL fMapColors )
             for (y = 0; y < 8; y++)
                 for (x = 0; x < 8; x++)
                     XPutPixel( image, x, y,
-                               X11DRV_PALETTE_XPixelToPalette[XGetPixel( image, x, y)] );
+                               BROADWAYDRV_PALETTE_XPixelToPalette[XGetPixel( image, x, y)] );
             XPutImage( gdi_display, pixmap, gc, image, 0, 0, 0, 0, 8, 8 );
             XDestroyImage( image );
             val.tile = pixmap;
@@ -412,24 +412,24 @@ BOOL X11DRV_SetupGCForPatBlt( X11DRV_PDEVICE *physDev, GC gc, BOOL fMapColors )
 
 
 /***********************************************************************
- *           X11DRV_SetupGCForBrush
+ *           BROADWAYDRV_SetupGCForBrush
  *
  * Setup physDev->gc for drawing operations using current brush.
  * Return FALSE if brush is BS_NULL, TRUE otherwise.
  */
-BOOL X11DRV_SetupGCForBrush( X11DRV_PDEVICE *physDev )
+BOOL BROADWAYDRV_SetupGCForBrush( BROADWAYDRV_PDEVICE *physDev )
 {
-    return X11DRV_SetupGCForPatBlt( physDev, physDev->gc, FALSE );
+    return BROADWAYDRV_SetupGCForPatBlt( physDev, physDev->gc, FALSE );
 }
 
 
 /***********************************************************************
- *           X11DRV_SetupGCForPen
+ *           BROADWAYDRV_SetupGCForPen
  *
  * Setup physDev->gc for drawing operations using current pen.
  * Return FALSE if pen is PS_NULL, TRUE otherwise.
  */
-static BOOL X11DRV_SetupGCForPen( X11DRV_PDEVICE *physDev )
+static BOOL BROADWAYDRV_SetupGCForPen( BROADWAYDRV_PDEVICE *physDev )
 {
     DWORD rop2, bk_color, bk_mode;
     XGCValues val;
@@ -459,10 +459,10 @@ static BOOL X11DRV_SetupGCForPen( X11DRV_PDEVICE *physDev )
 	break;
     default :
 	val.foreground = physDev->pen.pixel;
-	val.function   = X11DRV_XROPfunction[rop2-1];
+	val.function   = BROADWAYDRV_XROPfunction[rop2-1];
     }
     NtGdiGetDCDword( physDev->dev.hdc, NtGdiGetBkColor, &bk_color );
-    val.background = X11DRV_PALETTE_ToPhysical( physDev, bk_color );
+    val.background = BROADWAYDRV_PALETTE_ToPhysical( physDev, bk_color );
     val.fill_style = FillSolid;
     val.line_width = physDev->pen.width;
     if (val.line_width <= 1) {
@@ -511,11 +511,11 @@ static BOOL X11DRV_SetupGCForPen( X11DRV_PDEVICE *physDev )
 
 
 /***********************************************************************
- *           X11DRV_XWStoDS
+ *           BROADWAYDRV_XWStoDS
  *
  * Performs a world-to-viewport transformation on the specified width.
  */
-INT X11DRV_XWStoDS( HDC hdc, INT width )
+INT BROADWAYDRV_XWStoDS( HDC hdc, INT width )
 {
     POINT pt[2];
 
@@ -528,11 +528,11 @@ INT X11DRV_XWStoDS( HDC hdc, INT width )
 }
 
 /***********************************************************************
- *           X11DRV_YWStoDS
+ *           BROADWAYDRV_YWStoDS
  *
  * Performs a world-to-viewport transformation on the specified height.
  */
-INT X11DRV_YWStoDS( HDC hdc, INT height )
+INT BROADWAYDRV_YWStoDS( HDC hdc, INT height )
 {
     POINT pt[2];
 
@@ -545,11 +545,11 @@ INT X11DRV_YWStoDS( HDC hdc, INT height )
 }
 
 /***********************************************************************
- *           X11DRV_LineTo
+ *           BROADWAYDRV_LineTo
  */
-BOOL X11DRV_LineTo( PHYSDEV dev, INT x, INT y )
+BOOL BROADWAYDRV_LineTo( PHYSDEV dev, INT x, INT y )
 {
-    X11DRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
+    BROADWAYDRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
     POINT pt[2];
 
     NtGdiGetDCPoint( dev->hdc, NtGdiGetCurrentPosition, &pt[0] );
@@ -558,7 +558,7 @@ BOOL X11DRV_LineTo( PHYSDEV dev, INT x, INT y )
     lp_to_dp( dev->hdc, pt, 2 );
     add_pen_device_bounds( physDev, pt, 2 );
 
-    if (X11DRV_SetupGCForPen( physDev ))
+    if (BROADWAYDRV_SetupGCForPen( physDev ))
         XDrawLine(gdi_display, physDev->drawable, physDev->gc,
                   physDev->dc_rect.left + pt[0].x, physDev->dc_rect.top + pt[0].y,
                   physDev->dc_rect.left + pt[1].x, physDev->dc_rect.top + pt[1].y );
@@ -568,16 +568,16 @@ BOOL X11DRV_LineTo( PHYSDEV dev, INT x, INT y )
 
 
 /***********************************************************************
- *           X11DRV_DrawArc
+ *           BROADWAYDRV_DrawArc
  *
  * Helper functions for Arc(), Chord() and Pie().
  * 'lines' is the number of lines to draw: 0 for Arc, 1 for Chord, 2 for Pie.
  *
  */
-static BOOL X11DRV_DrawArc( PHYSDEV dev, INT left, INT top, INT right, INT bottom,
+static BOOL BROADWAYDRV_DrawArc( PHYSDEV dev, INT left, INT top, INT right, INT bottom,
                             INT xstart, INT ystart, INT xend, INT yend, INT lines )
 {
-    X11DRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
+    BROADWAYDRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
     INT xcenter, ycenter, istart_angle, idiff_angle;
     INT width, oldwidth;
     DWORD arc_dir;
@@ -638,7 +638,7 @@ static BOOL X11DRV_DrawArc( PHYSDEV dev, INT left, INT top, INT right, INT botto
 
       /* Fill arc with brush if Chord() or Pie() */
 
-    if ((lines > 0) && X11DRV_SetupGCForBrush( physDev )) {
+    if ((lines > 0) && BROADWAYDRV_SetupGCForBrush( physDev )) {
         XSetArcMode( gdi_display, physDev->gc, (lines==1) ? ArcChord : ArcPieSlice);
         XFillArc( gdi_display, physDev->drawable, physDev->gc,
                   physDev->dc_rect.left + rc.left, physDev->dc_rect.top + rc.top,
@@ -647,7 +647,7 @@ static BOOL X11DRV_DrawArc( PHYSDEV dev, INT left, INT top, INT right, INT botto
 
       /* Draw arc and lines */
 
-    if (X11DRV_SetupGCForPen( physDev ))
+    if (BROADWAYDRV_SetupGCForPen( physDev ))
     {
         XDrawArc( gdi_display, physDev->drawable, physDev->gc,
                   physDev->dc_rect.left + rc.left, physDev->dc_rect.top + rc.top,
@@ -717,40 +717,40 @@ static BOOL X11DRV_DrawArc( PHYSDEV dev, INT left, INT top, INT right, INT botto
 
 
 /***********************************************************************
- *           X11DRV_Arc
+ *           BROADWAYDRV_Arc
  */
-BOOL X11DRV_Arc( PHYSDEV dev, INT left, INT top, INT right, INT bottom,
+BOOL BROADWAYDRV_Arc( PHYSDEV dev, INT left, INT top, INT right, INT bottom,
                  INT xstart, INT ystart, INT xend, INT yend )
 {
-    return X11DRV_DrawArc( dev, left, top, right, bottom, xstart, ystart, xend, yend, 0 );
+    return BROADWAYDRV_DrawArc( dev, left, top, right, bottom, xstart, ystart, xend, yend, 0 );
 }
 
 
 /***********************************************************************
- *           X11DRV_Pie
+ *           BROADWAYDRV_Pie
  */
-BOOL X11DRV_Pie( PHYSDEV dev, INT left, INT top, INT right, INT bottom,
+BOOL BROADWAYDRV_Pie( PHYSDEV dev, INT left, INT top, INT right, INT bottom,
                  INT xstart, INT ystart, INT xend, INT yend )
 {
-    return X11DRV_DrawArc( dev, left, top, right, bottom, xstart, ystart, xend, yend, 2 );
+    return BROADWAYDRV_DrawArc( dev, left, top, right, bottom, xstart, ystart, xend, yend, 2 );
 }
 
 /***********************************************************************
- *           X11DRV_Chord
+ *           BROADWAYDRV_Chord
  */
-BOOL X11DRV_Chord( PHYSDEV dev, INT left, INT top, INT right, INT bottom,
+BOOL BROADWAYDRV_Chord( PHYSDEV dev, INT left, INT top, INT right, INT bottom,
                    INT xstart, INT ystart, INT xend, INT yend )
 {
-    return X11DRV_DrawArc( dev, left, top, right, bottom, xstart, ystart, xend, yend, 1 );
+    return BROADWAYDRV_DrawArc( dev, left, top, right, bottom, xstart, ystart, xend, yend, 1 );
 }
 
 
 /***********************************************************************
- *           X11DRV_Ellipse
+ *           BROADWAYDRV_Ellipse
  */
-BOOL X11DRV_Ellipse( PHYSDEV dev, INT left, INT top, INT right, INT bottom )
+BOOL BROADWAYDRV_Ellipse( PHYSDEV dev, INT left, INT top, INT right, INT bottom )
 {
-    X11DRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
+    BROADWAYDRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
     INT width, oldwidth;
     RECT rc = get_device_rect( dev->hdc, left, top, right, bottom );
 
@@ -772,12 +772,12 @@ BOOL X11DRV_Ellipse( PHYSDEV dev, INT left, INT top, INT right, INT bottom )
     if(width == 0) width = 1; /* more accurate */
     physDev->pen.width = width;
 
-    if (X11DRV_SetupGCForBrush( physDev ))
+    if (BROADWAYDRV_SetupGCForBrush( physDev ))
         XFillArc( gdi_display, physDev->drawable, physDev->gc,
                   physDev->dc_rect.left + rc.left, physDev->dc_rect.top + rc.top,
                   rc.right-rc.left-1, rc.bottom-rc.top-1, 0, 360*64 );
 
-    if (X11DRV_SetupGCForPen( physDev ))
+    if (BROADWAYDRV_SetupGCForPen( physDev ))
         XDrawArc( gdi_display, physDev->drawable, physDev->gc,
                   physDev->dc_rect.left + rc.left, physDev->dc_rect.top + rc.top,
                   rc.right-rc.left-1, rc.bottom-rc.top-1, 0, 360*64 );
@@ -789,11 +789,11 @@ BOOL X11DRV_Ellipse( PHYSDEV dev, INT left, INT top, INT right, INT bottom )
 
 
 /***********************************************************************
- *           X11DRV_Rectangle
+ *           BROADWAYDRV_Rectangle
  */
-BOOL X11DRV_Rectangle(PHYSDEV dev, INT left, INT top, INT right, INT bottom)
+BOOL BROADWAYDRV_Rectangle(PHYSDEV dev, INT left, INT top, INT right, INT bottom)
 {
-    X11DRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
+    BROADWAYDRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
     INT width, oldwidth, oldjoinstyle;
     RECT rc = get_device_rect( dev->hdc, left, top, right, bottom );
 
@@ -824,13 +824,13 @@ BOOL X11DRV_Rectangle(PHYSDEV dev, INT left, INT top, INT right, INT bottom)
     rc.bottom--;
     if ((rc.right >= rc.left + width) && (rc.bottom >= rc.top + width))
     {
-        if (X11DRV_SetupGCForBrush( physDev ))
+        if (BROADWAYDRV_SetupGCForBrush( physDev ))
             XFillRectangle( gdi_display, physDev->drawable, physDev->gc,
                             physDev->dc_rect.left + rc.left + (width + 1) / 2,
                             physDev->dc_rect.top + rc.top + (width + 1) / 2,
                             rc.right-rc.left-width, rc.bottom-rc.top-width);
     }
-    if (X11DRV_SetupGCForPen( physDev ))
+    if (BROADWAYDRV_SetupGCForPen( physDev ))
         XDrawRectangle( gdi_display, physDev->drawable, physDev->gc,
                         physDev->dc_rect.left + rc.left, physDev->dc_rect.top + rc.top,
                         rc.right-rc.left, rc.bottom-rc.top );
@@ -842,12 +842,12 @@ BOOL X11DRV_Rectangle(PHYSDEV dev, INT left, INT top, INT right, INT bottom)
 }
 
 /***********************************************************************
- *           X11DRV_RoundRect
+ *           BROADWAYDRV_RoundRect
  */
-BOOL X11DRV_RoundRect( PHYSDEV dev, INT left, INT top, INT right, INT bottom,
+BOOL BROADWAYDRV_RoundRect( PHYSDEV dev, INT left, INT top, INT right, INT bottom,
                        INT ell_width, INT ell_height )
 {
-    X11DRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
+    BROADWAYDRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
     INT width, oldwidth, oldendcap;
     POINT pts[2];
     RECT rc = get_device_rect( dev->hdc, left, top, right, bottom );
@@ -885,7 +885,7 @@ BOOL X11DRV_RoundRect( PHYSDEV dev, INT left, INT top, INT right, INT bottom,
     physDev->pen.width = width;
     physDev->pen.endcap = PS_ENDCAP_SQUARE;
 
-    if (X11DRV_SetupGCForBrush( physDev ))
+    if (BROADWAYDRV_SetupGCForBrush( physDev ))
     {
         if (ell_width > (rc.right-rc.left) )
             if (ell_height > (rc.bottom-rc.top) )
@@ -956,9 +956,9 @@ BOOL X11DRV_RoundRect( PHYSDEV dev, INT left, INT top, INT right, INT bottom,
      * if width or height are zero.
      *
      * BTW this stuff is optimized for an Xfree86 server
-     * read the comments inside the X11DRV_DrawArc function
+     * read the comments inside the BROADWAYDRV_DrawArc function
      */
-    if (X11DRV_SetupGCForPen( physDev ))
+    if (BROADWAYDRV_SetupGCForPen( physDev ))
     {
         if (ell_width > (rc.right-rc.left) )
             if (ell_height > (rc.bottom-rc.top) )
@@ -1033,11 +1033,11 @@ BOOL X11DRV_RoundRect( PHYSDEV dev, INT left, INT top, INT right, INT bottom,
 
 
 /***********************************************************************
- *           X11DRV_SetPixel
+ *           BROADWAYDRV_SetPixel
  */
-COLORREF X11DRV_SetPixel( PHYSDEV dev, INT x, INT y, COLORREF color )
+COLORREF BROADWAYDRV_SetPixel( PHYSDEV dev, INT x, INT y, COLORREF color )
 {
-    X11DRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
+    BROADWAYDRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
     unsigned long pixel;
     POINT pt;
     RECT rect;
@@ -1045,7 +1045,7 @@ COLORREF X11DRV_SetPixel( PHYSDEV dev, INT x, INT y, COLORREF color )
     pt.x = x;
     pt.y = y;
     lp_to_dp( dev->hdc, &pt, 1 );
-    pixel = X11DRV_PALETTE_ToPhysical( physDev, color );
+    pixel = BROADWAYDRV_PALETTE_ToPhysical( physDev, color );
 
     XSetForeground( gdi_display, physDev->gc, pixel );
     XSetFunction( gdi_display, physDev->gc, GXcopy );
@@ -1054,23 +1054,23 @@ COLORREF X11DRV_SetPixel( PHYSDEV dev, INT x, INT y, COLORREF color )
 
     SetRect( &rect, pt.x, pt.y, pt.x + 1, pt.y + 1 );
     add_device_bounds( physDev, &rect );
-    return X11DRV_PALETTE_ToLogical(physDev, pixel);
+    return BROADWAYDRV_PALETTE_ToLogical(physDev, pixel);
 }
 
 
 /***********************************************************************
- *           X11DRV_PaintRgn
+ *           BROADWAYDRV_PaintRgn
  */
-BOOL X11DRV_PaintRgn( PHYSDEV dev, HRGN hrgn )
+BOOL BROADWAYDRV_PaintRgn( PHYSDEV dev, HRGN hrgn )
 {
-    X11DRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
+    BROADWAYDRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
     RECT rc;
 
-    if (X11DRV_SetupGCForBrush( physDev ))
+    if (BROADWAYDRV_SetupGCForBrush( physDev ))
     {
         unsigned int i;
         XRectangle *rect;
-        RGNDATA *data = X11DRV_GetRegionData( hrgn, dev->hdc );
+        RGNDATA *data = BROADWAYDRV_GetRegionData( hrgn, dev->hdc );
 
         if (!data) return FALSE;
         rect = (XRectangle *)data->Buffer;
@@ -1092,11 +1092,11 @@ BOOL X11DRV_PaintRgn( PHYSDEV dev, HRGN hrgn )
 }
 
 /**********************************************************************
- *          X11DRV_Polygon
+ *          BROADWAYDRV_Polygon
  */
-static BOOL X11DRV_Polygon( PHYSDEV dev, const POINT* pt, INT count )
+static BOOL BROADWAYDRV_Polygon( PHYSDEV dev, const POINT* pt, INT count )
 {
-    X11DRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
+    BROADWAYDRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
     int i;
     POINT *points;
     XPoint *xpoints;
@@ -1119,11 +1119,11 @@ static BOOL X11DRV_Polygon( PHYSDEV dev, const POINT* pt, INT count )
     }
     xpoints[count] = xpoints[0];
 
-    if (X11DRV_SetupGCForBrush( physDev ))
+    if (BROADWAYDRV_SetupGCForBrush( physDev ))
         XFillPolygon( gdi_display, physDev->drawable, physDev->gc,
                       xpoints, count+1, Complex, CoordModeOrigin);
 
-    if (X11DRV_SetupGCForPen ( physDev ))
+    if (BROADWAYDRV_SetupGCForPen ( physDev ))
         XDrawLines( gdi_display, physDev->drawable, physDev->gc,
                     xpoints, count+1, CoordModeOrigin );
 
@@ -1134,16 +1134,16 @@ static BOOL X11DRV_Polygon( PHYSDEV dev, const POINT* pt, INT count )
 
 
 /**********************************************************************
- *          X11DRV_PolyPolygon
+ *          BROADWAYDRV_PolyPolygon
  */
-BOOL X11DRV_PolyPolygon( PHYSDEV dev, const POINT* pt, const INT* counts, UINT polygons )
+BOOL BROADWAYDRV_PolyPolygon( PHYSDEV dev, const POINT* pt, const INT* counts, UINT polygons )
 {
-    X11DRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
+    BROADWAYDRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
     DWORD total = 0, max = 0, pos, i;
     POINT *points;
     BOOL ret = FALSE;
 
-    if (polygons == 1) return X11DRV_Polygon( dev, pt, *counts );
+    if (polygons == 1) return BROADWAYDRV_Polygon( dev, pt, *counts );
 
     for (i = 0; i < polygons; i++)
     {
@@ -1158,7 +1158,7 @@ BOOL X11DRV_PolyPolygon( PHYSDEV dev, const POINT* pt, const INT* counts, UINT p
     lp_to_dp( dev->hdc, points, total );
     add_pen_device_bounds( physDev, points, total );
 
-    if (X11DRV_SetupGCForBrush( physDev ))
+    if (BROADWAYDRV_SetupGCForBrush( physDev ))
     {
         DWORD poly_fill_mode;
         XRectangle *rect;
@@ -1169,7 +1169,7 @@ BOOL X11DRV_PolyPolygon( PHYSDEV dev, const POINT* pt, const INT* counts, UINT p
         hrgn = UlongToHandle( NtGdiPolyPolyDraw( UlongToHandle(poly_fill_mode), points,
                                                  (const ULONG *)counts, polygons,
                                                  NtGdiPolyPolygonRgn ));
-        data = X11DRV_GetRegionData( hrgn, 0 );
+        data = BROADWAYDRV_GetRegionData( hrgn, 0 );
         NtGdiDeleteObjectApp( hrgn );
         if (!data) goto done;
         rect = (XRectangle *)data->Buffer;
@@ -1183,7 +1183,7 @@ BOOL X11DRV_PolyPolygon( PHYSDEV dev, const POINT* pt, const INT* counts, UINT p
         free( data );
     }
 
-    if (X11DRV_SetupGCForPen ( physDev ))
+    if (BROADWAYDRV_SetupGCForPen ( physDev ))
     {
         XPoint *xpoints;
         int j;
@@ -1210,11 +1210,11 @@ done:
 
 
 /**********************************************************************
- *          X11DRV_PolyPolyline
+ *          BROADWAYDRV_PolyPolyline
  */
-BOOL X11DRV_PolyPolyline( PHYSDEV dev, const POINT* pt, const DWORD* counts, DWORD polylines )
+BOOL BROADWAYDRV_PolyPolyline( PHYSDEV dev, const POINT* pt, const DWORD* counts, DWORD polylines )
 {
-    X11DRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
+    BROADWAYDRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
     DWORD total = 0, max = 0, pos, i, j;
     POINT *points;
 
@@ -1231,7 +1231,7 @@ BOOL X11DRV_PolyPolyline( PHYSDEV dev, const POINT* pt, const DWORD* counts, DWO
     lp_to_dp( dev->hdc, points, total );
     add_pen_device_bounds( physDev, points, total );
 
-    if (X11DRV_SetupGCForPen ( physDev ))
+    if (BROADWAYDRV_SetupGCForPen ( physDev ))
     {
         XPoint *xpoints;
 
@@ -1258,7 +1258,7 @@ BOOL X11DRV_PolyPolyline( PHYSDEV dev, const POINT* pt, const DWORD* counts, DWO
 /* helper for path stroking and filling functions */
 static BOOL broadwaydrv_stroke_and_fill_path( PHYSDEV dev, BOOL stroke, BOOL fill )
 {
-    X11DRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
+    BROADWAYDRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
     POINT *points;
     BYTE *flags;
     BOOL ret = FALSE;
@@ -1279,11 +1279,11 @@ static BOOL broadwaydrv_stroke_and_fill_path( PHYSDEV dev, BOOL stroke, BOOL fil
     if (NtGdiGetPath( dev->hdc, points, flags, size ) == -1) goto done;
     lp_to_dp( dev->hdc, points, size );
 
-    if (fill && X11DRV_SetupGCForBrush( physDev ))
+    if (fill && BROADWAYDRV_SetupGCForBrush( physDev ))
     {
         XRectangle *rect;
         HRGN hrgn = NtGdiPathToRegion( dev->hdc );
-        RGNDATA *data = X11DRV_GetRegionData( hrgn, 0 );
+        RGNDATA *data = BROADWAYDRV_GetRegionData( hrgn, 0 );
 
         NtGdiDeleteObjectApp( hrgn );
         if (!data) goto done;
@@ -1298,7 +1298,7 @@ static BOOL broadwaydrv_stroke_and_fill_path( PHYSDEV dev, BOOL stroke, BOOL fil
         free( data );
     }
 
-    if (stroke && X11DRV_SetupGCForPen ( physDev ))
+    if (stroke && BROADWAYDRV_SetupGCForPen ( physDev ))
     {
         for (i = j = 0; i < size; i++, j++)
         {
@@ -1333,38 +1333,38 @@ done:
 }
 
 /**********************************************************************
- *          X11DRV_FillPath
+ *          BROADWAYDRV_FillPath
  */
-BOOL X11DRV_FillPath( PHYSDEV dev )
+BOOL BROADWAYDRV_FillPath( PHYSDEV dev )
 {
     return broadwaydrv_stroke_and_fill_path( dev, FALSE, TRUE );
 }
 
 /**********************************************************************
- *          X11DRV_StrokeAndFillPath
+ *          BROADWAYDRV_StrokeAndFillPath
  */
-BOOL X11DRV_StrokeAndFillPath( PHYSDEV dev )
+BOOL BROADWAYDRV_StrokeAndFillPath( PHYSDEV dev )
 {
     return broadwaydrv_stroke_and_fill_path( dev, TRUE, TRUE );
 }
 
 /**********************************************************************
- *          X11DRV_StrokePath
+ *          BROADWAYDRV_StrokePath
  */
-BOOL X11DRV_StrokePath( PHYSDEV dev )
+BOOL BROADWAYDRV_StrokePath( PHYSDEV dev )
 {
     return broadwaydrv_stroke_and_fill_path( dev, TRUE, FALSE );
 }
 
 
 /**********************************************************************
- *          X11DRV_InternalFloodFill
+ *          BROADWAYDRV_InternalFloodFill
  *
  * Internal helper function for flood fill.
  * (xorg,yorg) is the origin of the X image relative to the drawable.
  * (x,y) is relative to the origin of the X image.
  */
-static void X11DRV_InternalFloodFill(XImage *image, X11DRV_PDEVICE *physDev,
+static void BROADWAYDRV_InternalFloodFill(XImage *image, BROADWAYDRV_PDEVICE *physDev,
                                      int x, int y,
                                      int xOrg, int yOrg,
                                      unsigned long pixel, WORD fillType, RECT *bounds )
@@ -1407,7 +1407,7 @@ static void X11DRV_InternalFloodFill(XImage *image, X11DRV_PDEVICE *physDev,
             while ((x < right) && !TO_FLOOD(x,y)) x++;
             if (x >= right) break;
             while ((x < right) && TO_FLOOD(x,y)) x++;
-            X11DRV_InternalFloodFill(image, physDev, x-1, y,
+            BROADWAYDRV_InternalFloodFill(image, physDev, x-1, y,
                                      xOrg, yOrg, pixel, fillType, bounds );
         }
     }
@@ -1422,7 +1422,7 @@ static void X11DRV_InternalFloodFill(XImage *image, X11DRV_PDEVICE *physDev,
             while ((x < right) && !TO_FLOOD(x,y)) x++;
             if (x >= right) break;
             while ((x < right) && TO_FLOOD(x,y)) x++;
-            X11DRV_InternalFloodFill(image, physDev, x-1, y,
+            BROADWAYDRV_InternalFloodFill(image, physDev, x-1, y,
                                      xOrg, yOrg, pixel, fillType, bounds );
         }
     }
@@ -1436,16 +1436,16 @@ static int ExtFloodFillXGetImageErrorHandler( Display *dpy, XErrorEvent *event, 
 }
 
 /**********************************************************************
- *          X11DRV_ExtFloodFill
+ *          BROADWAYDRV_ExtFloodFill
  */
-BOOL X11DRV_ExtFloodFill( PHYSDEV dev, INT x, INT y, COLORREF color, UINT fillType )
+BOOL BROADWAYDRV_ExtFloodFill( PHYSDEV dev, INT x, INT y, COLORREF color, UINT fillType )
 {
-    X11DRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
+    BROADWAYDRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
     XImage *image;
     RECT rect, bounds;
     POINT pt;
 
-    TRACE("X11DRV_ExtFloodFill %d,%d %s %d\n", x, y, debugstr_color(color), fillType );
+    TRACE("BROADWAYDRV_ExtFloodFill %d,%d %s %d\n", x, y, debugstr_color(color), fillType );
 
     pt.x = x;
     pt.y = y;
@@ -1469,21 +1469,21 @@ BOOL X11DRV_ExtFloodFill( PHYSDEV dev, INT x, INT y, COLORREF color, UINT fillTy
     }
     if (pt.x < rect.left || pt.x >= rect.right || pt.y < rect.top || pt.y >= rect.bottom) return FALSE;
 
-    X11DRV_expect_error( gdi_display, ExtFloodFillXGetImageErrorHandler, NULL );
+    BROADWAYDRV_expect_error( gdi_display, ExtFloodFillXGetImageErrorHandler, NULL );
     image = XGetImage( gdi_display, physDev->drawable,
                        physDev->dc_rect.left + rect.left, physDev->dc_rect.top + rect.top,
                        rect.right - rect.left, rect.bottom - rect.top,
                        AllPlanes, ZPixmap );
-    if(X11DRV_check_error()) image = NULL;
+    if(BROADWAYDRV_check_error()) image = NULL;
     if (!image) return FALSE;
 
-    if (X11DRV_SetupGCForBrush( physDev ))
+    if (BROADWAYDRV_SetupGCForBrush( physDev ))
     {
-        unsigned long pixel = X11DRV_PALETTE_ToPhysical( physDev, color );
+        unsigned long pixel = BROADWAYDRV_PALETTE_ToPhysical( physDev, color );
 
         reset_bounds( &bounds );
 
-        X11DRV_InternalFloodFill(image, physDev,
+        BROADWAYDRV_InternalFloodFill(image, physDev,
                                  pt.x - rect.left,
                                  pt.y - rect.top,
                                  physDev->dc_rect.left + rect.left,
@@ -1499,12 +1499,12 @@ BOOL X11DRV_ExtFloodFill( PHYSDEV dev, INT x, INT y, COLORREF color, UINT fillTy
 }
 
 /**********************************************************************
- *          X11DRV_GradientFill
+ *          BROADWAYDRV_GradientFill
  */
-BOOL X11DRV_GradientFill( PHYSDEV dev, TRIVERTEX *vert_array, ULONG nvert,
+BOOL BROADWAYDRV_GradientFill( PHYSDEV dev, TRIVERTEX *vert_array, ULONG nvert,
                           void *grad_array, ULONG ngrad, ULONG mode )
 {
-    X11DRV_PDEVICE *physdev = get_broadwaydrv_dev( dev );
+    BROADWAYDRV_PDEVICE *physdev = get_broadwaydrv_dev( dev );
     const GRADIENT_RECT *rect = grad_array;
     TRIVERTEX v[2];
     POINT pt[2];
@@ -1553,7 +1553,7 @@ BOOL X11DRV_GradientFill( PHYSDEV dev, TRIVERTEX *vert_array, ULONG nvert,
             add_bounds_rect( &bounds, &rc );
             for (x = 0; x < dx; x++)
             {
-                int color = X11DRV_PALETTE_ToPhysical( physdev,
+                int color = BROADWAYDRV_PALETTE_ToPhysical( physdev,
                                  RGB( (v[0].Red   * (dx - x) + v[1].Red   * x) / dx / 256,
                                       (v[0].Green * (dx - x) + v[1].Green * x) / dx / 256,
                                       (v[0].Blue  * (dx - x) + v[1].Blue  * x) / dx / 256) );
@@ -1603,7 +1603,7 @@ BOOL X11DRV_GradientFill( PHYSDEV dev, TRIVERTEX *vert_array, ULONG nvert,
             add_bounds_rect( &bounds, &rc );
             for (y = 0; y < dy; y++)
             {
-                int color = X11DRV_PALETTE_ToPhysical( physdev,
+                int color = BROADWAYDRV_PALETTE_ToPhysical( physdev,
                                  RGB( (v[0].Red   * (dy - y) + v[1].Red   * y) / dy / 256,
                                       (v[0].Green * (dy - y) + v[1].Green * y) / dy / 256,
                                       (v[0].Blue  * (dy - y) + v[1].Blue  * y) / dy / 256) );
@@ -1654,9 +1654,9 @@ static const WCHAR color_path[] =
      '\\','s','p','o','o','l','\\','d','r','i','v','e','r','s','\\','c','o','l','o','r','\\'};
 
 /***********************************************************************
- *              GetICMProfile (X11DRV.@)
+ *              GetICMProfile (BROADWAYDRV.@)
  */
-BOOL X11DRV_GetICMProfile( PHYSDEV dev, BOOL allow_default, LPDWORD size, LPWSTR filename )
+BOOL BROADWAYDRV_GetICMProfile( PHYSDEV dev, BOOL allow_default, LPDWORD size, LPWSTR filename )
 {
     static const WCHAR srgb[] =
         {'s','R','G','B',' ','C','o','l','o','r',' ','S','p','a','c','e',' ',

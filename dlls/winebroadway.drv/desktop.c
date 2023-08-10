@@ -1,5 +1,5 @@
 /*
- * X11DRV desktop window handling
+ * BROADWAYDRV desktop window handling
  *
  * Copyright 2001 Alexandre Julliard
  * Copyright 2020 Zhiyi Zhang for CodeWeavers
@@ -50,11 +50,11 @@ BOOL is_virtual_desktop(void)
 }
 
 /***********************************************************************
- *		X11DRV_init_desktop
+ *		BROADWAYDRV_init_desktop
  *
  * Setup the desktop when not using the root window.
  */
-void X11DRV_init_desktop( Window win, unsigned int width, unsigned int height )
+void BROADWAYDRV_init_desktop( Window win, unsigned int width, unsigned int height )
 {
     host_primary_rect = get_host_primary_monitor_rect();
     root_window = win;
@@ -62,11 +62,11 @@ void X11DRV_init_desktop( Window win, unsigned int width, unsigned int height )
 }
 
 /***********************************************************************
- *           X11DRV_CreateDesktop
+ *           BROADWAYDRV_CreateDesktop
  *
  * Create the X11 desktop window for the desktop mode.
  */
-BOOL X11DRV_CreateDesktop( const WCHAR *name, UINT width, UINT height )
+BOOL BROADWAYDRV_CreateDesktop( const WCHAR *name, UINT width, UINT height )
 {
     XSetWindowAttributes win_attr;
     Window win;
@@ -91,7 +91,7 @@ BOOL X11DRV_CreateDesktop( const WCHAR *name, UINT width, UINT height )
     if (!win) return FALSE;
     XFlush( display );
 
-    X11DRV_init_desktop( win, width, height );
+    BROADWAYDRV_init_desktop( win, width, height );
     return TRUE;
 }
 
@@ -136,9 +136,9 @@ static void update_desktop_fullscreen( unsigned int width, unsigned int height)
 }
 
 /***********************************************************************
- *		X11DRV_resize_desktop
+ *		BROADWAYDRV_resize_desktop
  */
-void X11DRV_resize_desktop(void)
+void BROADWAYDRV_resize_desktop(void)
 {
     static RECT old_virtual_rect;
 
@@ -158,7 +158,7 @@ void X11DRV_resize_desktop(void)
                         SWP_NOZORDER | SWP_NOACTIVATE | SWP_DEFERERASE );
 
     if (old_virtual_rect.left != virtual_rect.left || old_virtual_rect.top != virtual_rect.top)
-        send_message_timeout( HWND_BROADCAST, WM_X11DRV_DESKTOP_RESIZED, old_virtual_rect.left,
+        send_message_timeout( HWND_BROADCAST, WM_BROADWAYDRV_DESKTOP_RESIZED, old_virtual_rect.left,
                               old_virtual_rect.top, SMTO_ABORTIFHUNG, 2000, FALSE );
 
     old_virtual_rect = virtual_rect;

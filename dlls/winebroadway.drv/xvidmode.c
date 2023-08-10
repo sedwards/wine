@@ -122,9 +122,9 @@ static BOOL xf86vm_get_modes(broadwaydrv_settings_id id, DWORD flags, DEVMODEW *
     BYTE *ptr;
     Bool ret;
 
-    X11DRV_expect_error(gdi_display, XVidModeErrorHandler, NULL);
+    BROADWAYDRV_expect_error(gdi_display, XVidModeErrorHandler, NULL);
     ret = pXF86VidModeGetAllModeLines(gdi_display, DefaultScreen(gdi_display), &xf86vm_mode_count, &xf86vm_modes);
-    if (X11DRV_check_error() || !ret || !xf86vm_mode_count)
+    if (BROADWAYDRV_check_error() || !ret || !xf86vm_mode_count)
         return FALSE;
 
     /* Put a XF86VidModeModeInfo ** at the start to store the XF86VidMode modes pointer */
@@ -192,9 +192,9 @@ static BOOL xf86vm_get_current_mode(broadwaydrv_settings_id id, DEVMODEW *mode)
         return TRUE;
     }
 
-    X11DRV_expect_error(gdi_display, XVidModeErrorHandler, NULL);
+    BROADWAYDRV_expect_error(gdi_display, XVidModeErrorHandler, NULL);
     ret = pXF86VidModeGetModeLine(gdi_display, DefaultScreen(gdi_display), &dotclock, &xf86vm_mode);
-    if (X11DRV_check_error() || !ret)
+    if (BROADWAYDRV_check_error() || !ret)
         return FALSE;
 
     mode->dmBitsPerPel = screen_bpp;
@@ -233,9 +233,9 @@ static LONG xf86vm_set_current_mode(broadwaydrv_settings_id id, const DEVMODEW *
 
     assert(mode->dmDriverExtra == sizeof(XF86VidModeModeInfo *));
     memcpy(&xf86vm_mode, (BYTE *)mode + sizeof(*mode), sizeof(xf86vm_mode));
-    X11DRV_expect_error(gdi_display, XVidModeErrorHandler, NULL);
+    BROADWAYDRV_expect_error(gdi_display, XVidModeErrorHandler, NULL);
     ret = pXF86VidModeSwitchToMode(gdi_display, DefaultScreen(gdi_display), xf86vm_mode);
-    if (X11DRV_check_error() || !ret)
+    if (BROADWAYDRV_check_error() || !ret)
         return DISP_CHANGE_FAILED;
 #if 0 /* it is said that SetViewPort causes problems with some X servers */
     pXF86VidModeSetViewPort(gdi_display, DefaultScreen(gdi_display), 0, 0);
@@ -246,7 +246,7 @@ static LONG xf86vm_set_current_mode(broadwaydrv_settings_id id, const DEVMODEW *
     return DISP_CHANGE_SUCCESSFUL;
 }
 
-void X11DRV_XF86VM_Init(void)
+void BROADWAYDRV_XF86VM_Init(void)
 {
   struct broadwaydrv_settings_handler xf86vm_handler;
   void *xvidmode_handle;
@@ -285,17 +285,17 @@ void X11DRV_XF86VM_Init(void)
   /* see if XVidMode is available */
   if (!pXF86VidModeQueryExtension(gdi_display, &xf86vm_event, &xf86vm_error)) return;
 
-  X11DRV_expect_error(gdi_display, XVidModeErrorHandler, NULL);
+  BROADWAYDRV_expect_error(gdi_display, XVidModeErrorHandler, NULL);
   ok = pXF86VidModeQueryVersion(gdi_display, &xf86vm_major, &xf86vm_minor);
-  if (X11DRV_check_error() || !ok) return;
+  if (BROADWAYDRV_check_error() || !ok) return;
 
 #ifdef X_XF86VidModeSetGammaRamp
   if (xf86vm_major > 2 || (xf86vm_major == 2 && xf86vm_minor >= 1))
   {
-      X11DRV_expect_error(gdi_display, XVidModeErrorHandler, NULL);
+      BROADWAYDRV_expect_error(gdi_display, XVidModeErrorHandler, NULL);
       pXF86VidModeGetGammaRampSize(gdi_display, DefaultScreen(gdi_display),
                                    &xf86vm_gammaramp_size);
-      if (X11DRV_check_error()) xf86vm_gammaramp_size = 0;
+      if (BROADWAYDRV_check_error()) xf86vm_gammaramp_size = 0;
       TRACE("Gamma ramp size %d.\n", xf86vm_gammaramp_size);
       if (xf86vm_gammaramp_size >= GAMMA_RAMP_SIZE)
           xf86vm_use_gammaramp = TRUE;
@@ -312,7 +312,7 @@ void X11DRV_XF86VM_Init(void)
   xf86vm_handler.free_modes = xf86vm_free_modes;
   xf86vm_handler.get_current_mode = xf86vm_get_current_mode;
   xf86vm_handler.set_current_mode = xf86vm_set_current_mode;
-  X11DRV_Settings_SetHandler(&xf86vm_handler);
+  BROADWAYDRV_Settings_SetHandler(&xf86vm_handler);
   return;
 
 sym_not_found:
@@ -491,11 +491,11 @@ static BOOL xf86vm_set_gamma_ramp(struct broadwaydrv_gamma_ramp *ramp)
                                ramp->red, ramp->green, ramp->blue, GAMMA_RAMP_SIZE);
     }
 
-    X11DRV_expect_error(gdi_display, XVidModeErrorHandler, NULL);
+    BROADWAYDRV_expect_error(gdi_display, XVidModeErrorHandler, NULL);
     ret = pXF86VidModeSetGammaRamp(gdi_display, DefaultScreen(gdi_display),
                                    xf86vm_gammaramp_size, red, green, blue);
     if (ret) XSync( gdi_display, FALSE );
-    if (X11DRV_check_error()) ret = FALSE;
+    if (BROADWAYDRV_check_error()) ret = FALSE;
 
     if (red != ramp->red)
         free(red);
@@ -503,7 +503,7 @@ static BOOL xf86vm_set_gamma_ramp(struct broadwaydrv_gamma_ramp *ramp)
 }
 #endif
 
-static BOOL X11DRV_XF86VM_GetGammaRamp(struct broadwaydrv_gamma_ramp *ramp)
+static BOOL BROADWAYDRV_XF86VM_GetGammaRamp(struct broadwaydrv_gamma_ramp *ramp)
 {
 #ifdef X_XF86VidModeSetGamma
   XF86VidModeGamma gamma;
@@ -524,7 +524,7 @@ static BOOL X11DRV_XF86VM_GetGammaRamp(struct broadwaydrv_gamma_ramp *ramp)
   return FALSE;
 }
 
-static BOOL X11DRV_XF86VM_SetGammaRamp(struct broadwaydrv_gamma_ramp *ramp)
+static BOOL BROADWAYDRV_XF86VM_SetGammaRamp(struct broadwaydrv_gamma_ramp *ramp)
 {
 #ifdef X_XF86VidModeSetGamma
   XF86VidModeGamma gamma;
@@ -545,7 +545,7 @@ static BOOL X11DRV_XF86VM_SetGammaRamp(struct broadwaydrv_gamma_ramp *ramp)
 
 #else /* SONAME_LIBXXF86VM */
 
-void X11DRV_XF86VM_Init(void)
+void BROADWAYDRV_XF86VM_Init(void)
 {
     TRACE("XVidMode support not compiled in.\n");
 }
@@ -555,10 +555,10 @@ void X11DRV_XF86VM_Init(void)
 /***********************************************************************
  *		GetDeviceGammaRamp
  */
-BOOL X11DRV_GetDeviceGammaRamp(PHYSDEV dev, LPVOID ramp)
+BOOL BROADWAYDRV_GetDeviceGammaRamp(PHYSDEV dev, LPVOID ramp)
 {
 #ifdef SONAME_LIBXXF86VM
-  return X11DRV_XF86VM_GetGammaRamp(ramp);
+  return BROADWAYDRV_XF86VM_GetGammaRamp(ramp);
 #else
   return FALSE;
 #endif
@@ -567,10 +567,10 @@ BOOL X11DRV_GetDeviceGammaRamp(PHYSDEV dev, LPVOID ramp)
 /***********************************************************************
  *		SetDeviceGammaRamp
  */
-BOOL X11DRV_SetDeviceGammaRamp(PHYSDEV dev, LPVOID ramp)
+BOOL BROADWAYDRV_SetDeviceGammaRamp(PHYSDEV dev, LPVOID ramp)
 {
 #ifdef SONAME_LIBXXF86VM
-  return X11DRV_XF86VM_SetGammaRamp(ramp);
+  return BROADWAYDRV_XF86VM_SetGammaRamp(ramp);
 #else
   return FALSE;
 #endif

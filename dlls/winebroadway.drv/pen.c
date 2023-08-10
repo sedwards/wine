@@ -1,5 +1,5 @@
 /*
- * X11DRV pen objects
+ * BROADWAYDRV pen objects
  *
  * Copyright 1993 Alexandre Julliard
  *
@@ -56,9 +56,9 @@ static DWORD get_user_dashes( char *res, const DWORD *style, DWORD len )
 }
 
 /***********************************************************************
- *           SelectPen   (X11DRV.@)
+ *           SelectPen   (BROADWAYDRV.@)
  */
-HPEN X11DRV_SelectPen( PHYSDEV dev, HPEN hpen, const struct brush_pattern *pattern )
+HPEN BROADWAYDRV_SelectPen( PHYSDEV dev, HPEN hpen, const struct brush_pattern *pattern )
 {
     static const char PEN_dash[]          = { 16,8 };
     static const char PEN_dot[]           = { 4,4 };
@@ -69,7 +69,7 @@ HPEN X11DRV_SelectPen( PHYSDEV dev, HPEN hpen, const struct brush_pattern *patte
     static const char EXTPEN_dot[]        = { 1,1 };
     static const char EXTPEN_dashdot[]    = { 3,1,1,1 };
     static const char EXTPEN_dashdotdot[] = { 3,1,1,1,1,1 };
-    X11DRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
+    BROADWAYDRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
     LOGPEN logpen;
     int i;
     EXTLOGPEN *elp = NULL;
@@ -101,14 +101,14 @@ HPEN X11DRV_SelectPen( PHYSDEV dev, HPEN hpen, const struct brush_pattern *patte
     physDev->pen.width = logpen.lopnWidth.x;
     if ((logpen.lopnStyle & PS_GEOMETRIC) || (physDev->pen.width >= 1))
     {
-        physDev->pen.width = X11DRV_XWStoDS( dev->hdc, physDev->pen.width );
+        physDev->pen.width = BROADWAYDRV_XWStoDS( dev->hdc, physDev->pen.width );
         if (physDev->pen.width < 0) physDev->pen.width = -physDev->pen.width;
     }
 
     if (physDev->pen.width == 1) physDev->pen.width = 0;  /* Faster */
     if (hpen == GetStockObject( DC_PEN ))
         NtGdiGetDCDword( dev->hdc, NtGdiGetDCPenColor, &logpen.lopnColor );
-    physDev->pen.pixel = X11DRV_PALETTE_ToPhysical( physDev, logpen.lopnColor );
+    physDev->pen.pixel = BROADWAYDRV_PALETTE_ToPhysical( physDev, logpen.lopnColor );
     switch(logpen.lopnStyle & PS_STYLE_MASK)
     {
       case PS_DASH:
@@ -156,14 +156,14 @@ HPEN X11DRV_SelectPen( PHYSDEV dev, HPEN hpen, const struct brush_pattern *patte
 
 
 /***********************************************************************
- *           SetDCPenColor (X11DRV.@)
+ *           SetDCPenColor (BROADWAYDRV.@)
  */
-COLORREF X11DRV_SetDCPenColor( PHYSDEV dev, COLORREF crColor )
+COLORREF BROADWAYDRV_SetDCPenColor( PHYSDEV dev, COLORREF crColor )
 {
-    X11DRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
+    BROADWAYDRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
 
     if (NtGdiGetDCObject( dev->hdc, NTGDI_OBJ_PEN ) == GetStockObject( DC_PEN ))
-        physDev->pen.pixel = X11DRV_PALETTE_ToPhysical( physDev, crColor );
+        physDev->pen.pixel = BROADWAYDRV_PALETTE_ToPhysical( physDev, crColor );
 
     return crColor;
 }

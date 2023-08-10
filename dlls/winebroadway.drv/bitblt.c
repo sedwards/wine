@@ -610,14 +610,14 @@ static int XGetImage_handler( Display *dpy, XErrorEvent *event, void *arg )
  * Retrieve an area from the destination DC, mapping all the
  * pixels to Windows colors.
  */
-static int BITBLT_GetDstArea(X11DRV_PDEVICE *physDev, Pixmap pixmap, GC gc, const RECT *visRectDst)
+static int BITBLT_GetDstArea(BROADWAYDRV_PDEVICE *physDev, Pixmap pixmap, GC gc, const RECT *visRectDst)
 {
     int exposures = 0;
     INT width  = visRectDst->right - visRectDst->left;
     INT height = visRectDst->bottom - visRectDst->top;
 
-    if (!X11DRV_PALETTE_XPixelToPalette || (physDev->depth == 1) ||
-	(X11DRV_PALETTE_PaletteFlags & X11DRV_PALETTE_VIRTUAL) )
+    if (!BROADWAYDRV_PALETTE_XPixelToPalette || (physDev->depth == 1) ||
+	(BROADWAYDRV_PALETTE_PaletteFlags & BROADWAYDRV_PALETTE_VIRTUAL) )
     {
         XCopyArea( gdi_display, physDev->drawable, pixmap, gc,
                    physDev->dc_rect.left + visRectDst->left, physDev->dc_rect.top + visRectDst->top,
@@ -642,7 +642,7 @@ static int BITBLT_GetDstArea(X11DRV_PDEVICE *physDev, Pixmap pixmap, GC gc, cons
             for (y = 0; y < height; y++)
                 for (x = 0; x < width; x++)
                     XPutPixel( image, x, y,
-                               X11DRV_PALETTE_XPixelToPalette[XGetPixel( image, x, y )]);
+                               BROADWAYDRV_PALETTE_XPixelToPalette[XGetPixel( image, x, y )]);
             XPutImage( gdi_display, pixmap, gc, image, 0, 0, 0, 0, width, height );
             XDestroyImage( image );
         }
@@ -657,16 +657,16 @@ static int BITBLT_GetDstArea(X11DRV_PDEVICE *physDev, Pixmap pixmap, GC gc, cons
  * Put an area back into the destination DC, mapping the pixel
  * colors to X pixels.
  */
-static int BITBLT_PutDstArea(X11DRV_PDEVICE *physDev, Pixmap pixmap, const RECT *visRectDst)
+static int BITBLT_PutDstArea(BROADWAYDRV_PDEVICE *physDev, Pixmap pixmap, const RECT *visRectDst)
 {
     int exposures = 0;
     INT width  = visRectDst->right - visRectDst->left;
     INT height = visRectDst->bottom - visRectDst->top;
 
-    /* !X11DRV_PALETTE_PaletteToXPixel is _NOT_ enough */
+    /* !BROADWAYDRV_PALETTE_PaletteToXPixel is _NOT_ enough */
 
-    if (!X11DRV_PALETTE_PaletteToXPixel || (physDev->depth == 1) ||
-        (X11DRV_PALETTE_PaletteFlags & X11DRV_PALETTE_VIRTUAL) )
+    if (!BROADWAYDRV_PALETTE_PaletteToXPixel || (physDev->depth == 1) ||
+        (BROADWAYDRV_PALETTE_PaletteFlags & BROADWAYDRV_PALETTE_VIRTUAL) )
     {
         XCopyArea( gdi_display, pixmap, physDev->drawable, physDev->gc, 0, 0, width, height,
                    physDev->dc_rect.left + visRectDst->left,
@@ -682,7 +682,7 @@ static int BITBLT_PutDstArea(X11DRV_PDEVICE *physDev, Pixmap pixmap, const RECT 
             for (x = 0; x < width; x++)
             {
                 XPutPixel( image, x, y,
-                           X11DRV_PALETTE_PaletteToXPixel[XGetPixel( image, x, y )]);
+                           BROADWAYDRV_PALETTE_PaletteToXPixel[XGetPixel( image, x, y )]);
             }
         XPutImage( gdi_display, physDev->drawable, physDev->gc, image, 0, 0,
                    physDev->dc_rect.left + visRectDst->left,
@@ -692,7 +692,7 @@ static int BITBLT_PutDstArea(X11DRV_PDEVICE *physDev, Pixmap pixmap, const RECT 
     return exposures;
 }
 
-static BOOL same_format(X11DRV_PDEVICE *physDevSrc, X11DRV_PDEVICE *physDevDst)
+static BOOL same_format(BROADWAYDRV_PDEVICE *physDevSrc, BROADWAYDRV_PDEVICE *physDevDst)
 {
     if (physDevSrc->depth != physDevDst->depth) return FALSE;
     if (!physDevSrc->color_shifts && !physDevDst->color_shifts) return TRUE;
@@ -701,7 +701,7 @@ static BOOL same_format(X11DRV_PDEVICE *physDevSrc, X11DRV_PDEVICE *physDevDst)
     return FALSE;
 }
 
-void execute_rop( X11DRV_PDEVICE *physdev, Pixmap src_pixmap, GC gc, const RECT *visrect, DWORD rop )
+void execute_rop( BROADWAYDRV_PDEVICE *physdev, Pixmap src_pixmap, GC gc, const RECT *visrect, DWORD rop )
 {
     Pixmap pixmaps[3];
     Pixmap result = src_pixmap;
@@ -717,7 +717,7 @@ void execute_rop( X11DRV_PDEVICE *physdev, Pixmap src_pixmap, GC gc, const RECT 
     pixmaps[DST] = XCreatePixmap( gdi_display, root_window, width, height, physdev->depth );
 
     if (use_dst) BITBLT_GetDstArea( physdev, pixmaps[DST], gc, visrect );
-    null_brush = use_pat && !X11DRV_SetupGCForPatBlt( physdev, gc, TRUE );
+    null_brush = use_pat && !BROADWAYDRV_SetupGCForPatBlt( physdev, gc, TRUE );
 
     for ( ; *opcode; opcode++)
     {
@@ -752,15 +752,15 @@ void execute_rop( X11DRV_PDEVICE *physdev, Pixmap src_pixmap, GC gc, const RECT 
 }
 
 /***********************************************************************
- *           X11DRV_PatBlt
+ *           BROADWAYDRV_PatBlt
  */
-BOOL X11DRV_PatBlt( PHYSDEV dev, struct bitblt_coords *dst, DWORD rop )
+BOOL BROADWAYDRV_PatBlt( PHYSDEV dev, struct bitblt_coords *dst, DWORD rop )
 {
-    X11DRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
+    BROADWAYDRV_PDEVICE *physDev = get_broadwaydrv_dev( dev );
     BOOL usePat = (((rop >> 4) & 0x0f0000) != (rop & 0x0f0000));
     const BYTE *opcode = BITBLT_Opcodes[(rop >> 16) & 0xff];
 
-    if (usePat && !X11DRV_SetupGCForBrush( physDev )) return TRUE;
+    if (usePat && !BROADWAYDRV_SetupGCForBrush( physDev )) return TRUE;
 
     XSetFunction( gdi_display, physDev->gc, OP_ROP(*opcode) );
 
@@ -768,11 +768,11 @@ BOOL X11DRV_PatBlt( PHYSDEV dev, struct bitblt_coords *dst, DWORD rop )
     {
     case BLACKNESS:  /* 0x00 */
     case WHITENESS:  /* 0xff */
-        if ((physDev->depth != 1) && X11DRV_PALETTE_PaletteToXPixel)
+        if ((physDev->depth != 1) && BROADWAYDRV_PALETTE_PaletteToXPixel)
         {
             XSetFunction( gdi_display, physDev->gc, GXcopy );
             if (rop == BLACKNESS)
-                XSetForeground( gdi_display, physDev->gc, X11DRV_PALETTE_PaletteToXPixel[0] );
+                XSetForeground( gdi_display, physDev->gc, BROADWAYDRV_PALETTE_PaletteToXPixel[0] );
             else
                 XSetForeground( gdi_display, physDev->gc,
                                 WhitePixel( gdi_display, DefaultScreen(gdi_display) ));
@@ -780,7 +780,7 @@ BOOL X11DRV_PatBlt( PHYSDEV dev, struct bitblt_coords *dst, DWORD rop )
         }
         break;
     case DSTINVERT:  /* 0x55 */
-        if (!(X11DRV_PALETTE_PaletteFlags & (X11DRV_PALETTE_PRIVATE | X11DRV_PALETTE_VIRTUAL)))
+        if (!(BROADWAYDRV_PALETTE_PaletteFlags & (BROADWAYDRV_PALETTE_PRIVATE | BROADWAYDRV_PALETTE_VIRTUAL)))
         {
             /* Xor is much better when we do not have full colormap.   */
             /* Using white^black ensures that we invert at least black */
@@ -804,13 +804,13 @@ BOOL X11DRV_PatBlt( PHYSDEV dev, struct bitblt_coords *dst, DWORD rop )
 
 
 /***********************************************************************
- *           X11DRV_StretchBlt
+ *           BROADWAYDRV_StretchBlt
  */
-BOOL X11DRV_StretchBlt( PHYSDEV dst_dev, struct bitblt_coords *dst,
+BOOL BROADWAYDRV_StretchBlt( PHYSDEV dst_dev, struct bitblt_coords *dst,
                         PHYSDEV src_dev, struct bitblt_coords *src, DWORD rop )
 {
-    X11DRV_PDEVICE *physDevDst = get_broadwaydrv_dev( dst_dev );
-    X11DRV_PDEVICE *physDevSrc = get_broadwaydrv_dev( src_dev );
+    BROADWAYDRV_PDEVICE *physDevDst = get_broadwaydrv_dev( dst_dev );
+    BROADWAYDRV_PDEVICE *physDevSrc = get_broadwaydrv_dev( src_dev );
     INT width, height;
     const BYTE *opcode;
     Pixmap src_pixmap;
@@ -819,7 +819,7 @@ BOOL X11DRV_StretchBlt( PHYSDEV dst_dev, struct bitblt_coords *dst,
     if (src_dev->funcs != dst_dev->funcs ||
         src->width != dst->width || src->height != dst->height ||  /* no stretching with core X11 */
         (physDevDst->depth == 1 && physDevSrc->depth != 1) ||  /* color -> mono done by hand */
-        (X11DRV_PALETTE_XPixelToPalette && physDevSrc->depth != 1))  /* needs palette mapping */
+        (BROADWAYDRV_PALETTE_XPixelToPalette && physDevSrc->depth != 1))  /* needs palette mapping */
     {
         dst_dev = GET_NEXT_PHYSDEV( dst_dev, pStretchBlt );
         return dst_dev->funcs->pStretchBlt( dst_dev, dst, src_dev, src, rop );
@@ -853,10 +853,10 @@ BOOL X11DRV_StretchBlt( PHYSDEV dst_dev, struct bitblt_coords *dst,
             int text_pixel, bkgnd_pixel;
 
             NtGdiGetDCDword( physDevDst->dev.hdc, NtGdiGetTextColor, &text_color );
-            text_pixel = X11DRV_PALETTE_ToPhysical( physDevDst, text_color );
+            text_pixel = BROADWAYDRV_PALETTE_ToPhysical( physDevDst, text_color );
 
             NtGdiGetDCDword( physDevDst->dev.hdc, NtGdiGetBkColor, &bk_color );
-            bkgnd_pixel = X11DRV_PALETTE_ToPhysical( physDevDst, bk_color );
+            bkgnd_pixel = BROADWAYDRV_PALETTE_ToPhysical( physDevDst, bk_color );
 
             XSetBackground( gdi_display, physDevDst->gc, text_pixel );
             XSetForeground( gdi_display, physDevDst->gc, bkgnd_pixel );
@@ -890,15 +890,15 @@ BOOL X11DRV_StretchBlt( PHYSDEV dst_dev, struct bitblt_coords *dst,
         int text_pixel, bkgnd_pixel;
 
         NtGdiGetDCDword( physDevDst->dev.hdc, NtGdiGetTextColor, &text_color );
-        text_pixel = X11DRV_PALETTE_ToPhysical( physDevDst, text_color );
+        text_pixel = BROADWAYDRV_PALETTE_ToPhysical( physDevDst, text_color );
 
         NtGdiGetDCDword( physDevDst->dev.hdc, NtGdiGetBkColor, &bk_color );
-        bkgnd_pixel = X11DRV_PALETTE_ToPhysical( physDevDst, bk_color );
+        bkgnd_pixel = BROADWAYDRV_PALETTE_ToPhysical( physDevDst, bk_color );
 
-        if (X11DRV_PALETTE_XPixelToPalette && physDevDst->depth != 1)
+        if (BROADWAYDRV_PALETTE_XPixelToPalette && physDevDst->depth != 1)
         {
-            XSetBackground( gdi_display, gc, X11DRV_PALETTE_XPixelToPalette[text_pixel] );
-            XSetForeground( gdi_display, gc, X11DRV_PALETTE_XPixelToPalette[bkgnd_pixel]);
+            XSetBackground( gdi_display, gc, BROADWAYDRV_PALETTE_XPixelToPalette[text_pixel] );
+            XSetForeground( gdi_display, gc, BROADWAYDRV_PALETTE_XPixelToPalette[bkgnd_pixel]);
         }
         else
         {
@@ -976,7 +976,7 @@ static void set_color_info( const XVisualInfo *vis, BITMAPINFO *info, BOOL has_a
         UINT i, count;
 
         info->bmiHeader.biClrUsed = 1 << info->bmiHeader.biBitCount;
-        count = X11DRV_GetSystemPaletteEntries( NULL, 0, info->bmiHeader.biClrUsed, palette );
+        count = BROADWAYDRV_GetSystemPaletteEntries( NULL, 0, info->bmiHeader.biClrUsed, palette );
         for (i = 0; i < count; i++)
         {
             rgb[i].rgbRed   = palette[i].peRed;
@@ -1021,7 +1021,7 @@ static BOOL matching_color_info( const XVisualInfo *vis, const BITMAPINFO *info 
         UINT i, count;
 
         if (info->bmiHeader.biCompression != BI_RGB) return FALSE;
-        count = X11DRV_GetSystemPaletteEntries( NULL, 0, 1 << info->bmiHeader.biBitCount, palette );
+        count = BROADWAYDRV_GetSystemPaletteEntries( NULL, 0, 1 << info->bmiHeader.biBitCount, palette );
         if (count != info->bmiHeader.biClrUsed) return FALSE;
         for (i = 0; i < count; i++)
         {
@@ -1218,13 +1218,13 @@ DWORD copy_image_bits( BITMAPINFO *info, BOOL is_r8g8b8, XImage *image,
 }
 
 /***********************************************************************
- *           X11DRV_PutImage
+ *           BROADWAYDRV_PutImage
  */
-DWORD X11DRV_PutImage( PHYSDEV dev, HRGN clip, BITMAPINFO *info,
+DWORD BROADWAYDRV_PutImage( PHYSDEV dev, HRGN clip, BITMAPINFO *info,
                        const struct gdi_image_bits *bits, struct bitblt_coords *src,
                        struct bitblt_coords *dst, DWORD rop )
 {
-    X11DRV_PDEVICE *physdev = get_broadwaydrv_dev( dev );
+    BROADWAYDRV_PDEVICE *physdev = get_broadwaydrv_dev( dev );
     DWORD ret;
     XImage *image;
     XVisualInfo vis = default_visual;
@@ -1256,7 +1256,7 @@ DWORD X11DRV_PutImage( PHYSDEV dev, HRGN clip, BITMAPINFO *info,
     if (image->bits_per_pixel == 4 || image->bits_per_pixel == 8)
     {
         if (!opcode[1] && OP_SRCDST(opcode[0]) == OP_ARGS(SRC,DST))
-            mapping = X11DRV_PALETTE_PaletteToXPixel;
+            mapping = BROADWAYDRV_PALETTE_PaletteToXPixel;
     }
 
     ret = copy_image_bits( info, is_r8g8b8(&vis), image, bits, &dst_bits, src, mapping, ~0u );
@@ -1310,12 +1310,12 @@ update_format:
 }
 
 /***********************************************************************
- *           X11DRV_GetImage
+ *           BROADWAYDRV_GetImage
  */
-DWORD X11DRV_GetImage( PHYSDEV dev, BITMAPINFO *info,
+DWORD BROADWAYDRV_GetImage( PHYSDEV dev, BITMAPINFO *info,
                        struct gdi_image_bits *bits, struct bitblt_coords *src )
 {
-    X11DRV_PDEVICE *physdev = get_broadwaydrv_dev( dev );
+    BROADWAYDRV_PDEVICE *physdev = get_broadwaydrv_dev( dev );
     DWORD ret = ERROR_SUCCESS;
     XImage *image;
     XVisualInfo vis = default_visual;
@@ -1337,8 +1337,8 @@ DWORD X11DRV_GetImage( PHYSDEV dev, BITMAPINFO *info,
     switch (format->bits_per_pixel)
     {
     case 1:  align = 32; break;
-    case 4:  align = 8;  mapping = X11DRV_PALETTE_XPixelToPalette; break;
-    case 8:  align = 4;  mapping = X11DRV_PALETTE_XPixelToPalette; break;
+    case 4:  align = 8;  mapping = BROADWAYDRV_PALETTE_XPixelToPalette; break;
+    case 8:  align = 4;  mapping = BROADWAYDRV_PALETTE_XPixelToPalette; break;
     case 16: align = 2;  break;
     case 24: align = 4;  break;
     case 32: align = 1;  break;
@@ -1367,11 +1367,11 @@ DWORD X11DRV_GetImage( PHYSDEV dev, BITMAPINFO *info,
     src->y -= y;
     OffsetRect( &src->visrect, -x, -y );
 
-    X11DRV_expect_error( gdi_display, XGetImage_handler, NULL );
+    BROADWAYDRV_expect_error( gdi_display, XGetImage_handler, NULL );
     image = XGetImage( gdi_display, physdev->drawable,
                        physdev->dc_rect.left + x, physdev->dc_rect.top + y,
                        width, height, AllPlanes, ZPixmap );
-    if (X11DRV_check_error())
+    if (BROADWAYDRV_check_error())
     {
         /* use a temporary pixmap to avoid the BadMatch error */
         Pixmap pixmap = XCreatePixmap( gdi_display, root_window, width, height, vis.depth );
@@ -1409,7 +1409,7 @@ DWORD X11DRV_GetImage( PHYSDEV dev, BITMAPINFO *info,
 /***********************************************************************
  *           put_pixmap_image
  *
- * Simplified equivalent of X11DRV_PutImage that writes directly to a pixmap.
+ * Simplified equivalent of BROADWAYDRV_PutImage that writes directly to a pixmap.
  */
 static DWORD put_pixmap_image( Pixmap pixmap, const XVisualInfo *vis,
                                BITMAPINFO *info, const struct gdi_image_bits *bits )
@@ -1440,7 +1440,7 @@ static DWORD put_pixmap_image( Pixmap pixmap, const XVisualInfo *vis,
     if (!image) return ERROR_OUTOFMEMORY;
 
     if (image->bits_per_pixel == 4 || image->bits_per_pixel == 8)
-        mapping = X11DRV_PALETTE_PaletteToXPixel;
+        mapping = BROADWAYDRV_PALETTE_PaletteToXPixel;
 
     if (!(ret = copy_image_bits( info, is_r8g8b8(vis), image, bits, &dst_bits, &coords, mapping, ~0u )))
     {
@@ -1519,7 +1519,7 @@ Pixmap create_pixmap_from_image( HDC hdc, const XVisualInfo *vis, const BITMAPIN
 /***********************************************************************
  *           get_pixmap_image
  *
- * Equivalent of X11DRV_GetImage that reads directly from a pixmap.
+ * Equivalent of BROADWAYDRV_GetImage that reads directly from a pixmap.
  */
 DWORD get_pixmap_image( Pixmap pixmap, int width, int height, const XVisualInfo *vis,
                         BITMAPINFO *info, struct gdi_image_bits *bits )
@@ -1748,7 +1748,7 @@ static void update_surface_region( struct broadwaydrv_window_surface *surface )
 
     if (data->rdh.nCount) flush_rgn_data( rgn, data );
 
-    if ((data = X11DRV_GetRegionData( rgn, 0 )))
+    if ((data = BROADWAYDRV_GetRegionData( rgn, 0 )))
     {
         XShapeCombineRectangles( gdi_display, surface->window, ShapeBounding, 0, 0,
                                  (XRectangle *)data->Buffer, data->rdh.nCount, ShapeSet, YXBanded );
@@ -1808,10 +1808,10 @@ static XImage *create_shm_image( const XVisualInfo *vis, int width, int height, 
         BOOL ok;
 
         shminfo->readOnly = True;
-        X11DRV_expect_error( gdi_display, xshm_error_handler, NULL );
+        BROADWAYDRV_expect_error( gdi_display, xshm_error_handler, NULL );
         ok = (XShmAttach( gdi_display, shminfo ) != 0);
         XSync( gdi_display, False );
-        if (!X11DRV_check_error() && ok)
+        if (!BROADWAYDRV_check_error() && ok)
         {
             image->data = shminfo->shmaddr;
             shmctl( shminfo->shmid, IPC_RMID, 0 );
@@ -1890,7 +1890,7 @@ static void broadwaydrv_surface_set_region( struct window_surface *window_surfac
     {
         if (!surface->region) surface->region = NtGdiCreateRectRgn( 0, 0, 0, 0 );
         NtGdiCombineRgn( surface->region, region, 0, RGN_COPY );
-        if ((data = X11DRV_GetRegionData( surface->region, 0 )))
+        if ((data = BROADWAYDRV_GetRegionData( surface->region, 0 )))
         {
             XSetClipRectangles( gdi_display, surface->gc, 0, 0,
                                 (XRectangle *)data->Buffer, data->rdh.nCount, YXBanded );

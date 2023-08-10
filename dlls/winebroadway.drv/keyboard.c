@@ -1119,9 +1119,9 @@ static WORD EVENT_event_to_vkey( XIC xic, XKeyEvent *e)
 
 
 /***********************************************************************
- *           X11DRV_send_keyboard_input
+ *           BROADWAYDRV_send_keyboard_input
  */
-static void X11DRV_send_keyboard_input( HWND hwnd, WORD vkey, WORD scan, UINT flags, UINT time )
+static void BROADWAYDRV_send_keyboard_input( HWND hwnd, WORD vkey, WORD scan, UINT flags, UINT time )
 {
     INPUT input;
 
@@ -1181,7 +1181,7 @@ static void update_key_state( BYTE *keystate, BYTE key, int down )
 }
 
 /***********************************************************************
- *           X11DRV_KeymapNotify
+ *           BROADWAYDRV_KeymapNotify
  *
  * Update modifiers state (Ctrl, Alt, Shift) when window is activated.
  *
@@ -1189,7 +1189,7 @@ static void update_key_state( BYTE *keystate, BYTE key, int down )
  * from wine to another application and back.
  * Toggle keys are handled in HandleEvent.
  */
-BOOL X11DRV_KeymapNotify( HWND hwnd, XEvent *event )
+BOOL BROADWAYDRV_KeymapNotify( HWND hwnd, XEvent *event )
 {
     int i, j;
     BYTE keystate[256];
@@ -1248,8 +1248,8 @@ static void adjust_lock_state( BYTE *keystate, HWND hwnd, WORD vkey, WORD scan, 
 {
     BYTE prev_state = keystate[vkey] & 0x01;
 
-    X11DRV_send_keyboard_input( hwnd, vkey, scan, flags, time );
-    X11DRV_send_keyboard_input( hwnd, vkey, scan, flags ^ KEYEVENTF_KEYUP, time );
+    BROADWAYDRV_send_keyboard_input( hwnd, vkey, scan, flags, time );
+    BROADWAYDRV_send_keyboard_input( hwnd, vkey, scan, flags ^ KEYEVENTF_KEYUP, time );
 
     /* Keyboard hooks may have blocked processing lock keys causing our state
      * to be different than state on X server side. Although Windows allows hooks
@@ -1302,11 +1302,11 @@ static void update_lock_state( HWND hwnd, WORD vkey, UINT state, UINT time )
 }
 
 /***********************************************************************
- *           X11DRV_KeyEvent
+ *           BROADWAYDRV_KeyEvent
  *
  * Handle a X key event
  */
-BOOL X11DRV_KeyEvent( HWND hwnd, XEvent *xev )
+BOOL BROADWAYDRV_KeyEvent( HWND hwnd, XEvent *xev )
 {
     XKeyEvent *event = &xev->xkey;
     char buf[24];
@@ -1315,7 +1315,7 @@ BOOL X11DRV_KeyEvent( HWND hwnd, XEvent *xev )
     WORD vkey = 0, bScan;
     DWORD dwFlags;
     int ascii_chars;
-    XIC xic = X11DRV_get_ic( hwnd );
+    XIC xic = BROADWAYDRV_get_ic( hwnd );
     DWORD event_time = EVENT_x11_time_to_win32_time(event->time);
     Status status = 0;
 
@@ -1398,20 +1398,20 @@ BOOL X11DRV_KeyEvent( HWND hwnd, XEvent *xev )
 
     update_lock_state( hwnd, vkey, event->state, event_time );
 
-    X11DRV_send_keyboard_input( hwnd, vkey & 0xff, bScan, dwFlags, event_time );
+    BROADWAYDRV_send_keyboard_input( hwnd, vkey & 0xff, bScan, dwFlags, event_time );
     return TRUE;
 }
 
 /**********************************************************************
- *		X11DRV_KEYBOARD_DetectLayout
+ *		BROADWAYDRV_KEYBOARD_DetectLayout
  *
- * Called from X11DRV_InitKeyboard
+ * Called from BROADWAYDRV_InitKeyboard
  *  This routine walks through the defined keyboard layouts and selects
  *  whichever matches most closely.
  * kbd_section must be held.
  */
 static void
-X11DRV_KEYBOARD_DetectLayout( Display *display )
+BROADWAYDRV_KEYBOARD_DetectLayout( Display *display )
 {
   unsigned current, match, mismatch, seq, i, syms;
   int score, keyc, key, pkey, ok;
@@ -1516,9 +1516,9 @@ X11DRV_KEYBOARD_DetectLayout( Display *display )
 
 
 /**********************************************************************
- *		X11DRV_InitKeyboard
+ *		BROADWAYDRV_InitKeyboard
  */
-void X11DRV_InitKeyboard( Display *display )
+void BROADWAYDRV_InitKeyboard( Display *display )
 {
     XModifierKeymap *mmp;
     KeySym keysym;
@@ -1531,8 +1531,8 @@ void X11DRV_InitKeyboard( Display *display )
     char vkey_used[256] = { 0 };
 
     /* Ranges of OEM, function key, and character virtual key codes.
-     * Don't include those handled specially in X11DRV_ToUnicodeEx and
-     * X11DRV_MapVirtualKeyEx, like VK_NUMPAD0 - VK_DIVIDE. */
+     * Don't include those handled specially in BROADWAYDRV_ToUnicodeEx and
+     * BROADWAYDRV_MapVirtualKeyEx, like VK_NUMPAD0 - VK_DIVIDE. */
     static const struct {
         WORD first, last;
     } vkey_ranges[] = {
@@ -1580,7 +1580,7 @@ void X11DRV_InitKeyboard( Display *display )
     XFreeModifiermap(mmp);
 
     /* Detect the keyboard layout */
-    X11DRV_KEYBOARD_DetectLayout( display );
+    BROADWAYDRV_KEYBOARD_DetectLayout( display );
     lkey = main_key_tab[kbd_layout].key;
     syms = (keysyms_per_keycode > 4) ? 4 : keysyms_per_keycode;
 
@@ -1787,9 +1787,9 @@ void X11DRV_InitKeyboard( Display *display )
 
 
 /***********************************************************************
- *		ActivateKeyboardLayout (X11DRV.@)
+ *		ActivateKeyboardLayout (BROADWAYDRV.@)
  */
-BOOL X11DRV_ActivateKeyboardLayout(HKL hkl, UINT flags)
+BOOL BROADWAYDRV_ActivateKeyboardLayout(HKL hkl, UINT flags)
 {
     FIXME("%p, %04x: semi-stub!\n", hkl, flags);
 
@@ -1805,14 +1805,14 @@ BOOL X11DRV_ActivateKeyboardLayout(HKL hkl, UINT flags)
 
 
 /***********************************************************************
- *           X11DRV_MappingNotify
+ *           BROADWAYDRV_MappingNotify
  */
-BOOL X11DRV_MappingNotify( HWND dummy, XEvent *event )
+BOOL BROADWAYDRV_MappingNotify( HWND dummy, XEvent *event )
 {
     HWND hwnd;
 
     XRefreshKeyboardMapping(&event->xmapping);
-    X11DRV_InitKeyboard( event->xmapping.display );
+    BROADWAYDRV_InitKeyboard( event->xmapping.display );
 
     hwnd = get_focus();
     if (!hwnd) hwnd = get_active_window();
@@ -1823,11 +1823,11 @@ BOOL X11DRV_MappingNotify( HWND dummy, XEvent *event )
 
 
 /***********************************************************************
- *		VkKeyScanEx (X11DRV.@)
+ *		VkKeyScanEx (BROADWAYDRV.@)
  *
  * Note: Windows ignores HKL parameter and uses current active layout instead
  */
-SHORT X11DRV_VkKeyScanEx( WCHAR wChar, HKL hkl )
+SHORT BROADWAYDRV_VkKeyScanEx( WCHAR wChar, HKL hkl )
 {
     Display *display = thread_init_display();
     KeyCode keycode;
@@ -1907,9 +1907,9 @@ SHORT X11DRV_VkKeyScanEx( WCHAR wChar, HKL hkl )
 }
 
 /***********************************************************************
- *		MapVirtualKeyEx (X11DRV.@)
+ *		MapVirtualKeyEx (BROADWAYDRV.@)
  */
-UINT X11DRV_MapVirtualKeyEx( UINT wCode, UINT wMapType, HKL hkl )
+UINT BROADWAYDRV_MapVirtualKeyEx( UINT wCode, UINT wMapType, HKL hkl )
 {
     UINT ret = 0;
     int keyc;
@@ -2049,9 +2049,9 @@ UINT X11DRV_MapVirtualKeyEx( UINT wCode, UINT wMapType, HKL hkl )
 }
 
 /***********************************************************************
- *		GetKeyNameText (X11DRV.@)
+ *		GetKeyNameText (BROADWAYDRV.@)
  */
-INT X11DRV_GetKeyNameText( LONG lParam, LPWSTR lpBuffer, INT nSize )
+INT BROADWAYDRV_GetKeyNameText( LONG lParam, LPWSTR lpBuffer, INT nSize )
 {
   Display *display = thread_init_display();
   int vkey, ansi, scanCode;
@@ -2063,7 +2063,7 @@ INT X11DRV_GetKeyNameText( LONG lParam, LPWSTR lpBuffer, INT nSize )
   scanCode = lParam >> 16;
   scanCode &= 0x1ff;  /* keep "extended-key" flag with code */
 
-  vkey = X11DRV_MapVirtualKeyEx( scanCode, MAPVK_VSC_TO_VK_EX, NtUserGetKeyboardLayout(0) );
+  vkey = BROADWAYDRV_MapVirtualKeyEx( scanCode, MAPVK_VSC_TO_VK_EX, NtUserGetKeyboardLayout(0) );
 
   /*  handle "don't care" bit (0x02000000) */
   if (!(lParam & 0x02000000)) {
@@ -2086,7 +2086,7 @@ INT X11DRV_GetKeyNameText( LONG lParam, LPWSTR lpBuffer, INT nSize )
     }
   }
 
-  ansi = X11DRV_MapVirtualKeyEx( vkey, MAPVK_VK_TO_CHAR, NtUserGetKeyboardLayout(0) );
+  ansi = BROADWAYDRV_MapVirtualKeyEx( vkey, MAPVK_VK_TO_CHAR, NtUserGetKeyboardLayout(0) );
   TRACE("scan 0x%04x, vkey 0x%04X, ANSI 0x%04x\n", scanCode, vkey, ansi);
 
   /* first get the name of the "regular" keys which is the Upper case
@@ -2169,7 +2169,7 @@ INT X11DRV_GetKeyNameText( LONG lParam, LPWSTR lpBuffer, INT nSize )
 }
 
 /***********************************************************************
- *		X11DRV_KEYBOARD_MapDeadKeysym
+ *		BROADWAYDRV_KEYBOARD_MapDeadKeysym
  */
 static char KEYBOARD_MapDeadKeysym(KeySym keysym)
 {
@@ -2247,7 +2247,7 @@ static char KEYBOARD_MapDeadKeysym(KeySym keysym)
 }
 
 /***********************************************************************
- *		ToUnicodeEx (X11DRV.@)
+ *		ToUnicodeEx (BROADWAYDRV.@)
  *
  * The ToUnicode function translates the specified virtual-key code and keyboard
  * state to the corresponding Windows character or characters.
@@ -2264,7 +2264,7 @@ static char KEYBOARD_MapDeadKeysym(KeySym keysym)
  * FIXME : should do the above (return 2 for non matching deadchar+char combinations)
  *
  */
-INT X11DRV_ToUnicodeEx( UINT virtKey, UINT scanCode, const BYTE *lpKeyState,
+INT BROADWAYDRV_ToUnicodeEx( UINT virtKey, UINT scanCode, const BYTE *lpKeyState,
                         LPWSTR bufW, int bufW_size, UINT flags, HKL hkl )
 {
     Display *display = thread_init_display();
@@ -2302,8 +2302,8 @@ INT X11DRV_ToUnicodeEx( UINT virtKey, UINT scanCode, const BYTE *lpKeyState,
         if (focus) focus = NtUserGetAncestor( focus, GA_ROOT );
         if (!focus) focus = get_active_window();
     }
-    e.window = X11DRV_get_whole_window( focus );
-    xic = X11DRV_get_ic( focus );
+    e.window = BROADWAYDRV_get_whole_window( focus );
+    xic = BROADWAYDRV_get_ic( focus );
 
     pthread_mutex_lock( &kbd_mutex );
 
@@ -2561,9 +2561,9 @@ found:
 }
 
 /***********************************************************************
- *		Beep (X11DRV.@)
+ *		Beep (BROADWAYDRV.@)
  */
-void X11DRV_Beep(void)
+void BROADWAYDRV_Beep(void)
 {
     XBell(gdi_display, 0);
 }

@@ -41,9 +41,9 @@ static HWND XDNDLastTargetWnd;
 /* might be an ancestor of XDNDLastTargetWnd */
 static HWND XDNDLastDropTargetWnd;
 
-static BOOL X11DRV_XDND_HasHDROP(void);
-static HRESULT X11DRV_XDND_SendDropFiles(HWND hwnd);
-static void X11DRV_XDND_FreeDragDropOp(void);
+static BOOL BROADWAYDRV_XDND_HasHDROP(void);
+static HRESULT BROADWAYDRV_XDND_SendDropFiles(HWND hwnd);
+static void BROADWAYDRV_XDND_FreeDragDropOp(void);
 
 static CRITICAL_SECTION xdnd_cs;
 static CRITICAL_SECTION_DEBUG critsect_debug =
@@ -241,7 +241,7 @@ NTSTATUS WINAPI broadwaydrv_dnd_position_event( void *arg, ULONG size )
     {
         /* fallback search for window able to accept these files. */
 
-        if (window_accepting_files(targetWindow) && X11DRV_XDND_HasHDROP())
+        if (window_accepting_files(targetWindow) && BROADWAYDRV_XDND_HasHDROP())
         {
             accept = 1;
             effect = DROPEFFECT_COPY;
@@ -307,9 +307,9 @@ NTSTATUS broadwaydrv_dnd_drop_event( UINT arg )
 
         HWND hwnd_drop = window_accepting_files(window_from_point_dnd( UlongToHandle(arg), XDNDxy ));
 
-        if (hwnd_drop && X11DRV_XDND_HasHDROP())
+        if (hwnd_drop && BROADWAYDRV_XDND_HasHDROP())
         {
-            HRESULT hr = X11DRV_XDND_SendDropFiles(hwnd_drop);
+            HRESULT hr = BROADWAYDRV_XDND_SendDropFiles(hwnd_drop);
             if (SUCCEEDED(hr))
             {
                 accept = 1;
@@ -348,7 +348,7 @@ NTSTATUS broadwaydrv_dnd_leave_event( UINT arg )
         }
     }
 
-    X11DRV_XDND_FreeDragDropOp();
+    BROADWAYDRV_XDND_FreeDragDropOp();
     return 0;
 }
 
@@ -360,7 +360,7 @@ NTSTATUS WINAPI broadwaydrv_dnd_enter_event( void *params, ULONG size )
 {
     struct format_entry *formats = params;
     XDNDAccepted = FALSE;
-    X11DRV_XDND_FreeDragDropOp(); /* Clear previously cached data */
+    BROADWAYDRV_XDND_FreeDragDropOp(); /* Clear previously cached data */
 
     if ((xdnd_formats = HeapAlloc( GetProcessHeap(), 0, size )))
     {
@@ -372,9 +372,9 @@ NTSTATUS WINAPI broadwaydrv_dnd_enter_event( void *params, ULONG size )
 
 
 /**************************************************************************
- * X11DRV_XDND_HasHDROP
+ * BROADWAYDRV_XDND_HasHDROP
  */
-static BOOL X11DRV_XDND_HasHDROP(void)
+static BOOL BROADWAYDRV_XDND_HasHDROP(void)
 {
     struct format_entry *iter;
     BOOL found = FALSE;
@@ -397,9 +397,9 @@ static BOOL X11DRV_XDND_HasHDROP(void)
 }
 
 /**************************************************************************
- * X11DRV_XDND_SendDropFiles
+ * BROADWAYDRV_XDND_SendDropFiles
  */
-static HRESULT X11DRV_XDND_SendDropFiles(HWND hwnd)
+static HRESULT BROADWAYDRV_XDND_SendDropFiles(HWND hwnd)
 {
     struct format_entry *iter;
     HRESULT hr;
@@ -453,9 +453,9 @@ static HRESULT X11DRV_XDND_SendDropFiles(HWND hwnd)
 
 
 /**************************************************************************
- * X11DRV_XDND_FreeDragDropOp
+ * BROADWAYDRV_XDND_FreeDragDropOp
  */
-static void X11DRV_XDND_FreeDragDropOp(void)
+static void BROADWAYDRV_XDND_FreeDragDropOp(void)
 {
     TRACE("\n");
 
@@ -474,9 +474,9 @@ static void X11DRV_XDND_FreeDragDropOp(void)
 
 
 /**************************************************************************
- * X11DRV_XDND_DescribeClipboardFormat
+ * BROADWAYDRV_XDND_DescribeClipboardFormat
  */
-static void X11DRV_XDND_DescribeClipboardFormat(int cfFormat, char *buffer, int size)
+static void BROADWAYDRV_XDND_DescribeClipboardFormat(int cfFormat, char *buffer, int size)
 {
 #define D(x) case x: lstrcpynA(buffer, #x, size); return;
     switch (cfFormat)
@@ -552,7 +552,7 @@ static HRESULT WINAPI XDNDDATAOBJECT_GetData(IDataObject *dataObject,
     char formatDesc[1024];
 
     TRACE("(%p, %p, %p)\n", dataObject, formatEtc, pMedium);
-    X11DRV_XDND_DescribeClipboardFormat(formatEtc->cfFormat,
+    BROADWAYDRV_XDND_DescribeClipboardFormat(formatEtc->cfFormat,
         formatDesc, sizeof(formatDesc));
     TRACE("application is looking for %s\n", formatDesc);
 
@@ -595,7 +595,7 @@ static HRESULT WINAPI XDNDDATAOBJECT_QueryGetData(IDataObject *dataObject,
 
     TRACE("(%p, %p={.tymed=0x%lx, .dwAspect=%ld, .cfFormat=%d}\n",
         dataObject, formatEtc, formatEtc->tymed, formatEtc->dwAspect, formatEtc->cfFormat);
-    X11DRV_XDND_DescribeClipboardFormat(formatEtc->cfFormat, formatDesc, sizeof(formatDesc));
+    BROADWAYDRV_XDND_DescribeClipboardFormat(formatEtc->cfFormat, formatDesc, sizeof(formatDesc));
 
     if (formatEtc->tymed && !(formatEtc->tymed & TYMED_HGLOBAL))
     {

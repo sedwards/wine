@@ -386,5 +386,5 @@ void xinerama_init( unsigned int width, unsigned int height )
     handler.free_adapters = xinerama_free_adapters;
     handler.free_monitors = xinerama_free_monitors;
     handler.register_event_handlers = NULL;
-    X11DRV_DisplayDevices_SetHandler( &handler );
+    BROADWAYDRV_DisplayDevices_SetHandler( &handler );
 }

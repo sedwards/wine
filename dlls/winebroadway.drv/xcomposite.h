@@ -1,5 +1,5 @@
 /*
- * Wine X11DRV XComposite interface
+ * Wine BROADWAYDRV XComposite interface
  *
  * Copyright 2007 Chris Robinson
  *

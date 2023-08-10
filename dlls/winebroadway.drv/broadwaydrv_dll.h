@@ -18,8 +18,8 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#ifndef __WINE_X11DRV_DLL_H
-#define __WINE_X11DRV_DLL_H
+#ifndef __WINE_BROADWAYDRV_DLL_H
+#define __WINE_BROADWAYDRV_DLL_H
 
 #include <stdarg.h>
 #include "windef.h"
@@ -41,4 +41,4 @@ extern LRESULT WINAPI foreign_window_proc( HWND hwnd, UINT msg, WPARAM wparam,
 extern BOOL show_systray DECLSPEC_HIDDEN;
 extern HMODULE broadwaydrv_module DECLSPEC_HIDDEN;
 
-#endif /* __WINE_X11DRV_DLL_H */
+#endif /* __WINE_BROADWAYDRV_DLL_H */

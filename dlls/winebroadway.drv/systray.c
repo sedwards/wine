@@ -538,7 +538,7 @@ static BOOL init_systray(void)
     WNDCLASSEXW class;
 
     if (init_done) return TRUE;
-    if (!X11DRV_CALL( systray_init, NULL ))
+    if (!BROADWAYDRV_CALL( systray_init, NULL ))
     {
         init_done = TRUE;
         return FALSE;
@@ -593,7 +593,7 @@ NTSTATUS WINAPI broadwaydrv_systray_change_owner( void *arg, ULONG size )
         dock_params.cx = icon_cx;
         dock_params.cy = icon_cy;
         dock_params.layered = &icon->layered;
-        X11DRV_CALL( systray_dock, &dock_params );
+        BROADWAYDRV_CALL( systray_dock, &dock_params );
     }
 
     return 0;
@@ -606,7 +606,7 @@ static BOOL hide_icon( struct tray_icon *icon )
 
     if (!icon->window) return TRUE;  /* already hidden */
 
-    X11DRV_CALL( systray_hide, &icon->window );
+    BROADWAYDRV_CALL( systray_hide, &icon->window );
     DestroyWindow(icon->window);
     DestroyWindow(icon->tooltip);
     icon->window = 0;
@@ -632,7 +632,7 @@ static BOOL show_icon( struct tray_icon *icon )
     params.cy = icon_cy;
     params.layered = &icon->layered;
 
-    if (X11DRV_CALL( systray_dock, &params ))
+    if (BROADWAYDRV_CALL( systray_dock, &params ))
         add_to_standalone_tray( icon );
 
     update_balloon( icon );
@@ -657,7 +657,7 @@ static BOOL modify_icon( struct tray_icon *icon, NOTIFYICONDATAW *nid )
         {
             if (icon->display != -1) InvalidateRect( icon->window, NULL, TRUE );
             else if (icon->layered) repaint_tray_icon( icon );
-            else X11DRV_CALL( systray_clear, &icon->window );
+            else BROADWAYDRV_CALL( systray_clear, &icon->window );
         }
     }
 
@@ -734,7 +734,7 @@ static void cleanup_icons( HWND owner )
 
 
 /***********************************************************************
- *              wine_notify_icon   (X11DRV.@)
+ *              wine_notify_icon   (BROADWAYDRV.@)
  *
  * Driver-side implementation of Shell_NotifyIcon.
  */

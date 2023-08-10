@@ -1,5 +1,5 @@
 /*
- * X11DRV display device functions
+ * BROADWAYDRV display device functions
  *
  * Copyright 2019 Zhiyi Zhang for CodeWeavers
  *
@@ -52,7 +52,7 @@ const unsigned int *depths;
 
 static pthread_mutex_t settings_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-void X11DRV_Settings_SetHandler(const struct broadwaydrv_settings_handler *new_handler)
+void BROADWAYDRV_Settings_SetHandler(const struct broadwaydrv_settings_handler *new_handler)
 {
     if (new_handler->priority > settings_handler.priority)
     {
@@ -139,7 +139,7 @@ static LONG nores_set_current_mode(broadwaydrv_settings_id id, const DEVMODEW *m
 }
 
 /* default handler only gets the current X desktop resolution */
-void X11DRV_Settings_Init(void)
+void BROADWAYDRV_Settings_Init(void)
 {
     struct broadwaydrv_settings_handler nores_handler;
 
@@ -152,7 +152,7 @@ void X11DRV_Settings_Init(void)
     nores_handler.free_modes = nores_free_modes;
     nores_handler.get_current_mode = nores_get_current_mode;
     nores_handler.set_current_mode = nores_set_current_mode;
-    X11DRV_Settings_SetHandler(&nores_handler);
+    BROADWAYDRV_Settings_SetHandler(&nores_handler);
 }
 
 static void set_display_depth(broadwaydrv_settings_id display_id, DWORD depth)
@@ -203,7 +203,7 @@ static DWORD get_display_depth(broadwaydrv_settings_id display_id)
     return screen_bpp;
 }
 
-INT X11DRV_GetDisplayDepth(LPCWSTR name, BOOL is_primary)
+INT BROADWAYDRV_GetDisplayDepth(LPCWSTR name, BOOL is_primary)
 {
     broadwaydrv_settings_id id;
 
@@ -214,10 +214,10 @@ INT X11DRV_GetDisplayDepth(LPCWSTR name, BOOL is_primary)
 }
 
 /***********************************************************************
- *      GetCurrentDisplaySettings  (X11DRV.@)
+ *      GetCurrentDisplaySettings  (BROADWAYDRV.@)
  *
  */
-BOOL X11DRV_GetCurrentDisplaySettings( LPCWSTR name, BOOL is_primary, LPDEVMODEW devmode )
+BOOL BROADWAYDRV_GetCurrentDisplaySettings( LPCWSTR name, BOOL is_primary, LPDEVMODEW devmode )
 {
     DEVMODEW mode;
     broadwaydrv_settings_id id;
@@ -335,10 +335,10 @@ static LONG apply_display_settings( DEVMODEW *displays, broadwaydrv_settings_id 
 }
 
 /***********************************************************************
- *      ChangeDisplaySettings  (X11DRV.@)
+ *      ChangeDisplaySettings  (BROADWAYDRV.@)
  *
  */
-LONG X11DRV_ChangeDisplaySettings( LPDEVMODEW displays, LPCWSTR primary_name, HWND hwnd, DWORD flags, LPVOID lpvoid )
+LONG BROADWAYDRV_ChangeDisplaySettings( LPDEVMODEW displays, LPCWSTR primary_name, HWND hwnd, DWORD flags, LPVOID lpvoid )
 {
     INT left_most = INT_MAX, top_most = INT_MAX;
     LONG count, ret = DISP_CHANGE_BADPARAM;
@@ -472,7 +472,7 @@ RECT get_work_area(const RECT *monitor_rect)
     return *monitor_rect;
 }
 
-void X11DRV_DisplayDevices_SetHandler(const struct broadwaydrv_display_device_handler *new_handler)
+void BROADWAYDRV_DisplayDevices_SetHandler(const struct broadwaydrv_display_device_handler *new_handler)
 {
     if (new_handler->priority > host_handler.priority)
     {
@@ -481,13 +481,13 @@ void X11DRV_DisplayDevices_SetHandler(const struct broadwaydrv_display_device_ha
     }
 }
 
-void X11DRV_DisplayDevices_RegisterEventHandlers(void)
+void BROADWAYDRV_DisplayDevices_RegisterEventHandlers(void)
 {
     if (host_handler.register_event_handlers) host_handler.register_event_handlers();
 }
 
 /* Report whether a display device handler supports detecting dynamic device changes */
-BOOL X11DRV_DisplayDevices_SupportEventHandlers(void)
+BOOL BROADWAYDRV_DisplayDevices_SupportEventHandlers(void)
 {
     return !!host_handler.register_event_handlers;
 }
@@ -513,7 +513,7 @@ static const char *debugstr_devmodew( const DEVMODEW *devmode )
                              position );
 }
 
-BOOL X11DRV_UpdateDisplayDevices( const struct gdi_device_manager *device_manager, BOOL force, void *param )
+BOOL BROADWAYDRV_UpdateDisplayDevices( const struct gdi_device_manager *device_manager, BOOL force, void *param )
 {
     struct gdi_adapter *adapters;
     struct gdi_monitor *monitors;
@@ -593,7 +593,7 @@ BOOL X11DRV_UpdateDisplayDevices( const struct gdi_device_manager *device_manage
     return TRUE;
 }
 
-void X11DRV_DisplayDevices_Init(BOOL force)
+void BROADWAYDRV_DisplayDevices_Init(BOOL force)
 {
     UINT32 num_path, num_mode;
 
