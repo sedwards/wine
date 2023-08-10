@@ -34,6 +34,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <limits.h>
 
 #define OEMRESOURCE
 #include "windef.h"
@@ -55,7 +56,8 @@ struct broadway_win_data
     RECT           window_rect;    /* USER window rectangle relative to parent */
     RECT           whole_rect;     /* X window rectangle for the whole window relative to parent */
     RECT           client_rect;    /* client area relative to parent */
-    ANativeWindow *window;         /* native window wrapper that forwards calls to the desktop process */
+    /* ANativeWindow *window; */         /* native window wrapper that forwards calls to the desktop process */
+    HWND *window;         /* native window wrapper that forwards calls to the desktop process */
     struct window_surface *surface;
 };
 
@@ -208,13 +210,13 @@ int send_event( const union event_data *data )
 
     if ((res = write( event_pipe[1], data, sizeof(*data) )) != sizeof(*data))
     {
-        p__broadway_log_print( BROADWAY_LOG_ERROR, "wine", "failed to send event" );
+        //p__broadway_log_print( BROADWAY_LOG_ERROR, "wine", "failed to send event" );
         return -1;
     }
     return 0;
 }
 
-
+#if 0
 /***********************************************************************
  *           desktop_changed
  *
@@ -355,7 +357,7 @@ jboolean motion_event( JNIEnv *env, jobject obj, jint win, jint action, jint x, 
     send_event( &data );
     return JNI_TRUE;
 }
-
+#endif
 
 /***********************************************************************
  *           init_event_queue
@@ -572,7 +574,8 @@ struct broadway_window_surface
 {
     struct window_surface header;
     HWND                  hwnd;
-    ANativeWindow        *window;
+    //ANativeWindow        *window;
+    HWND                  *window;
     RECT                  bounds;
     BOOL                  byteswap;
     RGNDATA              *region_data;
@@ -716,6 +719,7 @@ static void broadway_surface_set_region( struct window_surface *window_surface, 
  */
 static void broadway_surface_flush( struct window_surface *window_surface )
 {
+#if 0
     struct broadway_window_surface *surface = get_broadway_surface( window_surface );
     ANativeWindow_Buffer buffer;
     ARect rc;
@@ -792,6 +796,7 @@ static void broadway_surface_flush( struct window_surface *window_surface )
     }
     else TRACE( "Unable to lock surface %p window %p buffer %p\n",
                 surface, surface->hwnd, surface->window );
+#endif
 }
 
 /***********************************************************************

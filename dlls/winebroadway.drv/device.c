@@ -44,12 +44,12 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(broadway);
 
-#ifndef SYNC_IOC_WAIT
-#define SYNC_IOC_WAIT _IOW('>', 0, __s32)
-#endif
+//#ifndef SYNC_IOC_WAIT
+//#define SYNC_IOC_WAIT _IOW('>', 0, __s32)
+//#endif
 
 static HANDLE thread;
-static JNIEnv *jni_env;
+//static JNIEnv *jni_env;
 static HWND capture_window;
 
 #define BROADWAYCONTROLTYPE  ((ULONG)'A')
@@ -274,6 +274,7 @@ static void *orig_teb, *java_teb;
 static inline int arch_prctl( int func, void *ptr ) { return syscall( __NR_arch_prctl, func, ptr ); }
 static inline void wrap_java_call(void)   { arch_prctl( ARCH_SET_GS, java_teb ); }
 static inline void unwrap_java_call(void) { arch_prctl( ARCH_SET_GS, orig_teb ); }
+#if 0
 static inline void init_java_thread( JavaVM *java_vm )
 {
     arch_prctl( ARCH_GET_GS, &orig_teb );
@@ -281,6 +282,7 @@ static inline void init_java_thread( JavaVM *java_vm )
     arch_prctl( ARCH_GET_GS, &java_teb );
     arch_prctl( ARCH_SET_GS, orig_teb );
 }
+#endif
 
 #else
 static inline void wrap_java_call(void) { }
@@ -319,10 +321,12 @@ static int get_ioctl_win_parent( HWND parent )
 
 static void wait_fence_and_close( int fence )
 {
+#if 0
     __s32 timeout = 1000;  /* FIXME: should be -1 for infinite timeout */
 
     if (fence == -1) return;
     ioctl( fence, SYNC_IOC_WAIT, &timeout );
+#endif
     close( fence );
 }
 
@@ -475,7 +479,7 @@ static struct ANativeWindowBuffer *get_registered_buffer( struct native_win_data
 static void release_native_window( struct native_win_data *data )
 {
     unsigned int i;
-
+#if 0
     if (data->parent) pANativeWindow_release( data->parent );
     for (i = 0; i < NB_CACHED_BUFFERS; i++)
     {
@@ -483,6 +487,7 @@ static void release_native_window( struct native_win_data *data )
         if (data->mappings[i]) NtUnmapViewOfSection( GetCurrentProcess(), data->mappings[i] );
         data->buffer_lru[i] = -1;
     }
+#endif
     memset( data->buffers, 0, sizeof(data->buffers) );
     memset( data->mappings, 0, sizeof(data->mappings) );
 }
@@ -529,7 +534,7 @@ NTSTATUS broadway_register_window( void *arg )
 
     if (!data || data->parent == win)
     {
-        pANativeWindow_release( win );
+        //pANativeWindow_release( win );
         if (data) NtUserPostMessage( hwnd, WM_BROADWAY_REFRESH, opengl, 0 );
         TRACE( "%p -> %p win %p (unchanged)\n", hwnd, data, win );
         return 0;
@@ -696,6 +701,7 @@ static int status_to_broadway_error( unsigned int status )
     }
 }
 
+#if 0
 static jobject load_java_method( jmethodID *method, const char *name, const char *args )
 {
     jobject object = *p_java_object;
@@ -716,9 +722,10 @@ static jobject load_java_method( jmethodID *method, const char *name, const char
     }
     return object;
 }
-
+#endif
 static void create_desktop_window( HWND hwnd )
 {
+#if 0
     static jmethodID method;
     jobject object;
 
@@ -727,10 +734,12 @@ static void create_desktop_window( HWND hwnd )
     wrap_java_call();
     (*jni_env)->CallVoidMethod( jni_env, object, method, HandleToLong( hwnd ));
     unwrap_java_call();
+#endif
 }
 
 static NTSTATUS createWindow_ioctl( void *data, DWORD in_size, DWORD out_size, ULONG_PTR *ret_size )
 {
+#if 0
     static jmethodID method;
     jobject object;
     struct ioctl_broadway_create_window *res = data;
@@ -749,11 +758,13 @@ static NTSTATUS createWindow_ioctl( void *data, DWORD in_size, DWORD out_size, U
     wrap_java_call();
     (*jni_env)->CallVoidMethod( jni_env, object, method, res->hdr.hwnd, res->hdr.opengl, res->parent, res->scale, pid );
     unwrap_java_call();
+#endif
     return STATUS_SUCCESS;
 }
 
 static NTSTATUS destroyWindow_ioctl( void *data, DWORD in_size, DWORD out_size, ULONG_PTR *ret_size )
 {
+#if 0
     static jmethodID method;
     jobject object;
     struct ioctl_broadway_destroy_window *res = data;
@@ -771,11 +782,13 @@ static NTSTATUS destroyWindow_ioctl( void *data, DWORD in_size, DWORD out_size, 
     (*jni_env)->CallVoidMethod( jni_env, object, method, res->hdr.hwnd );
     unwrap_java_call();
     if (win_data) free_native_win_data( win_data );
+#endif
     return STATUS_SUCCESS;
 }
 
 static NTSTATUS windowPosChanged_ioctl( void *data, DWORD in_size, DWORD out_size, ULONG_PTR *ret_size )
 {
+#if 0
     static jmethodID method;
     jobject object;
     struct ioctl_broadway_window_pos_changed *res = data;
@@ -795,11 +808,13 @@ static NTSTATUS windowPosChanged_ioctl( void *data, DWORD in_size, DWORD out_siz
                                 res->client_rect.left, res->client_rect.top, res->client_rect.right, res->client_rect.bottom,
                                 res->visible_rect.left, res->visible_rect.top, res->visible_rect.right, res->visible_rect.bottom );
     unwrap_java_call();
+#endif
     return STATUS_SUCCESS;
 }
 
 static NTSTATUS dequeueBuffer_ioctl( void *data, DWORD in_size, DWORD out_size, ULONG_PTR *ret_size )
 {
+#if 0
     struct ANativeWindow *parent;
     struct ioctl_broadway_dequeueBuffer *res = data;
     struct native_win_data *win_data;
@@ -845,10 +860,13 @@ static NTSTATUS dequeueBuffer_ioctl( void *data, DWORD in_size, DWORD out_size, 
     }
     ERR( "%08x failed %d\n", res->hdr.hwnd, ret );
     return broadway_error_to_status( ret );
+#endif
+        return STATUS_SUCCESS;  // HAck
 }
 
 static NTSTATUS cancelBuffer_ioctl( void *data, DWORD in_size, DWORD out_size, ULONG_PTR *ret_size )
 {
+#if 0
     struct ioctl_broadway_cancelBuffer *res = data;
     struct ANativeWindow *parent;
     struct ANativeWindowBuffer *buffer;
@@ -868,10 +886,13 @@ static NTSTATUS cancelBuffer_ioctl( void *data, DWORD in_size, DWORD out_size, U
     ret = parent->cancelBuffer( parent, buffer, -1 );
     unwrap_java_call();
     return broadway_error_to_status( ret );
+#endif
+        return STATUS_SUCCESS; // HAck
 }
 
 static NTSTATUS queueBuffer_ioctl( void *data, DWORD in_size, DWORD out_size, ULONG_PTR *ret_size )
 {
+#if 0
     struct ioctl_broadway_queueBuffer *res = data;
     struct ANativeWindow *parent;
     struct ANativeWindowBuffer *buffer;
@@ -899,6 +920,8 @@ static NTSTATUS queueBuffer_ioctl( void *data, DWORD in_size, DWORD out_size, UL
     ret = parent->queueBuffer( parent, buffer, -1 );
     unwrap_java_call();
     return broadway_error_to_status( ret );
+#endif
+        return STATUS_SUCCESS; // HAck
 }
 
 static NTSTATUS query_ioctl( void *data, DWORD in_size, DWORD out_size, ULONG_PTR *ret_size )
@@ -1029,6 +1052,7 @@ static NTSTATUS setSwapInterval_ioctl( void *data, DWORD in_size, DWORD out_size
 
 static NTSTATUS setWindowParent_ioctl( void *data, DWORD in_size, DWORD out_size, ULONG_PTR *ret_size )
 {
+#if 0
     static jmethodID method;
     jobject object;
     struct ioctl_broadway_set_window_parent *res = data;
@@ -1046,6 +1070,7 @@ static NTSTATUS setWindowParent_ioctl( void *data, DWORD in_size, DWORD out_size
     wrap_java_call();
     (*jni_env)->CallVoidMethod( jni_env, object, method, res->hdr.hwnd, res->parent, res->scale, pid );
     unwrap_java_call();
+#endif
     return STATUS_SUCCESS;
 }
 
@@ -1065,6 +1090,7 @@ static NTSTATUS setCapture_ioctl( void *data, DWORD in_size, DWORD out_size, ULO
 
 static NTSTATUS setCursor_ioctl( void *data, DWORD in_size, DWORD out_size, ULONG_PTR *ret_size )
 {
+#if 0
     static jmethodID method;
     jobject object;
     int size;
@@ -1097,7 +1123,7 @@ static NTSTATUS setCursor_ioctl( void *data, DWORD in_size, DWORD out_size, ULON
     else (*jni_env)->CallVoidMethod( jni_env, object, method, res->id, 0, 0, 0, 0, 0 );
 
     unwrap_java_call();
-
+#endif
     return STATUS_SUCCESS;
 }
 
@@ -1152,17 +1178,20 @@ NTSTATUS broadway_dispatch_ioctl( void *arg )
 
 NTSTATUS broadway_java_init( void *arg )
 {
+#if 0
     JavaVM *java_vm;
 
     if (!(java_vm = *p_java_vm)) return STATUS_UNSUCCESSFUL;  /* not running under Java */
 
     init_java_thread( java_vm );
+#endif
     create_desktop_window( NtUserGetDesktopWindow() );
     return STATUS_SUCCESS;
 }
 
 NTSTATUS broadway_java_uninit( void *arg )
 {
+#if 0
     JavaVM *java_vm;
 
     if (!(java_vm = *p_java_vm)) return STATUS_UNSUCCESSFUL;  /* not running under Java */
@@ -1170,6 +1199,7 @@ NTSTATUS broadway_java_uninit( void *arg )
     wrap_java_call();
     (*java_vm)->DetachCurrentThread( java_vm );
     unwrap_java_call();
+#endif
     return STATUS_SUCCESS;
 }
 
@@ -1381,7 +1411,7 @@ static int setSwapInterval( struct ANativeWindow *window, int interval )
     return broadway_ioctl( IOCTL_SET_SWAP_INT, &swap, sizeof(swap), NULL, NULL );
 }
 
-static int query( const ANativeWindow *window, int what, int *value )
+static int query( const HWND *window, int what, int *value )
 {
     struct native_win_wrapper *win = (struct native_win_wrapper *)window;
     struct ioctl_broadway_query query;
@@ -1397,7 +1427,8 @@ static int query( const ANativeWindow *window, int what, int *value )
     return ret;
 }
 
-static int perform( ANativeWindow *window, int operation, ... )
+//static int perform( ANativeWindow *window, int operation, ... )
+static int perform( HWND *window, int operation, ... )
 {
     static const char * const names[] =
     {
@@ -1465,6 +1496,7 @@ static int perform( ANativeWindow *window, int operation, ... )
         break;
     }
     case NATIVE_WINDOW_LOCK:
+#if 0
     {
         struct ANativeWindowBuffer *buffer;
         struct ANativeWindow_Buffer *buffer_ret = va_arg( args, ANativeWindow_Buffer * );
@@ -1497,9 +1529,11 @@ static int perform( ANativeWindow *window, int operation, ... )
         TRACE( "hwnd %p %s bits %p ret %d %s\n", win->hwnd, names[operation], buffer_ret->bits, ret, strerror(-ret) );
         return ret;
     }
+#endif
     case NATIVE_WINDOW_UNLOCK_AND_POST:
     {
         int ret = -EINVAL;
+#if 0
         if (win->locked_buffer)
         {
             gralloc_unlock( win->locked_buffer );
@@ -1507,7 +1541,8 @@ static int perform( ANativeWindow *window, int operation, ... )
             win->locked_buffer = NULL;
         }
         va_end( args );
-        TRACE( "hwnd %p %s ret %d\n", win->hwnd, names[operation], ret );
+#endif
+	TRACE( "hwnd %p %s ret %d\n", win->hwnd, names[operation], ret );
         return ret;
     }
     case NATIVE_WINDOW_CONNECT:
@@ -1524,7 +1559,8 @@ static int perform( ANativeWindow *window, int operation, ... )
     return broadway_ioctl( IOCTL_PERFORM, &perf, sizeof(perf), NULL, NULL );
 }
 
-struct ANativeWindow *create_ioctl_window( HWND hwnd, BOOL opengl, float scale )
+//struct ANativeWindow *create_ioctl_window( HWND hwnd, BOOL opengl, float scale )
+struct HWND *create_ioctl_window( HWND hwnd, BOOL opengl, float scale )
 {
     struct ioctl_broadway_create_window req;
     struct native_win_wrapper *win = calloc( 1, sizeof(*win) );
@@ -1532,7 +1568,8 @@ struct ANativeWindow *create_ioctl_window( HWND hwnd, BOOL opengl, float scale )
     if (!win) return NULL;
 
     win->win.common.magic             = BROADWAY_NATIVE_WINDOW_MAGIC;
-    win->win.common.version           = sizeof(ANativeWindow);
+    //win->win.common.version           = sizeof(ANativeWindow);
+    win->win.common.version           = sizeof(HWND);
     win->win.common.incRef            = win_incRef;
     win->win.common.decRef            = win_decRef;
     win->win.setSwapInterval          = setSwapInterval;

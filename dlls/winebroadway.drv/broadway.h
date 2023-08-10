@@ -36,10 +36,14 @@
 #include "winbase.h"
 #include "ntgdi.h"
 #include "wine/gdi_driver.h"
+
+/* Silence compile warnings until pthread calls are removed for native win32 threads */
+#include <pthread.h>
+
 #include "unixlib.h"
 #include "broadway_native.h"
 
-
+#if 0
 /**************************************************************************
  * Android interface
  */
@@ -49,13 +53,13 @@ DECL_FUNCPTR( __broadway_log_print );
 DECL_FUNCPTR( ANativeWindow_fromSurface );
 DECL_FUNCPTR( ANativeWindow_release );
 #undef DECL_FUNCPTR
-
+#endif
 
 /**************************************************************************
  * OpenGL driver
  */
 
-extern pthread_mutex_t drawable_mutex DECLSPEC_HIDDEN;
+//extern pthread_mutex_t drawable_mutex DECLSPEC_HIDDEN;
 extern void update_gl_drawable( HWND hwnd ) DECLSPEC_HIDDEN;
 extern void destroy_gl_drawable( HWND hwnd ) DECLSPEC_HIDDEN;
 extern struct opengl_funcs *get_wgl_driver( UINT version ) DECLSPEC_HIDDEN;
@@ -64,12 +68,12 @@ extern struct opengl_funcs *get_wgl_driver( UINT version ) DECLSPEC_HIDDEN;
 /**************************************************************************
  * Android pseudo-device
  */
-
+#if 0
 extern void start_broadway_device(void) DECLSPEC_HIDDEN;
 extern void register_native_window( HWND hwnd, struct ANativeWindow *win, BOOL client ) DECLSPEC_HIDDEN;
-extern struct ANativeWindow *create_ioctl_window( HWND hwnd, BOOL opengl, float scale ) DECLSPEC_HIDDEN;
-extern struct ANativeWindow *grab_ioctl_window( struct ANativeWindow *window ) DECLSPEC_HIDDEN;
-extern void release_ioctl_window( struct ANativeWindow *window ) DECLSPEC_HIDDEN;
+extern struct HWND *create_ioctl_window( HWND hwnd, BOOL opengl, float scale ) DECLSPEC_HIDDEN;
+extern struct HWND *grab_ioctl_window( struct HWND *window ) DECLSPEC_HIDDEN;
+extern void release_ioctl_window( struct HWND *window ) DECLSPEC_HIDDEN;
 extern void destroy_ioctl_window( HWND hwnd, BOOL opengl ) DECLSPEC_HIDDEN;
 extern int ioctl_window_pos_changed( HWND hwnd, const RECT *window_rect, const RECT *client_rect,
                                      const RECT *visible_rect, UINT style, UINT flags,
@@ -78,13 +82,13 @@ extern int ioctl_set_window_parent( HWND hwnd, HWND parent, float scale ) DECLSP
 extern int ioctl_set_capture( HWND hwnd ) DECLSPEC_HIDDEN;
 extern int ioctl_set_cursor( int id, int width, int height,
                              int hotspotx, int hotspoty, const unsigned int *bits ) DECLSPEC_HIDDEN;
-
+#endif
 
 /**************************************************************************
  * USER driver
  */
 
-extern pthread_mutex_t win_data_mutex DECLSPEC_HIDDEN;
+//extern pthread_mutex_t win_data_mutex DECLSPEC_HIDDEN;
 extern INT BROADWAY_GetKeyNameText( LONG lparam, LPWSTR buffer, INT size ) DECLSPEC_HIDDEN;
 extern UINT BROADWAY_MapVirtualKeyEx( UINT code, UINT maptype, HKL hkl ) DECLSPEC_HIDDEN;
 extern SHORT BROADWAY_VkKeyScanEx( WCHAR ch, HKL hkl ) DECLSPEC_HIDDEN;
@@ -175,7 +179,8 @@ union event_data
     {
         enum event_type type;
         HWND            hwnd;
-        ANativeWindow  *window;
+        //ANativeWindow  *window;
+        HWND            *window;
         BOOL            client;
         unsigned int    width;
         unsigned int    height;
@@ -197,9 +202,9 @@ union event_data
 
 int send_event( const union event_data *data ) DECLSPEC_HIDDEN;
 
-extern JavaVM **p_java_vm;
-extern jobject *p_java_object;
-extern unsigned short *p_java_gdt_sel;
+//extern JavaVM **p_java_vm;
+//extern jobject *p_java_object;
+//extern unsigned short *p_java_gdt_sel;
 
 /* string helpers */
 

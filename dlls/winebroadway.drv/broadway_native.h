@@ -24,6 +24,9 @@
 #ifndef __WINE_BROADWAY_NATIVE_H
 #define __WINE_BROADWAY_NATIVE_H
 
+/* Included to ensure we have uint32_t */
+#include <stdint.h>
+
 /* Native window definitions */
 
 typedef struct native_handle

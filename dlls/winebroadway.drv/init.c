@@ -83,7 +83,7 @@ void init_monitors( int width, int height )
     else monitor_rc_work.top = rect.bottom;
     TRACE( "found tray %p %s work area %s\n", hwnd,
            wine_dbgstr_rect( &rect ), wine_dbgstr_rect( &monitor_rc_work ));
-
+#if 0
     if (*p_java_vm) /* if we're notified from Java thread, update registry */
     {
         UINT32 num_path, num_mode;
@@ -91,6 +91,7 @@ void init_monitors( int width, int height )
         /* trigger refresh in win32u */
         NtUserGetDisplayConfigBufferSizes( QDC_ONLY_ACTIVE_PATHS, &num_path, &num_mode );
     }
+#endif
 }
 
 
@@ -174,7 +175,7 @@ void set_screen_dpi( DWORD dpi )
  */
 static void fetch_display_metrics(void)
 {
-    if (*p_java_vm) return;  /* for Java threads it will be set when the top view is created */
+    //if (*p_java_vm) return;  /* for Java threads it will be set when the top view is created */
 
     SERVER_START_REQ( get_window_rectangles )
     {
@@ -365,7 +366,7 @@ static const struct user_driver_funcs broadway_drv_funcs =
     .pwine_get_wgl_driver = BROADWAY_wine_get_wgl_driver,
 };
 
-
+#if 0
 static const JNINativeMethod methods[] =
 {
     { "wine_desktop_changed", "(II)V", desktop_changed },
@@ -385,6 +386,7 @@ DECL_FUNCPTR( __broadway_log_print );
 DECL_FUNCPTR( ANativeWindow_fromSurface );
 DECL_FUNCPTR( ANativeWindow_release );
 DECL_FUNCPTR( hw_get_module );
+#endif
 
 #ifndef DT_GNU_HASH
 #define DT_GNU_HASH 0x6ffffef5
@@ -486,12 +488,13 @@ static void *find_symbol( const struct dl_phdr_info* info, const char *var, int 
 static int enum_libs( struct dl_phdr_info* info, size_t size, void* data )
 {
     const char *p;
-
+#if 0
     if (!info->dlpi_name) return 0;
     if (!(p = strrchr( info->dlpi_name, '/' ))) return 0;
     if (strcmp( p, "/libhardware.so" )) return 0;
     TRACE( "found libhardware at %p\n", info->dlpi_phdr );
     phw_get_module = find_symbol( info, "hw_get_module", STT_FUNC );
+#endif
     return 1;
 }
 
@@ -516,11 +519,11 @@ static void load_hardware_libs(void)
             return;
         }
         dl_iterate_phdr( enum_libs, 0 );
-        if (!phw_get_module)
-        {
-            ERR( "failed to find hw_get_module\n" );
-            return;
-        }
+        //if (!phw_get_module)
+        //{
+        //    ERR( "failed to find hw_get_module\n" );
+        //    return;
+        //}
     }
 
     if ((ret = phw_get_module( GRALLOC_HARDWARE_MODULE_ID, &module )))
@@ -546,20 +549,21 @@ static void load_broadway_libs(void)
         ERR( "failed to load liblog.so: %s\n", dlerror() );
         return;
     }
-    LOAD_FUNCPTR( liblog, __broadway_log_print );
-    LOAD_FUNCPTR( libbroadway, ANativeWindow_fromSurface );
-    LOAD_FUNCPTR( libbroadway, ANativeWindow_release );
+    //LOAD_FUNCPTR( liblog, __broadway_log_print );
+    //LOAD_FUNCPTR( libbroadway, ANativeWindow_fromSurface );
+    //LOAD_FUNCPTR( libbroadway, ANativeWindow_release );
 }
 
 #undef DECL_FUNCPTR
 #undef LOAD_FUNCPTR
 
-JavaVM **p_java_vm = NULL;
-jobject *p_java_object = NULL;
-unsigned short *p_java_gdt_sel = NULL;
+//JavaVM **p_java_vm = NULL;
+//jobject *p_java_object = NULL;
+//unsigned short *p_java_gdt_sel = NULL;
 
 static HRESULT broadway_init( void *arg )
 {
+#if 0
     struct init_params *params = arg;
     pthread_mutexattr_t attr;
     jclass class;
@@ -602,6 +606,7 @@ static HRESULT broadway_init( void *arg )
         __asm__( "mov %0,%%fs" :: "r" (old_fs) );
 #endif
     }
+#endif
     __wine_set_user_driver( &broadway_drv_funcs, WINE_GDI_DRIVER_VERSION );
     return STATUS_SUCCESS;
 }

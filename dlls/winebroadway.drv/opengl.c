@@ -89,7 +89,8 @@ struct gl_drawable
     HWND            hwnd;
     HDC             hdc;
     int             format;
-    ANativeWindow  *window;
+    //ANativeWindow  *window;
+    HWND            *window;
     EGLSurface      surface;
     EGLSurface      pbuffer;
 };
@@ -238,10 +239,12 @@ static BOOL set_pixel_format( HDC hdc, int format, BOOL internal )
     {
         if (internal)
         {
+	#if 0
             EGLint pf;
             p_eglGetConfigAttrib( display, pixel_formats[format - 1].config, EGL_NATIVE_VISUAL_ID, &pf );
             gl->window->perform( gl->window, NATIVE_WINDOW_SET_BUFFERS_FORMAT, pf );
             gl->format = format;
+	#endif
         }
     }
     else gl = create_gl_drawable( hwnd, 0, format );
@@ -952,6 +955,9 @@ static void init_extensions(void)
     REDIRECT(glFlush);
 #undef REDIRECT
 }
+
+#define SONAME_LIBEGL "libopengl32.so"
+#define SONAME_LIBGLESV2 "libglesv2.so"
 
 static BOOL egl_init(void)
 {

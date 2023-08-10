@@ -691,7 +691,7 @@ void update_keyboard_lock_state( WORD vkey, UINT state )
     BYTE keystate[256];
 
     if (!get_async_key_state( keystate )) return;
-
+#if 0
     if (!(keystate[VK_CAPITAL] & 0x01) != !(state & AMETA_CAPS_LOCK_ON) && vkey != VK_CAPITAL)
     {
         TRACE( "adjusting CapsLock state (%02x)\n", keystate[VK_CAPITAL] );
@@ -712,6 +712,7 @@ void update_keyboard_lock_state( WORD vkey, UINT state )
         send_keyboard_input( 0, VK_SCROLL, 0x46, 0 );
         send_keyboard_input( 0, VK_SCROLL, 0x46, KEYEVENTF_KEYUP );
     }
+#endif
 }
 
 
@@ -720,6 +721,7 @@ void update_keyboard_lock_state( WORD vkey, UINT state )
  *
  * JNI callback, runs in the context of the Java thread.
  */
+#if 0
 jboolean keyboard_event( JNIEnv *env, jobject obj, jint win, jint action, jint keycode, jint state )
 {
     union event_data data;
@@ -748,7 +750,7 @@ jboolean keyboard_event( JNIEnv *env, jobject obj, jint win, jint action, jint k
     send_event( &data );
     return JNI_TRUE;
 }
-
+#endif
 
 /***********************************************************************
  *           BROADWAY_GetKeyNameText
