@@ -29,6 +29,7 @@
 #include "wine/debug.h"
 
 #include "mshtml_private.h"
+#include "htmlevent.h"
 #include "pluginhost.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(mshtml);
@@ -739,13 +740,7 @@ static void HTMLObjectElement_traverse(HTMLDOMNode *iface, nsCycleCollectionTrav
 static void HTMLObjectElement_unlink(HTMLDOMNode *iface)
 {
     HTMLObjectElement *This = impl_from_HTMLDOMNode(iface);
-
-    if(This->nsobject) {
-        nsIDOMHTMLObjectElement *nsobject = This->nsobject;
-
-        This->nsobject = NULL;
-        nsIDOMHTMLObjectElement_Release(nsobject);
-    }
+    unlink_ref(&This->nsobject);
 }
 
 static const NodeImplVtbl HTMLObjectElementImplVtbl = {
@@ -777,7 +772,7 @@ static const tid_t HTMLObjectElement_iface_tids[] = {
 };
 static dispex_static_data_t HTMLObjectElement_dispex = {
     L"HTMLObjectElement",
-    NULL,
+    &HTMLElement_event_target_vtbl.dispex_vtbl,
     DispHTMLObjectElement_tid,
     HTMLObjectElement_iface_tids,
     HTMLElement_init_dispex_info
@@ -1040,7 +1035,7 @@ static const tid_t HTMLEmbedElement_iface_tids[] = {
 };
 static dispex_static_data_t HTMLEmbedElement_dispex = {
     L"HTMLEmbedElement",
-    NULL,
+    &HTMLElement_event_target_vtbl.dispex_vtbl,
     DispHTMLEmbed_tid,
     HTMLEmbedElement_iface_tids,
     HTMLElement_init_dispex_info

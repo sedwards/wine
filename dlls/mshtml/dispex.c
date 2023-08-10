@@ -19,8 +19,6 @@
 #include <stdarg.h>
 
 #define COBJMACROS
-#define NONAMELESSUNION
-
 #include "windef.h"
 #include "winbase.h"
 #include "winuser.h"
@@ -362,11 +360,11 @@ static void add_func_info(dispex_data_t *data, tid_t tid, const FUNCDESC *desc, 
 
         for(i=0; i < info->argc; i++) {
             TYPEDESC *tdesc = &desc->lprgelemdescParam[i].tdesc;
-            if(tdesc->vt == VT_PTR && tdesc->u.lptdesc->vt == VT_USERDEFINED) {
+            if(tdesc->vt == VT_PTR && tdesc->lptdesc->vt == VT_USERDEFINED) {
                 ITypeInfo *ref_type_info;
                 TYPEATTR *attr;
 
-                hres = ITypeInfo_GetRefTypeInfo(dti, tdesc->u.lptdesc->u.hreftype, &ref_type_info);
+                hres = ITypeInfo_GetRefTypeInfo(dti, tdesc->lptdesc->hreftype, &ref_type_info);
                 if(FAILED(hres)) {
                     ERR("Could not get referenced type info: %08lx\n", hres);
                     return;
@@ -389,9 +387,9 @@ static void add_func_info(dispex_data_t *data, tid_t tid, const FUNCDESC *desc, 
                 return; /* Fallback to ITypeInfo for unsupported arg types */
             }
 
-            if(desc->lprgelemdescParam[i].u.paramdesc.wParamFlags & PARAMFLAG_FHASDEFAULT) {
+            if(desc->lprgelemdescParam[i].paramdesc.wParamFlags & PARAMFLAG_FHASDEFAULT) {
                 hres = VariantCopy(&info->arg_info[i].default_value,
-                                   &desc->lprgelemdescParam[i].u.paramdesc.pparamdescex->varDefaultValue);
+                                   &desc->lprgelemdescParam[i].paramdesc.pparamdescex->varDefaultValue);
                 if(FAILED(hres)) {
                     ERR("Could not copy default value: %08lx\n", hres);
                     return;
@@ -828,11 +826,8 @@ static ULONG WINAPI Function_Release(IUnknown *iface)
 
     TRACE("(%p) ref=%ld\n", This, ref);
 
-    if(!ref) {
-        assert(!This->obj);
+    if(!ref)
         release_dispex(&This->dispex);
-        free(This);
-    }
 
     return ref;
 }
@@ -846,6 +841,13 @@ static const IUnknownVtbl FunctionUnkVtbl = {
 static inline func_disp_t *impl_from_DispatchEx(DispatchEx *iface)
 {
     return CONTAINING_RECORD(iface, func_disp_t, dispex);
+}
+
+static void function_destructor(DispatchEx *dispex)
+{
+    func_disp_t *This = impl_from_DispatchEx(dispex);
+    assert(!This->obj);
+    free(This);
 }
 
 static HRESULT function_value(DispatchEx *dispex, LCID lcid, WORD flags, DISPPARAMS *params,
@@ -904,6 +906,8 @@ static HRESULT function_value(DispatchEx *dispex, LCID lcid, WORD flags, DISPPAR
 }
 
 static const dispex_static_data_vtbl_t function_dispex_vtbl = {
+    function_destructor,
+    NULL,
     function_value,
     NULL,
     NULL,
@@ -2026,8 +2030,8 @@ void dispex_unlink(DispatchEx *This)
         return;
 
     for(prop = This->dynamic_data->props; prop < This->dynamic_data->props + This->dynamic_data->prop_cnt; prop++) {
-        VariantClear(&prop->var);
         prop->flags |= DYNPROP_DELETED;
+        unlink_variant(&prop->var);
     }
 
     if(This->dynamic_data->func_disps) {
@@ -2055,8 +2059,11 @@ void release_dispex(DispatchEx *This)
 {
     dynamic_prop_t *prop;
 
+    if(This->info->desc->vtbl && This->info->desc->vtbl->unlink)
+        This->info->desc->vtbl->unlink(This);
+
     if(!This->dynamic_data)
-        return;
+        goto destructor;
 
     for(prop = This->dynamic_data->props; prop < This->dynamic_data->props + This->dynamic_data->prop_cnt; prop++) {
         VariantClear(&prop->var);
@@ -2080,6 +2087,10 @@ void release_dispex(DispatchEx *This)
     }
 
     free(This->dynamic_data);
+
+destructor:
+    if(This->info->desc->vtbl && This->info->desc->vtbl->destructor)
+        This->info->desc->vtbl->destructor(This);
 }
 
 void init_dispatch(DispatchEx *dispex, IUnknown *outer, dispex_static_data_t *data, compat_mode_t compat_mode)

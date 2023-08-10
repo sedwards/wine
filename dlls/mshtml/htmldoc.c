@@ -5810,17 +5810,11 @@ void detach_document_node(HTMLDocumentNode *doc)
     while(!list_empty(&doc->plugin_hosts))
         detach_plugin_host(LIST_ENTRY(list_head(&doc->plugin_hosts), PluginHost, entry));
 
-    if(doc->dom_implementation) {
+    if(doc->dom_implementation)
         detach_dom_implementation(doc->dom_implementation);
-        IHTMLDOMImplementation_Release(doc->dom_implementation);
-        doc->dom_implementation = NULL;
-    }
 
-    if(doc->namespaces) {
-        IHTMLNamespaceCollection_Release(doc->namespaces);
-        doc->namespaces = NULL;
-    }
-
+    unlink_ref(&doc->dom_implementation);
+    unlink_ref(&doc->namespaces);
     detach_events(doc);
     detach_selection(doc);
     detach_ranges(doc);
@@ -5831,11 +5825,7 @@ void detach_document_node(HTMLDocumentNode *doc)
     doc->elem_vars_cnt = doc->elem_vars_size = 0;
     doc->elem_vars = NULL;
 
-    if(doc->catmgr) {
-        ICatInformation_Release(doc->catmgr);
-        doc->catmgr = NULL;
-    }
-
+    unlink_ref(&doc->catmgr);
     if(doc->browser) {
         list_remove(&doc->browser_entry);
         doc->browser = NULL;
@@ -6096,6 +6086,8 @@ static HRESULT HTMLDocumentNode_location_hook(DispatchEx *dispex, WORD flags, DI
 
 static const event_target_vtbl_t HTMLDocumentNode_event_target_vtbl = {
     {
+        NULL,
+        NULL,
         NULL,
         NULL,
         HTMLDocumentNode_get_name,

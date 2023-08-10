@@ -28,6 +28,7 @@
 #include "wine/debug.h"
 
 #include "mshtml_private.h"
+#include "htmlevent.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(mshtml);
 
@@ -484,13 +485,7 @@ static void HTMLTableCell_traverse(HTMLDOMNode *iface, nsCycleCollectionTraversa
 static void HTMLTableCell_unlink(HTMLDOMNode *iface)
 {
     HTMLTableCell *This = HTMLTableCell_from_HTMLDOMNode(iface);
-
-    if(This->nscell) {
-        nsIDOMHTMLTableCellElement *nscell = This->nscell;
-
-        This->nscell = NULL;
-        nsIDOMHTMLTableCellElement_Release(nscell);
-    }
+    unlink_ref(&This->nscell);
 }
 
 static const NodeImplVtbl HTMLTableCellImplVtbl = {
@@ -522,7 +517,7 @@ static const tid_t HTMLTableCell_iface_tids[] = {
 
 static dispex_static_data_t HTMLTableCell_dispex = {
     L"HTMLTableDataCellElement",
-    NULL,
+    &HTMLElement_event_target_vtbl.dispex_vtbl,
     DispHTMLTableCell_tid,
     HTMLTableCell_iface_tids,
     HTMLElement_init_dispex_info
@@ -930,13 +925,7 @@ static void HTMLTableRow_traverse(HTMLDOMNode *iface, nsCycleCollectionTraversal
 static void HTMLTableRow_unlink(HTMLDOMNode *iface)
 {
     HTMLTableRow *This = HTMLTableRow_from_HTMLDOMNode(iface);
-
-    if(This->nsrow) {
-        nsIDOMHTMLTableRowElement *nsrow = This->nsrow;
-
-        This->nsrow = NULL;
-        nsIDOMHTMLTableRowElement_Release(nsrow);
-    }
+    unlink_ref(&This->nsrow);
 }
 
 static const NodeImplVtbl HTMLTableRowImplVtbl = {
@@ -968,7 +957,7 @@ static const tid_t HTMLTableRow_iface_tids[] = {
 
 static dispex_static_data_t HTMLTableRow_dispex = {
     L"HTMLTableRowElement",
-    NULL,
+    &HTMLElement_event_target_vtbl.dispex_vtbl,
     DispHTMLTableRow_tid,
     HTMLTableRow_iface_tids,
     HTMLElement_init_dispex_info
@@ -1956,13 +1945,7 @@ static void HTMLTable_traverse(HTMLDOMNode *iface, nsCycleCollectionTraversalCal
 static void HTMLTable_unlink(HTMLDOMNode *iface)
 {
     HTMLTable *This = impl_from_HTMLDOMNode(iface);
-
-    if(This->nstable) {
-        nsIDOMHTMLTableElement *nstable = This->nstable;
-
-        This->nstable = NULL;
-        nsIDOMHTMLTableElement_Release(nstable);
-    }
+    unlink_ref(&This->nstable);
 }
 
 static const cpc_entry_t HTMLTable_cpc[] = {
@@ -2002,7 +1985,7 @@ static const tid_t HTMLTable_iface_tids[] = {
 
 static dispex_static_data_t HTMLTable_dispex = {
     L"HTMLTableElement",
-    NULL,
+    &HTMLElement_event_target_vtbl.dispex_vtbl,
     DispHTMLTable_tid,
     HTMLTable_iface_tids,
     HTMLElement_init_dispex_info

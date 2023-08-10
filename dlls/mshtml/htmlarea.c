@@ -472,13 +472,7 @@ static void HTMLAreaElement_traverse(HTMLDOMNode *iface, nsCycleCollectionTraver
 static void HTMLAreaElement_unlink(HTMLDOMNode *iface)
 {
     HTMLAreaElement *This = impl_from_HTMLDOMNode(iface);
-
-    if(This->nsarea) {
-        nsIDOMHTMLAreaElement *nsarea = This->nsarea;
-
-        This->nsarea = NULL;
-        nsIDOMHTMLAreaElement_Release(nsarea);
-    }
+    unlink_ref(&This->nsarea);
 }
 
 static const NodeImplVtbl HTMLAreaElementImplVtbl = {
@@ -509,7 +503,7 @@ static const tid_t HTMLAreaElement_iface_tids[] = {
 };
 static dispex_static_data_t HTMLAreaElement_dispex = {
     L"HTMLAreaElement",
-    NULL,
+    &HTMLElement_event_target_vtbl.dispex_vtbl,
     DispHTMLAreaElement_tid,
     HTMLAreaElement_iface_tids,
     HTMLElement_init_dispex_info

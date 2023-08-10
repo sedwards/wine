@@ -195,6 +195,9 @@
 /* Define to 1 if you have the <linux/videodev2.h> header file. */
 #undef HAVE_LINUX_VIDEODEV2_H
 
+/* Define to 1 if you have the <linux/wireless.h> header file. */
+#undef HAVE_LINUX_WIRELESS_H
+
 /* Define to 1 if you have the <lwp.h> header file. */
 #undef HAVE_LWP_H
 
@@ -293,6 +296,9 @@
 
 /* Define to 1 if you have the <pcap/pcap.h> header file. */
 #undef HAVE_PCAP_PCAP_H
+
+/* Define to 1 if you have the <PCSC/pcsclite.h> header file. */
+#undef HAVE_PCSC_PCSCLITE_H
 
 /* Define to 1 if you have the `pipe2' function. */
 #undef HAVE_PIPE2

@@ -403,6 +403,7 @@ AC_CHECK_HEADERS(\
 	CL/cl.h \
 	EGL/egl.h \
 	OpenCL/opencl.h \
+	PCSC/pcsclite.h \
 	arpa/inet.h \
 	arpa/nameser.h \
 	asm/types.h \
@@ -423,6 +424,7 @@ AC_CHECK_HEADERS(\
 	linux/serial.h \
 	linux/types.h \
 	linux/ucdrom.h \
+	linux/wireless.h \
 	lwp.h \
 	mach-o/loader.h \
 	mach/mach.h \
@@ -678,20 +680,24 @@ case $host_os in
 
     WINELOADER_LDFLAGS="-Wl,-pie,-segalign,0x1000,-pagezero_size,0x1000,-sectcreate,__TEXT,__info_plist,loader/wine_info.plist"
 
-    wine_can_build_preloader=yes
-    WINEPRELOADER_LDFLAGS="-nostartfiles -nodefaultlibs -e _start -ldylib1.o -Wl,-image_base,0x7d400000,-segalign,0x1000,-pagezero_size,0x1000,-sectcreate,__TEXT,__info_plist,loader/wine_info.plist,-segaddr,WINE_4GB_RESERVE,0x100000000"
-    WINE_TRY_CFLAGS([-Wl,-no_new_main -e _main],
-                    [WINEPRELOADER_LDFLAGS="-Wl,-no_new_main $WINEPRELOADER_LDFLAGS"
-                     WINE_TRY_CFLAGS([-Wl,-no_new_main -e _main -mmacosx-version-min=10.7 -nostartfiles -nodefaultlibs],
-                                     [WINEPRELOADER_LDFLAGS="-mmacosx-version-min=10.7 $WINEPRELOADER_LDFLAGS"],
-                                     [wine_can_build_preloader=no])],
-                    [WINE_TRY_CFLAGS([-mmacosx-version-min=10.7 -nostartfiles -nodefaultlibs],
-                                     [WINEPRELOADER_LDFLAGS="-mmacosx-version-min=10.7 $WINEPRELOADER_LDFLAGS"],
-                                     [wine_can_build_preloader=no])])
+    case $host_cpu in
+      *i[[3456]]86*|*x86_64*) wine_can_build_preloader=yes ;;
+      *)                      wine_can_build_preloader=no ;;
+    esac
+
     if test "$wine_can_build_preloader" = "yes"
     then
+        WINEPRELOADER_LDFLAGS="-nostartfiles -nodefaultlibs -e _start -ldylib1.o -mmacosx-version-min=10.7 -Wl,-no_new_main,-segalign,0x1000,-pagezero_size,0x1000,-sectcreate,__TEXT,__info_plist,loader/wine_info.plist"
         WINE_TRY_CFLAGS([-Wl,-no_pie],
                         [WINEPRELOADER_LDFLAGS="-Wl,-no_pie $WINEPRELOADER_LDFLAGS"])
+        case $host_cpu in
+          *i[[3456]]86*)
+            WINEPRELOADER_LDFLAGS="-Wl,-image_base,0x7d400000 $WINEPRELOADER_LDFLAGS"
+            ;;
+          *x86_64*)
+            WINEPRELOADER_LDFLAGS="-Wl,-image_base,0x200000000,-segalign,0x1000,-segaddr,WINE_RESERVE,0x1000 $WINEPRELOADER_LDFLAGS"
+            ;;
+        esac
         dnl If preloader is used, the loader needs to be an LC_UNIXTHREAD binary to avoid AppKit/Core Animation problems.
         WINELOADER_LDFLAGS="$WINELOADER_LDFLAGS -mmacosx-version-min=10.7"
     else
@@ -818,14 +824,13 @@ AS_VAR_SET_IF([enable_archs],
     [if test "x$with_mingw" != xno
      then
          test $HOST_ARCH = unknown || cross_archs=$HOST_ARCH
-         case "x$with_mingw" in
-           x|xyes) ;;
-           *) AS_VAR_SET(${cross_archs}_CC,$with_mingw) ;;
-         esac
      fi])
 
 for wine_arch in $cross_archs
 do
+    case "x$with_mingw" in
+      xclang|x*/clang) AS_VAR_SET(${wine_arch}_CC,$with_mingw) ;;
+    esac
     AS_VAR_IF([${wine_arch}_CC],[],
         [case $wine_arch in
           aarch64)
@@ -903,13 +908,12 @@ do
         LDFLAGS=$saved_LDFLAGS
         continue
     fi
-    AS_VAR_APPEND([PE_ARCHS],[" $wine_arch"])
 
     AS_VAR_PUSHDEF([wine_cv_crosscc_c99],[ac_cv_${wine_arch}_crosscc_c99])
     AC_MSG_CHECKING([for $CC option to enable C99 features])
     AC_CACHE_VAL([wine_cv_crosscc_c99],
         [AS_VAR_SET([wine_cv_crosscc_c99],[no])
-         for arg in '' '-std=gnu99'
+         for arg in '' '-std=gnu99' '-D__STDC__'
          do
              test -z "$arg" || CC="$CC $arg"
              AC_COMPILE_IFELSE([AC_LANG_SOURCE([$ac_c_conftest_c99_program])],
@@ -919,14 +923,20 @@ do
              AS_VAR_IF([wine_cv_crosscc_c99],[no],[],[break])
          done])
     AS_VAR_COPY([res],[wine_cv_crosscc_c99])
+    AS_VAR_POPDEF([wine_cv_crosscc_c99])
     case "x$res" in
       x) AC_MSG_RESULT([none needed]) ;;
-      xno) AC_MSG_RESULT([unsupported]) ;;
+      xno) AC_MSG_RESULT([unsupported])
+           CC=$saved_CC
+           CFLAGS=$saved_CFLAGS
+           LDFLAGS=$saved_LDFLAGS
+           continue
+           ;;
       x*) AC_MSG_RESULT([$res])
           AS_VAR_APPEND([${wine_arch}_CC],[" $res"]) ;;
     esac
-    AS_VAR_POPDEF([wine_cv_crosscc_c99])
 
+    AS_VAR_APPEND([PE_ARCHS],[" $wine_arch"])
     WINE_TRY_PE_CFLAGS([-fno-strict-aliasing])
     dnl clang needs to be told to fail on unknown options
     WINE_TRY_PE_CFLAGS([-Werror=unknown-warning-option],[CFLAGS="$CFLAGS -Werror=unknown-warning-option"])
@@ -1384,6 +1394,11 @@ dnl **** Check for libpcsclite ****
 if test "x$with_pcsclite" != "xno"
 then
     AC_CHECK_LIB(pcsclite,SCardEstablishContext,[AC_SUBST(PCSCLITE_LIBS,["-lpcsclite"])])
+    if test "x$ac_cv_lib_pcsclite_SCardEstablishContext" != xyes && test "$ac_cv_header_PCSC_pcsclite_h" = "yes"
+    then
+        AC_SUBST(PCSCLITE_LIBS,"-framework PCSC")
+        ac_cv_lib_pcsclite_SCardEstablishContext=yes
+    fi
 fi
 WINE_NOTICE_WITH(pcsclite,[test "x$ac_cv_lib_pcsclite_SCardEstablishContext" != xyes],
                  [libpcsclite not found, smart cards won't be supported.],
@@ -1591,6 +1606,7 @@ then
                  AC_CHECK_LIB(gstreamer-1.0,gst_pad_new,[:],,[$GSTREAMER_LIBS])],
                 [AC_MSG_RESULT([no])
                  ac_glib2_broken=yes
+                 enable_winegstreamer=${enable_winegstreamer:-no}
                  WINE_NOTICE([glib-2.0 pkgconfig configuration is for the wrong architecture, winegstreamer won't be built.])])])])
 fi
 WINE_NOTICE_WITH(gstreamer,[test "x$ac_glib2_broken" != xyes -a "x$ac_cv_lib_gstreamer_1_0_gst_pad_new" != xyes],
@@ -2385,6 +2401,7 @@ WINE_CONFIG_MAKEFILE(dlls/avifile.dll16,enable_win16)
 WINE_CONFIG_MAKEFILE(dlls/avrt)
 WINE_CONFIG_MAKEFILE(dlls/bcrypt)
 WINE_CONFIG_MAKEFILE(dlls/bcrypt/tests)
+WINE_CONFIG_MAKEFILE(dlls/bcryptprimitives)
 WINE_CONFIG_MAKEFILE(dlls/bluetoothapis)
 WINE_CONFIG_MAKEFILE(dlls/browseui)
 WINE_CONFIG_MAKEFILE(dlls/browseui/tests)
@@ -2627,6 +2644,8 @@ WINE_CONFIG_MAKEFILE(dlls/gdi32)
 WINE_CONFIG_MAKEFILE(dlls/gdi32/tests)
 WINE_CONFIG_MAKEFILE(dlls/gdiplus)
 WINE_CONFIG_MAKEFILE(dlls/gdiplus/tests)
+WINE_CONFIG_MAKEFILE(dlls/geolocation)
+WINE_CONFIG_MAKEFILE(dlls/geolocation/tests)
 WINE_CONFIG_MAKEFILE(dlls/glu32)
 WINE_CONFIG_MAKEFILE(dlls/gphoto2.ds)
 WINE_CONFIG_MAKEFILE(dlls/gpkcsp)
@@ -2646,6 +2665,8 @@ WINE_CONFIG_MAKEFILE(dlls/hrtfapo)
 WINE_CONFIG_MAKEFILE(dlls/http.sys)
 WINE_CONFIG_MAKEFILE(dlls/httpapi)
 WINE_CONFIG_MAKEFILE(dlls/httpapi/tests)
+WINE_CONFIG_MAKEFILE(dlls/hvsimanagementapi)
+WINE_CONFIG_MAKEFILE(dlls/hvsimanagementapi/tests)
 WINE_CONFIG_MAKEFILE(dlls/ia2comproxy)
 WINE_CONFIG_MAKEFILE(dlls/iccvid)
 WINE_CONFIG_MAKEFILE(dlls/icmp)
@@ -2818,6 +2839,7 @@ WINE_CONFIG_MAKEFILE(dlls/msvcp140_1/tests)
 WINE_CONFIG_MAKEFILE(dlls/msvcp140_2)
 WINE_CONFIG_MAKEFILE(dlls/msvcp140_atomic_wait)
 WINE_CONFIG_MAKEFILE(dlls/msvcp140_atomic_wait/tests)
+WINE_CONFIG_MAKEFILE(dlls/msvcp140_codecvt_ids)
 WINE_CONFIG_MAKEFILE(dlls/msvcp60)
 WINE_CONFIG_MAKEFILE(dlls/msvcp60/tests)
 WINE_CONFIG_MAKEFILE(dlls/msvcp70)
@@ -3136,6 +3158,8 @@ WINE_CONFIG_MAKEFILE(dlls/windows.devices.bluetooth)
 WINE_CONFIG_MAKEFILE(dlls/windows.devices.bluetooth/tests)
 WINE_CONFIG_MAKEFILE(dlls/windows.devices.enumeration)
 WINE_CONFIG_MAKEFILE(dlls/windows.devices.enumeration/tests)
+WINE_CONFIG_MAKEFILE(dlls/windows.devices.usb)
+WINE_CONFIG_MAKEFILE(dlls/windows.devices.usb/tests)
 WINE_CONFIG_MAKEFILE(dlls/windows.gaming.input)
 WINE_CONFIG_MAKEFILE(dlls/windows.gaming.input/tests)
 WINE_CONFIG_MAKEFILE(dlls/windows.gaming.ui.gamebar)
@@ -3148,6 +3172,8 @@ WINE_CONFIG_MAKEFILE(dlls/windows.media.speech)
 WINE_CONFIG_MAKEFILE(dlls/windows.media.speech/tests)
 WINE_CONFIG_MAKEFILE(dlls/windows.media)
 WINE_CONFIG_MAKEFILE(dlls/windows.media/tests)
+WINE_CONFIG_MAKEFILE(dlls/windows.networking.hostname)
+WINE_CONFIG_MAKEFILE(dlls/windows.networking.hostname/tests)
 WINE_CONFIG_MAKEFILE(dlls/windows.networking)
 WINE_CONFIG_MAKEFILE(dlls/windows.perception.stub)
 WINE_CONFIG_MAKEFILE(dlls/windows.perception.stub/tests)
@@ -3361,6 +3387,7 @@ WINE_CONFIG_MAKEFILE(programs/icacls)
 WINE_CONFIG_MAKEFILE(programs/icinfo)
 WINE_CONFIG_MAKEFILE(programs/iexplore)
 WINE_CONFIG_MAKEFILE(programs/ipconfig)
+WINE_CONFIG_MAKEFILE(programs/klist)
 WINE_CONFIG_MAKEFILE(programs/lodctr)
 WINE_CONFIG_MAKEFILE(programs/mofcomp)
 WINE_CONFIG_MAKEFILE(programs/mshta)

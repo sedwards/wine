@@ -17,6 +17,7 @@
  */
 
 #include "wined3d_private.h"
+#include "wined3d_vk.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(d3d);
 
@@ -1028,14 +1029,13 @@ static void adapter_vk_unmap_bo_address(struct wined3d_context *context,
 
 void adapter_vk_copy_bo_address(struct wined3d_context *context,
         const struct wined3d_bo_address *dst, const struct wined3d_bo_address *src,
-        unsigned int range_count, const struct wined3d_range *ranges)
+        unsigned int range_count, const struct wined3d_range *ranges, uint32_t map_flags)
 {
     struct wined3d_context_vk *context_vk = wined3d_context_vk(context);
     const struct wined3d_vk_info *vk_info = context_vk->vk_info;
     struct wined3d_bo_vk staging_bo, *src_bo, *dst_bo;
     VkAccessFlags src_access_mask, dst_access_mask;
     VkBufferMemoryBarrier vk_barrier[2];
-    DWORD map_flags = WINED3D_MAP_WRITE;
     const struct wined3d_range *range;
     struct wined3d_bo_address staging;
     VkCommandBuffer vk_command_buffer;
@@ -1046,9 +1046,6 @@ void adapter_vk_copy_bo_address(struct wined3d_context *context,
 
     src_bo = src->buffer_object ? wined3d_bo_vk(src->buffer_object) : NULL;
     dst_bo = dst->buffer_object ? wined3d_bo_vk(dst->buffer_object) : NULL;
-
-    if (dst_bo && !dst->addr && !ranges->offset && ranges->size == dst_bo->size)
-        map_flags |= WINED3D_MAP_DISCARD;
 
     if (src_bo && dst_bo)
     {
@@ -1130,8 +1127,8 @@ void adapter_vk_copy_bo_address(struct wined3d_context *context,
 
         staging.buffer_object = &staging_bo.b;
         staging.addr = NULL;
-        adapter_vk_copy_bo_address(context, &staging, src, range_count, ranges);
-        adapter_vk_copy_bo_address(context, dst, &staging, range_count, ranges);
+        adapter_vk_copy_bo_address(context, &staging, src, range_count, ranges, WINED3D_MAP_WRITE);
+        adapter_vk_copy_bo_address(context, dst, &staging, range_count, ranges, WINED3D_MAP_WRITE);
 
         wined3d_context_vk_destroy_bo(context_vk, &staging_bo);
 
@@ -1150,8 +1147,8 @@ void adapter_vk_copy_bo_address(struct wined3d_context *context,
 
         staging.buffer_object = &staging_bo.b;
         staging.addr = NULL;
-        adapter_vk_copy_bo_address(context, &staging, src, range_count, ranges);
-        adapter_vk_copy_bo_address(context, dst, &staging, range_count, ranges);
+        adapter_vk_copy_bo_address(context, &staging, src, range_count, ranges, WINED3D_MAP_WRITE);
+        adapter_vk_copy_bo_address(context, dst, &staging, range_count, ranges, WINED3D_MAP_WRITE);
 
         wined3d_context_vk_destroy_bo(context_vk, &staging_bo);
 
@@ -2289,6 +2286,7 @@ static void wined3d_adapter_vk_init_d3d_info(struct wined3d_adapter_vk *adapter_
     struct wined3d_physical_device_info device_info;
     struct wined3d_vertex_caps vertex_caps;
     struct fragment_caps fragment_caps;
+    unsigned int sample_counts_mask;
     struct shader_caps shader_caps;
 
     get_physical_device_info(adapter_vk, &device_info);
@@ -2315,6 +2313,11 @@ static void wined3d_adapter_vk_init_d3d_info(struct wined3d_adapter_vk *adapter_
     d3d_info->limits.max_clip_distances = WINED3D_MAX_CLIP_DISTANCES;
     d3d_info->limits.texture_size = adapter_vk->device_limits.maxImageDimension2D;
     d3d_info->limits.pointsize_max = adapter_vk->device_limits.pointSizeRange[1];
+    sample_counts_mask = adapter_vk->device_limits.framebufferColorSampleCounts
+            | adapter_vk->device_limits.framebufferDepthSampleCounts
+            | adapter_vk->device_limits.framebufferStencilSampleCounts
+            | adapter_vk->device_limits.framebufferNoAttachmentsSampleCounts;
+    d3d_info->limits.sample_count = (1u << wined3d_log2i(sample_counts_mask));
 
     d3d_info->wined3d_creation_flags = wined3d_creation_flags;
 
@@ -2329,6 +2332,7 @@ static void wined3d_adapter_vk_init_d3d_info(struct wined3d_adapter_vk *adapter_
     d3d_info->viewport_array_index_any_shader = false; /* VK_EXT_shader_viewport_index_layer */
     d3d_info->texture_npot = true;
     d3d_info->texture_npot_conditional = true;
+    d3d_info->normalized_texrect = false;
     d3d_info->draw_base_vertex_offset = true;
     d3d_info->vertex_bgra = true;
     d3d_info->texture_swizzle = true;

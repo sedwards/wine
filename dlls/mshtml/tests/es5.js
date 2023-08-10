@@ -794,6 +794,7 @@ sync_test("defineProperty", function() {
     /* call prop with getter */
     desc = {
         get: function() {
+            ok(this === obj, "this != obj");
             return function(x) {
                 ok(x === 100, "x = " + x);
                 return 10;
@@ -803,6 +804,10 @@ sync_test("defineProperty", function() {
     Object.defineProperty(obj, "funcprop", desc);
     test_accessor_prop_desc(obj, "funcprop", desc);
     ok(obj.funcprop(100) === 10, "obj.funcprop() = " + obj.funcprop(100));
+
+    Object.defineProperty(child.prototype, "funcprop_prot", desc);
+    test_accessor_prop_desc(child.prototype, "funcprop_prot", desc);
+    ok(obj.funcprop_prot(100) === 10, "obj.funcprop_prot() = " + obj.funcprop_prot(100));
 
     expect_exception(function() {
         Object.defineProperty(null, "funcprop", desc);
@@ -1715,6 +1720,9 @@ sync_test("builtin_context", function() {
     ok(obj === window, "obj = " + obj);
     obj = (function() { return this; }).call(42);
     ok(obj.valueOf() === 42, "obj = " + obj);
+
+    obj = Object.create([100]);
+    ok(obj.length === 1, "obj.length = " + obj.length);
 });
 
 sync_test("host this", function() {

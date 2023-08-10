@@ -21,6 +21,7 @@
  */
 
 #include "wined3d_private.h"
+#include "wined3d_vk.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(d3d);
 WINE_DECLARE_DEBUG_CHANNEL(d3d_perf);
@@ -866,7 +867,8 @@ BOOL wined3d_texture_load_location(struct wined3d_texture *texture,
         {
             wined3d_texture_get_bo_address(texture, sub_resource_idx,
                     &source, (current & wined3d_texture_sysmem_locations));
-            wined3d_context_copy_bo_address(context, &destination, &source, 1, &range);
+            wined3d_context_copy_bo_address(context, &destination, &source, 1, &range,
+                    WINED3D_MAP_WRITE | WINED3D_MAP_DISCARD);
         }
         ret = TRUE;
     }
@@ -4302,7 +4304,7 @@ HRESULT wined3d_texture_gl_init(struct wined3d_texture_gl *texture_gl, struct wi
         const struct wined3d_resource_desc *desc, unsigned int layer_count, unsigned int level_count,
         uint32_t flags, void *parent, const struct wined3d_parent_ops *parent_ops)
 {
-    const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
+    const struct wined3d_gl_info *gl_info = &wined3d_adapter_gl(device->adapter)->gl_info;
     HRESULT hr;
 
     TRACE("texture_gl %p, device %p, desc %p, layer_count %u, "

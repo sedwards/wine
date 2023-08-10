@@ -969,13 +969,7 @@ static void HTMLFormElement_traverse(HTMLDOMNode *iface, nsCycleCollectionTraver
 static void HTMLFormElement_unlink(HTMLDOMNode *iface)
 {
     HTMLFormElement *This = impl_from_HTMLDOMNode(iface);
-
-    if(This->nsform) {
-        nsIDOMHTMLFormElement *nsform = This->nsform;
-
-        This->nsform = NULL;
-        nsIDOMHTMLFormElement_Release(nsform);
-    }
+    unlink_ref(&This->nsform);
 }
 
 static const NodeImplVtbl HTMLFormElementImplVtbl = {
@@ -1007,7 +1001,7 @@ static const tid_t HTMLFormElement_iface_tids[] = {
 
 static dispex_static_data_t HTMLFormElement_dispex = {
     L"HTMLFormElement",
-    NULL,
+    &HTMLElement_event_target_vtbl.dispex_vtbl,
     DispHTMLFormElement_tid,
     HTMLFormElement_iface_tids,
     HTMLElement_init_dispex_info

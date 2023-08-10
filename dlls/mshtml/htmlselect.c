@@ -382,13 +382,7 @@ static void HTMLOptionElement_traverse(HTMLDOMNode *iface, nsCycleCollectionTrav
 static void HTMLOptionElement_unlink(HTMLDOMNode *iface)
 {
     HTMLOptionElement *This = HTMLOptionElement_from_HTMLDOMNode(iface);
-
-    if(This->nsoption) {
-        nsIDOMHTMLOptionElement *nsoption = This->nsoption;
-
-        This->nsoption = NULL;
-        nsIDOMHTMLOptionElement_Release(nsoption);
-    }
+    unlink_ref(&This->nsoption);
 }
 
 static const NodeImplVtbl HTMLOptionElementImplVtbl = {
@@ -419,7 +413,7 @@ static const tid_t HTMLOptionElement_iface_tids[] = {
 };
 static dispex_static_data_t HTMLOptionElement_dispex = {
     L"HTMLOptionElement",
-    NULL,
+    &HTMLElement_event_target_vtbl.dispex_vtbl,
     DispHTMLOptionElement_tid,
     HTMLOptionElement_iface_tids,
     HTMLElement_init_dispex_info
@@ -493,10 +487,8 @@ static ULONG WINAPI HTMLOptionElementFactory_Release(IHTMLOptionElementFactory *
 
     TRACE("(%p) ref=%ld\n", This, ref);
 
-    if(!ref) {
+    if(!ref)
         release_dispex(&This->dispex);
-        free(This);
-    }
 
     return ref;
 }
@@ -597,6 +589,12 @@ static inline HTMLOptionElementFactory *HTMLOptionElementFactory_from_DispatchEx
     return CONTAINING_RECORD(iface, HTMLOptionElementFactory, dispex);
 }
 
+static void HTMLOptionElementFactory_destructor(DispatchEx *dispex)
+{
+    HTMLOptionElementFactory *This = HTMLOptionElementFactory_from_DispatchEx(dispex);
+    free(This);
+}
+
 static HRESULT HTMLOptionElementFactory_value(DispatchEx *dispex, LCID lcid,
         WORD flags, DISPPARAMS *params, VARIANT *res, EXCEPINFO *ei,
         IServiceProvider *caller)
@@ -635,6 +633,8 @@ static const tid_t HTMLOptionElementFactory_iface_tids[] = {
 };
 
 static const dispex_static_data_vtbl_t HTMLOptionElementFactory_dispex_vtbl = {
+    HTMLOptionElementFactory_destructor,
+    NULL,
     HTMLOptionElementFactory_value,
     NULL,
     NULL,
@@ -1458,13 +1458,7 @@ static void HTMLSelectElement_traverse(HTMLDOMNode *iface, nsCycleCollectionTrav
 static void HTMLSelectElement_unlink(HTMLDOMNode *iface)
 {
     HTMLSelectElement *This = impl_from_HTMLDOMNode(iface);
-
-    if(This->nsselect) {
-        nsIDOMHTMLSelectElement *nsselect = This->nsselect;
-
-        This->nsselect = NULL;
-        nsIDOMHTMLSelectElement_Release(nsselect);
-    }
+    unlink_ref(&This->nsselect);
 }
 
 static const NodeImplVtbl HTMLSelectElementImplVtbl = {
@@ -1496,7 +1490,7 @@ static const tid_t HTMLSelectElement_tids[] = {
 
 static dispex_static_data_t HTMLSelectElement_dispex = {
     L"HTMLSelectElement",
-    NULL,
+    &HTMLElement_event_target_vtbl.dispex_vtbl,
     DispHTMLSelectElement_tid,
     HTMLSelectElement_tids,
     HTMLElement_init_dispex_info

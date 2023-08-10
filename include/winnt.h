@@ -871,6 +871,8 @@ typedef struct DECLSPEC_ALIGN(8) MEM_EXTENDED_PARAMETER {
 #define MAXDWORD      0xffffffff
 #define MAXLONGLONG   (((LONGLONG)0x7fffffff << 32) | 0xffffffff)
 
+#define UNICODE_NULL ((WCHAR)0)
+
 #define UNICODE_STRING_MAX_CHARS 32767
 
 #define FIELD_OFFSET(type, field) ((LONG)offsetof(type, field))
@@ -2482,6 +2484,8 @@ static FORCEINLINE struct _TEB * WINAPI NtCurrentTeb(void)
 #define IO_REPARSE_TAG_UNHANDLED        __MSABI_LONG(0x80000020)
 #define IO_REPARSE_TAG_ONEDRIVE         __MSABI_LONG(0x80000021)
 #define IO_REPARSE_TAG_GVFS_TOMBSTONE   __MSABI_LONG(0xA0000022)
+
+#define IsReparseTagNameSurrogate(x)    ((x) & 0x20000000)
 
 /*
  * File formats definitions
@@ -5463,12 +5467,6 @@ typedef struct _QUOTA_LIMITS_EX {
 #define	FILE_128_BYTE_ALIGNMENT		0x0000007f
 #define	FILE_256_BYTE_ALIGNMENT		0x000000ff
 #define	FILE_512_BYTE_ALIGNMENT		0x000001ff
-
-#define COMPRESSION_FORMAT_NONE         0
-#define COMPRESSION_FORMAT_DEFAULT      1
-#define COMPRESSION_FORMAT_LZNT1        2
-#define COMPRESSION_ENGINE_STANDARD     0
-#define COMPRESSION_ENGINE_MAXIMUM      256
 
 #define MAILSLOT_NO_MESSAGE             ((DWORD)-1)
 #define MAILSLOT_WAIT_FOREVER           ((DWORD)-1)

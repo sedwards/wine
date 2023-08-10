@@ -294,7 +294,8 @@ typedef struct EventTarget EventTarget;
     XIID(IWinePageTransitionEvent) \
     XIID(IWineXMLHttpRequestPrivate) \
     XIID(IWineMSHTMLConsole) \
-    XIID(IWineMSHTMLMediaQueryList)
+    XIID(IWineMSHTMLMediaQueryList) \
+    XIID(IWineMSHTMLMutationObserver)
 
 typedef enum {
 #define XIID(iface) iface ## _tid,
@@ -337,14 +338,35 @@ typedef struct dispex_dynamic_data_t dispex_dynamic_data_t;
 
 typedef struct DispatchEx DispatchEx;
 
+/*
+   dispex is our base IDispatchEx implementation for all mshtml objects, and the vtbl allows
+   customizing the behavior depending on the object. Objects have basically 3 types of props:
+
+   - builtin props: These props are implicitly generated from the TypeInfo (disp_tid and iface_tids in dispex_static_data_t).
+   - custom props:  These props are specific to an object, they are created using vtbl below (e.g. indexed props in HTMLRectCollection).
+   - dynamic props: These props are generally allocated by external code (e.g. 'document.wine = 42' creates 'wine' dynamic prop on document)
+*/
 typedef struct {
+    /* Unlike delete_cycle_collectable, unlink is called before the destructor (if available). */
+    void (*destructor)(DispatchEx*);
+    void (*unlink)(DispatchEx*);
+
+    /* Called when the object wants to handle DISPID_VALUE invocations */
     HRESULT (*value)(DispatchEx*,LCID,WORD,DISPPARAMS*,VARIANT*,EXCEPINFO*,IServiceProvider*);
+
+    /* Used when the object has custom props, and this returns DISPIDs for them */
     HRESULT (*get_dispid)(DispatchEx*,BSTR,DWORD,DISPID*);
+
+    /* These are called when the object implements GetMemberName, InvokeEx, DeleteMemberByDispID and GetNextDispID for custom props */
     HRESULT (*get_name)(DispatchEx*,DISPID,BSTR*);
     HRESULT (*invoke)(DispatchEx*,DISPID,LCID,WORD,DISPPARAMS*,VARIANT*,EXCEPINFO*,IServiceProvider*);
     HRESULT (*delete)(DispatchEx*,DISPID);
     HRESULT (*next_dispid)(DispatchEx*,DISPID,DISPID*);
+
+    /* Used by objects that want to delay their compat mode initialization until actually needed */
     compat_mode_t (*get_compat_mode)(DispatchEx*);
+
+    /* Used by objects that want to populate some dynamic props on initialization */
     HRESULT (*populate_props)(DispatchEx*);
 } dispex_static_data_vtbl_t;
 
@@ -619,6 +641,7 @@ struct HTMLInnerWindow {
     LONG task_magic;
 
     IMoniker *mon;
+    IDispatch *mutation_observer_ctor;
     nsChannelBSC *bscallback;
     struct list bindings;
 };
@@ -1464,6 +1487,22 @@ static inline BOOL is_power_of_2(unsigned x)
     return !(x & (x - 1));
 }
 
+static inline void unlink_ref(void *p)
+{
+    IUnknown **ref = p;
+    if(*ref) {
+        IUnknown *unk = *ref;
+        *ref = NULL;
+        IUnknown_Release(unk);
+    }
+}
+
+static inline void unlink_variant(VARIANT *v)
+{
+    if(V_VT(v) == VT_DISPATCH || V_VT(v) == VT_UNKNOWN)
+        unlink_ref(&V_UNKNOWN(v));
+}
+
 #ifdef __i386__
 extern void *call_thiscall_func;
 #endif
@@ -1479,3 +1518,5 @@ IInternetSecurityManager *get_security_manager(void);
 extern HINSTANCE hInst;
 void create_console(compat_mode_t compat_mode, IWineMSHTMLConsole **ret);
 HRESULT create_media_query_list(HTMLWindow *window, BSTR media_query, IDispatch **ret);
+
+HRESULT create_mutation_observer_ctor(compat_mode_t compat_mode, IDispatch **ret);

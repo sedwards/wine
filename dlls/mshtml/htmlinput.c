@@ -1417,13 +1417,7 @@ static void HTMLInputElement_traverse(HTMLDOMNode *iface, nsCycleCollectionTrave
 static void HTMLInputElement_unlink(HTMLDOMNode *iface)
 {
     HTMLInputElement *This = impl_from_HTMLDOMNode(iface);
-
-    if(This->nsinput) {
-        nsIDOMHTMLInputElement *nsinput = This->nsinput;
-
-        This->nsinput = NULL;
-        nsIDOMHTMLInputElement_Release(nsinput);
-    }
+    unlink_ref(&This->nsinput);
 }
 
 static const NodeImplVtbl HTMLInputElementImplVtbl = {
@@ -1456,7 +1450,7 @@ static const tid_t HTMLInputElement_iface_tids[] = {
 };
 static dispex_static_data_t HTMLInputElement_dispex = {
     L"HTMLInputElement",
-    NULL,
+    &HTMLElement_event_target_vtbl.dispex_vtbl,
     DispHTMLInputElement_tid,
     HTMLInputElement_iface_tids,
     HTMLElement_init_dispex_info
@@ -1653,7 +1647,7 @@ static const tid_t HTMLLabelElement_iface_tids[] = {
 
 static dispex_static_data_t HTMLLabelElement_dispex = {
     L"HTMLLabelElement",
-    NULL,
+    &HTMLElement_event_target_vtbl.dispex_vtbl,
     DispHTMLLabelElement_tid,
     HTMLLabelElement_iface_tids,
     HTMLElement_init_dispex_info
@@ -1962,13 +1956,7 @@ static void HTMLButtonElement_traverse(HTMLDOMNode *iface, nsCycleCollectionTrav
 static void HTMLButtonElement_unlink(HTMLDOMNode *iface)
 {
     HTMLButtonElement *This = button_from_HTMLDOMNode(iface);
-
-    if(This->nsbutton) {
-        nsIDOMHTMLButtonElement *nsbutton = This->nsbutton;
-
-        This->nsbutton = NULL;
-        nsIDOMHTMLButtonElement_Release(nsbutton);
-    }
+    unlink_ref(&This->nsbutton);
 }
 
 static const NodeImplVtbl HTMLButtonElementImplVtbl = {
@@ -2001,7 +1989,7 @@ static const tid_t HTMLButtonElement_iface_tids[] = {
 
 static dispex_static_data_t HTMLButtonElement_dispex = {
     L"HTMLButtonElement",
-    NULL,
+    &HTMLElement_event_target_vtbl.dispex_vtbl,
     DispHTMLButtonElement_tid,
     HTMLButtonElement_iface_tids,
     HTMLElement_init_dispex_info

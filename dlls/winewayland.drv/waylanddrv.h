@@ -32,10 +32,14 @@
 
 #include "windef.h"
 #include "winbase.h"
+#include "ntgdi.h"
 #include "wine/gdi_driver.h"
 #include "wine/rbtree.h"
 
 #include "unixlib.h"
+
+/* We only use 4 byte formats. */
+#define WINEWAYLAND_BYTES_PER_PIXEL 4
 
 /**********************************************************************
  *          Globals
@@ -103,14 +107,19 @@ struct wayland_surface
     struct xdg_toplevel *xdg_toplevel;
     pthread_mutex_t mutex;
     uint32_t current_serial;
+    struct wayland_shm_buffer *latest_window_buffer;
 };
 
 struct wayland_shm_buffer
 {
+    struct wl_list link;
     struct wl_buffer *wl_buffer;
     int width, height;
     void *map_data;
     size_t map_size;
+    BOOL busy;
+    LONG ref;
+    HRGN damage_region;
 };
 
 /**********************************************************************
@@ -137,7 +146,8 @@ void wayland_surface_destroy(struct wayland_surface *surface) DECLSPEC_HIDDEN;
 void wayland_surface_make_toplevel(struct wayland_surface *surface) DECLSPEC_HIDDEN;
 void wayland_surface_clear_role(struct wayland_surface *surface) DECLSPEC_HIDDEN;
 void wayland_surface_attach_shm(struct wayland_surface *surface,
-                                struct wayland_shm_buffer *shm_buffer) DECLSPEC_HIDDEN;
+                                struct wayland_shm_buffer *shm_buffer,
+                                HRGN surface_damage_region) DECLSPEC_HIDDEN;
 
 /**********************************************************************
  *          Wayland SHM buffer
@@ -145,7 +155,8 @@ void wayland_surface_attach_shm(struct wayland_surface *surface,
 
 struct wayland_shm_buffer *wayland_shm_buffer_create(int width, int height,
                                                      enum wl_shm_format format) DECLSPEC_HIDDEN;
-void wayland_shm_buffer_destroy(struct wayland_shm_buffer *shm_buffer) DECLSPEC_HIDDEN;
+void wayland_shm_buffer_ref(struct wayland_shm_buffer *shm_buffer) DECLSPEC_HIDDEN;
+void wayland_shm_buffer_unref(struct wayland_shm_buffer *shm_buffer) DECLSPEC_HIDDEN;
 
 /**********************************************************************
  *          Wayland window surface
@@ -155,6 +166,21 @@ struct window_surface *wayland_window_surface_create(HWND hwnd, const RECT *rect
 void wayland_window_surface_update_wayland_surface(struct window_surface *surface,
                                                    struct wayland_surface *wayland_surface) DECLSPEC_HIDDEN;
 void wayland_window_flush(HWND hwnd) DECLSPEC_HIDDEN;
+
+/**********************************************************************
+ *          Helpers
+ */
+
+static inline BOOL intersect_rect(RECT *dst, const RECT *src1, const RECT *src2)
+{
+    dst->left = max(src1->left, src2->left);
+    dst->top = max(src1->top, src2->top);
+    dst->right = min(src1->right, src2->right);
+    dst->bottom = min(src1->bottom, src2->bottom);
+    return !IsRectEmpty(dst);
+}
+
+RGNDATA *get_region_data(HRGN region) DECLSPEC_HIDDEN;
 
 /**********************************************************************
  *          USER driver functions

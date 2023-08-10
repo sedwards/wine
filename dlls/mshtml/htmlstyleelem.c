@@ -29,6 +29,7 @@
 #include "wine/debug.h"
 
 #include "mshtml_private.h"
+#include "htmlevent.h"
 #include "mshtmdid.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(mshtml);
@@ -392,11 +393,7 @@ static void HTMLStyleElement_destructor(HTMLDOMNode *iface)
 {
     HTMLStyleElement *This = impl_from_HTMLDOMNode(iface);
 
-    if(This->style_sheet) {
-        IHTMLStyleSheet_Release(This->style_sheet);
-        This->style_sheet = NULL;
-    }
-
+    unlink_ref(&This->style_sheet);
     HTMLElement_destructor(iface);
 }
 
@@ -411,13 +408,7 @@ static void HTMLStyleElement_traverse(HTMLDOMNode *iface, nsCycleCollectionTrave
 static void HTMLStyleElement_unlink(HTMLDOMNode *iface)
 {
     HTMLStyleElement *This = impl_from_HTMLDOMNode(iface);
-
-    if(This->nsstyle) {
-        nsIDOMHTMLStyleElement *nsstyle = This->nsstyle;
-
-        This->nsstyle = NULL;
-        nsIDOMHTMLStyleElement_Release(nsstyle);
-    }
+    unlink_ref(&This->nsstyle);
 }
 
 static void HTMLStyleElement_init_dispex_info(dispex_data_t *info, compat_mode_t mode)
@@ -464,7 +455,7 @@ static const tid_t HTMLStyleElement_iface_tids[] = {
 };
 static dispex_static_data_t HTMLStyleElement_dispex = {
     L"HTMLStyleElement",
-    NULL,
+    &HTMLElement_event_target_vtbl.dispex_vtbl,
     DispHTMLStyleElement_tid,
     HTMLStyleElement_iface_tids,
     HTMLStyleElement_init_dispex_info

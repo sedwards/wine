@@ -75,6 +75,8 @@ extern LRESULT handle_nc_hit_test( HWND hwnd, POINT pt ) DECLSPEC_HIDDEN;
 extern LRESULT call_current_hook( HHOOK hhook, INT code, WPARAM wparam, LPARAM lparam ) DECLSPEC_HIDDEN;
 extern LRESULT call_hooks( INT id, INT code, WPARAM wparam, LPARAM lparam,
                            size_t lparam_size ) DECLSPEC_HIDDEN;
+extern LRESULT call_message_hooks( INT id, INT code, WPARAM wparam, LPARAM lparam,
+                                   size_t lparam_size, size_t message_size, BOOL ansi ) DECLSPEC_HIDDEN;
 extern BOOL is_hooked( INT id ) DECLSPEC_HIDDEN;
 extern BOOL unhook_windows_hook( INT id, HOOKPROC proc ) DECLSPEC_HIDDEN;
 
@@ -138,6 +140,10 @@ extern LRESULT send_message( HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam )
 extern BOOL send_notify_message( HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam, BOOL ansi ) DECLSPEC_HIDDEN;
 extern LRESULT send_message_timeout( HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam,
                                      UINT flags, UINT timeout, BOOL ansi ) DECLSPEC_HIDDEN;
+extern size_t user_message_size( HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam,
+                                 BOOL other_process, BOOL ansi ) DECLSPEC_HIDDEN;
+extern void pack_user_message( void *buffer, size_t size, UINT message,
+                               WPARAM wparam, LPARAM lparam, BOOL ansi ) DECLSPEC_HIDDEN;
 
 /* rawinput.c */
 extern BOOL process_rawinput_message( MSG *msg, UINT hw_id, const struct hardware_msg_data *msg_data ) DECLSPEC_HIDDEN;
@@ -271,6 +277,8 @@ extern HKEY hkcu_key DECLSPEC_HIDDEN;
 
 extern const struct user_driver_funcs *user_driver DECLSPEC_HIDDEN;
 
+extern ULONG_PTR zero_bits DECLSPEC_HIDDEN;
+
 static inline BOOL set_ntstatus( NTSTATUS status )
 {
     if (status) RtlSetLastWin32Error( RtlNtStatusToDosError( status ));
@@ -328,15 +336,6 @@ static inline UINT asciiz_to_unicode( WCHAR *dst, const char *src )
 static inline BOOL is_win9x(void)
 {
     return NtCurrentTeb()->Peb->OSPlatformId == VER_PLATFORM_WIN32s;
-}
-
-static inline ULONG_PTR zero_bits(void)
-{
-#ifdef _WIN64
-    return !NtCurrentTeb()->WowTebOffset ? 0 : 0x7fffffff;
-#else
-    return 0;
-#endif
 }
 
 static inline const char *debugstr_us( const UNICODE_STRING *us )

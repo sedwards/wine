@@ -1940,7 +1940,7 @@ static BOOL wined3d_context_gl_create_wgl_ctx(struct wined3d_context_gl *context
 
     device = context->device;
     adapter = device->adapter;
-    gl_info = &adapter->gl_info;
+    gl_info = &wined3d_adapter_gl(adapter)->gl_info;
 
     target = &context->current_rt.texture->resource;
     target_bind_flags = target->bind_flags;
@@ -2101,7 +2101,7 @@ HRESULT wined3d_context_gl_init(struct wined3d_context_gl *context_gl, struct wi
     wined3d_context_init(&context_gl->c, &swapchain_gl->s);
 
     device = context->device;
-    gl_info = &device->adapter->gl_info;
+    gl_info = &wined3d_adapter_gl(device->adapter)->gl_info;
     context_gl->gl_info = gl_info;
     d3d_info = context->d3d_info;
 
@@ -3067,9 +3067,8 @@ void wined3d_context_gl_flush_bo_address(struct wined3d_context_gl *context_gl,
 
 void wined3d_context_gl_copy_bo_address(struct wined3d_context_gl *context_gl,
         const struct wined3d_bo_address *dst, const struct wined3d_bo_address *src,
-        unsigned int range_count, const struct wined3d_range *ranges)
+        unsigned int range_count, const struct wined3d_range *ranges, uint32_t map_flags)
 {
-    uint32_t map_flags = WINED3D_MAP_WRITE;
     const struct wined3d_gl_info *gl_info;
     struct wined3d_bo_gl *src_bo, *dst_bo;
     BYTE *dst_ptr, *src_ptr;
@@ -3078,9 +3077,6 @@ void wined3d_context_gl_copy_bo_address(struct wined3d_context_gl *context_gl,
     gl_info = context_gl->gl_info;
     src_bo = src->buffer_object ? wined3d_bo_gl(src->buffer_object) : NULL;
     dst_bo = dst->buffer_object ? wined3d_bo_gl(dst->buffer_object) : NULL;
-
-    if (dst_bo && !dst->addr && !ranges->offset && ranges->size == dst_bo->size)
-        map_flags |= WINED3D_MAP_DISCARD;
 
     if (dst_bo && src_bo)
     {
@@ -4666,15 +4662,17 @@ static void wined3d_context_gl_draw_primitive_arrays(struct wined3d_context_gl *
         const struct wined3d_state *state, const void *idx_data, unsigned int idx_size, int base_vertex_idx,
         unsigned int start_idx, unsigned int count, unsigned int start_instance, unsigned int instance_count)
 {
-    const struct wined3d_ffp_attrib_ops *ops = &context_gl->c.d3d_info->ffp_attrib_ops;
     GLenum idx_type = idx_size == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
     const struct wined3d_stream_info *si = &context_gl->c.stream_info;
     GLenum mode = gl_primitive_type_from_d3d(state->primitive_type);
     const struct wined3d_gl_info *gl_info = context_gl->gl_info;
     unsigned int instanced_elements[ARRAY_SIZE(si->elements)];
+    const struct wined3d_ffp_attrib_ops *ops;
     unsigned int instanced_element_count = 0;
     const void *indices;
     unsigned int i, j;
+
+    ops = &gl_info->ffp_attrib_ops;
 
     indices = (const char *)idx_data + idx_size * start_idx;
 
@@ -4838,9 +4836,9 @@ static void draw_primitive_immediate_mode(struct wined3d_context_gl *context_gl,
     /* Immediate mode drawing can't make use of indices in a VBO - get the
      * data from the index buffer. */
     if (idx_size)
-        idx_data = wined3d_buffer_load_sysmem(state->index_buffer, &context_gl->c) + state->index_offset;
+        idx_data = (uint8_t *)wined3d_buffer_load_sysmem(state->index_buffer, &context_gl->c) + state->index_offset;
 
-    ops = &d3d_info->ffp_attrib_ops;
+    ops = &gl_info->ffp_attrib_ops;
 
     gl_info->gl_ops.gl.p_glBegin(gl_primitive_type_from_d3d(state->primitive_type));
 

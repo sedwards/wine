@@ -33,9 +33,6 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(waylanddrv);
 
-/* We only use 4 byte formats. */
-#define WINEWAYLAND_BYTES_PER_PIXEL 4
-
 /* Protects access to the user data of xdg_surface */
 static pthread_mutex_t xdg_data_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -151,6 +148,9 @@ void wayland_surface_destroy(struct wayland_surface *surface)
     pthread_mutex_unlock(&surface->mutex);
     pthread_mutex_unlock(&xdg_data_mutex);
 
+    if (surface->latest_window_buffer)
+        wayland_shm_buffer_unref(surface->latest_window_buffer);
+
     wl_display_flush(process_wayland.wl_display);
 
     pthread_mutex_destroy(&surface->mutex);
@@ -221,31 +221,71 @@ void wayland_surface_clear_role(struct wayland_surface *surface)
  *          wayland_surface_attach_shm
  *
  * Attaches a SHM buffer to a wayland surface.
+ *
+ * The buffer is marked as unavailable until committed and subsequently
+ * released by the compositor.
  */
 void wayland_surface_attach_shm(struct wayland_surface *surface,
-                                struct wayland_shm_buffer *shm_buffer)
+                                struct wayland_shm_buffer *shm_buffer,
+                                HRGN surface_damage_region)
 {
+    RGNDATA *surface_damage;
+
     TRACE("surface=%p shm_buffer=%p (%dx%d)\n",
           surface, shm_buffer, shm_buffer->width, shm_buffer->height);
 
+    shm_buffer->busy = TRUE;
+    wayland_shm_buffer_ref(shm_buffer);
+
     wl_surface_attach(surface->wl_surface, shm_buffer->wl_buffer, 0, 0);
-    wl_surface_damage_buffer(surface->wl_surface, 0, 0,
-                             shm_buffer->width, shm_buffer->height);
+
+    /* Add surface damage, i.e., which parts of the surface have changed since
+     * the last surface commit. Note that this is different from the buffer
+     * damage region. */
+    surface_damage = get_region_data(surface_damage_region);
+    if (surface_damage)
+    {
+        RECT *rgn_rect = (RECT *)surface_damage->Buffer;
+        RECT *rgn_rect_end = rgn_rect + surface_damage->rdh.nCount;
+
+        for (;rgn_rect < rgn_rect_end; rgn_rect++)
+        {
+            wl_surface_damage_buffer(surface->wl_surface,
+                                     rgn_rect->left, rgn_rect->top,
+                                     rgn_rect->right - rgn_rect->left,
+                                     rgn_rect->bottom - rgn_rect->top);
+        }
+        free(surface_damage);
+    }
 }
 
 /**********************************************************************
- *          wayland_shm_buffer_destroy
+ *          wayland_shm_buffer_ref
  *
- * Destroys a SHM buffer.
+ * Increases the reference count of a SHM buffer.
  */
-void wayland_shm_buffer_destroy(struct wayland_shm_buffer *shm_buffer)
+void wayland_shm_buffer_ref(struct wayland_shm_buffer *shm_buffer)
 {
-    TRACE("%p map=%p\n", shm_buffer, shm_buffer->map_data);
+    InterlockedIncrement(&shm_buffer->ref);
+}
+
+/**********************************************************************
+ *          wayland_shm_buffer_unref
+ *
+ * Decreases the reference count of a SHM buffer (and may destroy it).
+ */
+void wayland_shm_buffer_unref(struct wayland_shm_buffer *shm_buffer)
+{
+    if (InterlockedDecrement(&shm_buffer->ref) > 0) return;
+
+    TRACE("destroying %p map=%p\n", shm_buffer, shm_buffer->map_data);
 
     if (shm_buffer->wl_buffer)
         wl_buffer_destroy(shm_buffer->wl_buffer);
     if (shm_buffer->map_data)
         NtUnmapViewOfSection(GetCurrentProcess(), shm_buffer->map_data);
+    if (shm_buffer->damage_region)
+        NtGdiDeleteObjectApp(shm_buffer->damage_region);
 
     free(shm_buffer);
 }
@@ -284,9 +324,17 @@ struct wayland_shm_buffer *wayland_shm_buffer_create(int width, int height,
 
     TRACE("%p %dx%d format=%d size=%d\n", shm_buffer, width, height, format, size);
 
+    shm_buffer->ref = 1;
     shm_buffer->width = width;
     shm_buffer->height = height;
     shm_buffer->map_size = size;
+
+    shm_buffer->damage_region = NtGdiCreateRectRgn(0, 0, width, height);
+    if (!shm_buffer->damage_region)
+    {
+        ERR("Failed to create buffer damage region\n");
+        goto err;
+    }
 
     section_size.QuadPart = size;
     status = NtCreateSection(&handle,
@@ -340,6 +388,6 @@ struct wayland_shm_buffer *wayland_shm_buffer_create(int width, int height,
 err:
     if (fd >= 0) close(fd);
     if (handle) NtClose(handle);
-    if (shm_buffer) wayland_shm_buffer_destroy(shm_buffer);
+    if (shm_buffer) wayland_shm_buffer_unref(shm_buffer);
     return NULL;
 }

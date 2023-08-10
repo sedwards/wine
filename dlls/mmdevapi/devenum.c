@@ -42,6 +42,8 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(mmdevapi);
 
+DEFINE_GUID(GUID_NULL,0,0,0,0,0,0,0,0,0,0,0);
+
 static HKEY key_render;
 static HKEY key_capture;
 
@@ -238,21 +240,48 @@ static HRESULT MMDevice_SetPropValue(const GUID *devguid, DWORD flow, REFPROPERT
 
 static HRESULT set_driver_prop_value(GUID *id, const EDataFlow flow, const PROPERTYKEY *prop)
 {
-    HRESULT hr;
+    struct get_prop_value_params params;
     PROPVARIANT pv;
+    char *dev_name;
+    unsigned int size = 0;
 
-    if (!drvs.pGetPropValue)
-        return E_NOTIMPL;
+    TRACE("%s, (%s,%lu)\n", wine_dbgstr_guid(id), wine_dbgstr_guid(&prop->fmtid), prop->pid);
 
-    hr = drvs.pGetPropValue(id, prop, &pv);
+    if (!drvs.pget_device_name_from_guid(id, &dev_name, &params.flow))
+        return E_FAIL;
 
-    if (SUCCEEDED(hr))
-    {
+    params.device      = dev_name;
+    params.guid        = id;
+    params.prop        = prop;
+    params.value       = &pv;
+    params.buffer      = NULL;
+    params.buffer_size = &size;
+
+    while (1) {
+        __wine_unix_call(drvs.module_unixlib, get_prop_value, &params);
+
+        if (params.result != E_NOT_SUFFICIENT_BUFFER)
+            break;
+
+        CoTaskMemFree(params.buffer);
+        params.buffer = CoTaskMemAlloc(*params.buffer_size);
+        if (!params.buffer) {
+            free(dev_name);
+            return E_OUTOFMEMORY;
+        }
+    }
+
+    if (FAILED(params.result))
+        CoTaskMemFree(params.buffer);
+
+    free(dev_name);
+
+    if (SUCCEEDED(params.result)) {
         MMDevice_SetPropValue(id, flow, prop, &pv);
         PropVariantClear(&pv);
     }
 
-    return hr;
+    return params.result;
 }
 
 struct product_name_overrides
@@ -472,7 +501,7 @@ static HRESULT set_format(MMDevice *dev)
     WAVEFORMATEX *fmt;
     PROPVARIANT pv = { VT_EMPTY };
 
-    hr = drvs.pGetAudioEndpoint(&dev->devguid, &dev->IMMDevice_iface, &client);
+    hr = AudioClient_Create(&dev->devguid, &dev->IMMDevice_iface, &client);
     if(FAILED(hr))
         return hr;
 
@@ -593,7 +622,7 @@ static HRESULT WINAPI MMDevice_Activate(IMMDevice *iface, REFIID riid, DWORD cls
     if (IsEqualIID(riid, &IID_IAudioClient) ||
             IsEqualIID(riid, &IID_IAudioClient2) ||
             IsEqualIID(riid, &IID_IAudioClient3)){
-        hr = drvs.pGetAudioEndpoint(&This->devguid, iface, (IAudioClient**)ppv);
+        hr = AudioClient_Create(&This->devguid, iface, (IAudioClient**)ppv);
     }else if (IsEqualIID(riid, &IID_IAudioEndpointVolume) ||
             IsEqualIID(riid, &IID_IAudioEndpointVolumeEx))
         hr = AudioEndpointVolume_Create(This, (IAudioEndpointVolumeEx**)ppv);
