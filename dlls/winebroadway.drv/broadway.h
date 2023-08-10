@@ -21,6 +21,7 @@
 #ifndef __WINE_BROADWAY_H
 #define __WINE_BROADWAY_H
 
+#if 0
 #include <limits.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -29,6 +30,7 @@
 #include <broadway/log.h>
 #include <broadway/input.h>
 #include <broadway/native_window_jni.h>
+#endif
 
 #include "windef.h"
 #include "winbase.h"
@@ -134,6 +136,7 @@ extern void init_monitors( int width, int height ) DECLSPEC_HIDDEN;
 extern void set_screen_dpi( DWORD dpi ) DECLSPEC_HIDDEN;
 extern void update_keyboard_lock_state( WORD vkey, UINT state ) DECLSPEC_HIDDEN;
 
+#if 0
 /* JNI entry points */
 extern void desktop_changed( JNIEnv *env, jobject obj, jint width, jint height ) DECLSPEC_HIDDEN;
 extern void config_changed( JNIEnv *env, jobject obj, jint dpi ) DECLSPEC_HIDDEN;
@@ -143,6 +146,7 @@ extern jboolean motion_event( JNIEnv *env, jobject obj, jint win, jint action,
                               jint x, jint y, jint state, jint vscroll ) DECLSPEC_HIDDEN;
 extern jboolean keyboard_event( JNIEnv *env, jobject obj, jint win, jint action,
                                 jint keycode, jint state ) DECLSPEC_HIDDEN;
+#endif
 
 enum event_type
 {
