@@ -19,43 +19,42 @@
 #include "ntuser.h"
 #include "wine/unixlib.h"
 
-enum broadway_funcs
+//UNIX_CFLAGS  = $(GSTREAMER_CFLAGS)
+//UNIX_LIBS    = $(GSTREAMER_LIBS) $(PTHREAD_LIBS)
+
+enum broadwaydrv_funcs
 {
-    unix_dispatch_ioctl,
     unix_init,
-    unix_java_init,
-    unix_java_uninit,
-    unix_register_window,
     unix_funcs_count
 };
 
-#define BROADWAY_CALL(func, params) WINE_UNIX_CALL( unix_ ## func, params )
+#define BROADWAYDRV_CALL(func, params) WINE_UNIX_CALL( unix_ ## func, params )
 
-/* broadway_init params */
+/* broadwaydrv_init params */
 struct init_params
 {
-    PNTAPCFUNC register_window_callback;
+    WNDPROC foreign_window_proc;
 };
 
-
-/* broadway_ioctl params */
-struct ioctl_params
+/* driver client callbacks exposed with KernelCallbackTable interface */
+enum broadwaydrv_client_funcs
 {
-    struct _IRP *irp;
-    DWORD client_id;
+    client_func_callback = NtUserDriverCallbackFirst,
+    client_func_last
 };
 
+C_ASSERT( client_func_last <= NtUserDriverCallbackLast + 1 );
 
-/* broadway_register_window params */
-struct register_window_params
+/* simplified interface for client callbacks requiring only a single UINT parameter */
+enum client_callback
 {
-    UINT_PTR arg1;
-    UINT_PTR arg2;
-    UINT_PTR arg3;
+    client_funcs_count
 };
 
-
-enum
+/* broadwaydrv_callback params */
+struct client_callback_params
 {
-    client_start_device = NtUserDriverCallbackFirst,
+    UINT id;
+    UINT arg;
 };
+

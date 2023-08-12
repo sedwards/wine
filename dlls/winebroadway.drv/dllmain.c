@@ -39,16 +39,15 @@ static HANDLE thread;
 
 static NTSTATUS WINAPI ioctl_callback( DEVICE_OBJECT *device, IRP *irp )
 {
-    struct ioctl_params params = { .irp = irp, .client_id = HandleToUlong(PsGetCurrentProcessId()) };
-    NTSTATUS status = BROADWAY_CALL( dispatch_ioctl, &params );
+    NTSTATUS status = STATUS_SUCCESS;
     IoCompleteRequest( irp, IO_NO_INCREMENT );
     return status;
 }
 
 static NTSTATUS CALLBACK init_broadway_driver( DRIVER_OBJECT *driver, UNICODE_STRING *name )
 {
-    static const WCHAR device_nameW[] = {'\\','D','e','v','i','c','e','\\','W','i','n','e','A','n','d','r','o','i','d',0 };
-    static const WCHAR device_linkW[] = {'\\','?','?','\\','W','i','n','e','A','n','d','r','o','i','d',0 };
+    static const WCHAR device_nameW[] = {'\\','D','e','v','i','c','e','\\','W','i','n','e','B','r','o','a','d','w','a','y',0 };
+    static const WCHAR device_linkW[] = {'\\','?','?','\\','W','i','n','e','B','r','o','a','d','w','a','y',0 };
 
     UNICODE_STRING nameW, linkW;
     DEVICE_OBJECT *device;
@@ -89,7 +88,7 @@ static DWORD CALLBACK device_thread( void *arg )
 
     ret = wine_ntoskrnl_main_loop( stop_event );
 
-    BROADWAY_CALL( java_uninit, NULL );
+    //BROADWAY_CALL( java_uninit, NULL );
     return ret;
 }
 
@@ -105,11 +104,11 @@ static NTSTATUS WINAPI broadway_start_device(void *param, ULONG size)
 }
 
 
-static void CALLBACK register_window_callback( ULONG_PTR arg1, ULONG_PTR arg2, ULONG_PTR arg3 )
-{
-    struct register_window_params params = { .arg1 = arg1, .arg2 = arg2, .arg3 = arg3 };
-    BROADWAY_CALL( register_window, &params );
-}
+//static void CALLBACK register_window_callback( ULONG_PTR arg1, ULONG_PTR arg2, ULONG_PTR arg3 )
+//{
+  //  struct register_window_params params = { .arg1 = arg1, .arg2 = arg2, .arg3 = arg3 };
+    //BROADWAY_CALL( register_window, &params );
+//}
 
 
 /***********************************************************************
@@ -117,19 +116,22 @@ static void CALLBACK register_window_callback( ULONG_PTR arg1, ULONG_PTR arg2, U
  */
 BOOL WINAPI DllMain( HINSTANCE inst, DWORD reason, LPVOID reserved )
 {
-    struct init_params params;
-    void **callback_table;
+  //  struct init_params params;
+  //  void **callback_table;
 
     if (reason == DLL_PROCESS_ATTACH) return TRUE;
 
     DisableThreadLibraryCalls( inst );
     if (__wine_init_unix_call()) return FALSE;
 
-    params.register_window_callback = register_window_callback;
-    if (BROADWAY_CALL( init, &params )) return FALSE;
+    //params.register_window_callback = register_window_callback;
+    //if (BROADWAY_CALL( init, &params )) return FALSE;
 
-    callback_table = NtCurrentTeb()->Peb->KernelCallbackTable;
-    callback_table[client_start_device] = broadway_start_device;
+   // callback_table = NtCurrentTeb()->Peb->KernelCallbackTable;
+    //callback_table[client_start_device] = broadway_start_device;
+    
+//    broadway_start_device(NULL,NULL);
 
     return TRUE;
 }
+

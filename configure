@@ -702,6 +702,8 @@ INOTIFY_LIBS
 INOTIFY_CFLAGS
 PCSCLITE_LIBS
 PCAP_LIBS
+BROADWAY_CLIENT_LIBS
+BROADWAY_CLIENT_CFLAGS
 WAYLAND_SCANNER
 WAYLAND_CLIENT_LIBS
 WAYLAND_CLIENT_CFLAGS
@@ -942,6 +944,7 @@ with_udev
 with_unwind
 with_usb
 with_v4l2
+with_broadway
 with_vulkan
 with_wayland
 with_xcomposite
@@ -1771,6 +1774,8 @@ XMKMF
 CPP
 WAYLAND_CLIENT_CFLAGS
 WAYLAND_CLIENT_LIBS
+BROADWAY_CLIENT_CFLAGS
+BROADWAY_CLIENT_LIBS
 INOTIFY_CFLAGS
 INOTIFY_LIBS
 DBUS_CFLAGS
@@ -2484,6 +2489,7 @@ Optional Packages:
                           handling)
   --without-usb           do not use the libusb library
   --without-v4l2          do not use v4l2 (video capture)
+  --without-broadway      do not build the Broadway driver
   --without-vulkan        do not use Vulkan
   --without-wayland       do not build the Wayland driver
   --without-xcomposite    do not use the Xcomposite extension
@@ -2584,6 +2590,12 @@ Some influential environment variables:
               C compiler flags for wayland-client, overriding pkg-config
   WAYLAND_CLIENT_LIBS
               Linker flags for wayland-client, overriding pkg-config
+  BROADWAY_CLIENT_CFLAGS
+              C compiler flags for gio-2.0 gobject-2.0 cairo glib-2.0,
+              overriding pkg-config
+  BROADWAY_CLIENT_LIBS
+              Linker flags for gio-2.0 gobject-2.0 cairo glib-2.0, overriding
+              pkg-config
   INOTIFY_CFLAGS
               C compiler flags for libinotify, overriding pkg-config
   INOTIFY_LIBS
@@ -4415,6 +4427,13 @@ then :
 fi
 
 
+# Check whether --with-broadway was given.
+if test ${with_broadway+y}
+then :
+  withval=$with_broadway;
+fi
+
+
 # Check whether --with-vulkan was given.
 if test ${with_vulkan+y}
 then :
@@ -5922,11 +5941,11 @@ if test x$ac_prog_cxx_stdcxx = xno
 then :
   { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $CXX option to enable C++11 features" >&5
 printf %s "checking for $CXX option to enable C++11 features... " >&6; }
-if test ${ac_cv_prog_cxx_cxx11+y}
+if test ${ac_cv_prog_cxx_11+y}
 then :
   printf %s "(cached) " >&6
 else $as_nop
-  ac_cv_prog_cxx_cxx11=no
+  ac_cv_prog_cxx_11=no
 ac_save_CXX=$CXX
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
@@ -5968,11 +5987,11 @@ if test x$ac_prog_cxx_stdcxx = xno
 then :
   { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $CXX option to enable C++98 features" >&5
 printf %s "checking for $CXX option to enable C++98 features... " >&6; }
-if test ${ac_cv_prog_cxx_cxx98+y}
+if test ${ac_cv_prog_cxx_98+y}
 then :
   printf %s "(cached) " >&6
 else $as_nop
-  ac_cv_prog_cxx_cxx98=no
+  ac_cv_prog_cxx_98=no
 ac_save_CXX=$CXX
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
@@ -15699,6 +15718,50 @@ esac
 enable_winewayland_drv=${enable_winewayland_drv:-no}
 fi
 
+if test "x$with_broadway" != "xno"
+then
+    rm -f conftest.err
+if ${BROADWAY_CLIENT_CFLAGS:+false} :
+then :
+  if test ${PKG_CONFIG+y}
+then :
+  BROADWAY_CLIENT_CFLAGS=`$PKG_CONFIG --cflags gio-2.0 gobject-2.0 cairo glib-2.0 2>conftest.err`
+fi
+fi
+
+if ${BROADWAY_CLIENT_LIBS:+false} :
+then :
+  if test ${PKG_CONFIG+y}
+then :
+  BROADWAY_CLIENT_LIBS=`$PKG_CONFIG --libs gio-2.0 gobject-2.0 cairo glib-2.0 2>/dev/null`
+fi
+fi
+
+
+printf "%s\n" "$as_me:${as_lineno-$LINENO}: gio-2.0 gobject-2.0 cairo glib-2.0 cflags: $BROADWAY_CLIENT_CFLAGS" >&5
+printf "%s\n" "$as_me:${as_lineno-$LINENO}: gio-2.0 gobject-2.0 cairo glib-2.0 libs: $BROADWAY_CLIENT_LIBS" >&5
+if test -s conftest.err; then
+     printf %s "$as_me:${as_lineno-$LINENO}: gio-2.0 gobject-2.0 cairo glib-2.0 errors: " >&5
+     cat conftest.err >&5
+fi
+rm -f conftest.err
+ac_save_CPPFLAGS=$CPPFLAGS
+CPPFLAGS="$CPPFLAGS $BROADWAY_CLIENT_CFLAGS"
+
+CPPFLAGS=$ac_save_CPPFLAGS
+
+fi
+if test -z "$BROADWAY_CLIENT_LIBS"
+then :
+  case "x$with_broadway" in
+  x)   as_fn_append wine_notices "|Broadway ${notice_platform}development files not found, the Broadway driver won't be supported." ;;
+  xno) ;;
+  *)   as_fn_error $? "Broadway ${notice_platform}development files not found, the Broadway driver won't be supported.
+This is an error since --with-broadway was requested." "$LINENO" 5 ;;
+esac
+enable_broadway_drv=${enable_broadway_drv:-no}
+fi
+
 if test "$ac_cv_header_CL_cl_h" = "yes"
 then
     { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for clGetPlatformInfo in -lOpenCL" >&5
@@ -21944,7 +22007,7 @@ wine_fn_config_makefile dlls/wineusb.sys enable_wineusb_sys
 wine_fn_config_makefile dlls/winevulkan enable_winevulkan
 wine_fn_config_makefile dlls/winewayland.drv enable_winewayland_drv
 wine_fn_config_makefile dlls/winex11.drv enable_winex11_drv
-wine_fn_config_makefile dlls/winebroadway.drv enable_broadway_drv
+wine_fn_config_makefile dlls/winebroadway.drv enable_winebroadway_drv
 wine_fn_config_makefile dlls/winexinput.sys enable_winexinput_sys
 wine_fn_config_makefile dlls/wing.dll16 enable_win16
 wine_fn_config_makefile dlls/wing32 enable_wing32
@@ -23257,6 +23320,8 @@ X_EXTRA_LIBS = $X_EXTRA_LIBS
 WAYLAND_CLIENT_CFLAGS = $WAYLAND_CLIENT_CFLAGS
 WAYLAND_CLIENT_LIBS = $WAYLAND_CLIENT_LIBS
 WAYLAND_SCANNER = $WAYLAND_SCANNER
+BROADWAY_CLIENT_CFLAGS = $BROADWAY_CLIENT_CFLAGS
+BROADWAY_CLIENT_LIBS = $BROADWAY_CLIENT_LIBS
 PCAP_LIBS = $PCAP_LIBS
 PCSCLITE_LIBS = $PCSCLITE_LIBS
 INOTIFY_CFLAGS = $INOTIFY_CFLAGS

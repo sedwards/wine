@@ -60,6 +60,7 @@ AC_ARG_WITH(udev,      AS_HELP_STRING([--without-udev],[do not use udev (plug an
 AC_ARG_WITH(unwind,    AS_HELP_STRING([--without-unwind],[do not use the libunwind library (exception handling)]))
 AC_ARG_WITH(usb,       AS_HELP_STRING([--without-usb],[do not use the libusb library]))
 AC_ARG_WITH(v4l2,      AS_HELP_STRING([--without-v4l2],[do not use v4l2 (video capture)]))
+AC_ARG_WITH(broadway,  AS_HELP_STRING([--without-broadway],[do not build the Broadway driver]))
 AC_ARG_WITH(vulkan,    AS_HELP_STRING([--without-vulkan],[do not use Vulkan]))
 AC_ARG_WITH(wayland,   AS_HELP_STRING([--without-wayland],[do not build the Wayland driver]))
 AC_ARG_WITH(xcomposite,AS_HELP_STRING([--without-xcomposite],[do not use the Xcomposite extension]),
@@ -1371,6 +1372,15 @@ fi
 WINE_NOTICE_WITH(wayland, [test -z "$WAYLAND_CLIENT_LIBS" -o -z "$WAYLAND_SCANNER"],
                  [Wayland ${notice_platform}development files not found, the Wayland driver won't be supported.],
                  [enable_winewayland_drv])
+
+if test "x$with_broadway" != "xno"
+then
+    WINE_PACKAGE_FLAGS(BROADWAY_CLIENT,[gio-2.0 gobject-2.0 cairo glib-2.0],,,,,
+              [BROADWAY_CLIENT_LIBS=""],[$BROADWAY_CLIENT_LIBS])
+fi
+WINE_NOTICE_WITH(broadway, [test -z "$BROADWAY_CLIENT_LIBS"],
+                 [Broadway ${notice_platform}development files not found, the Broadway driver won't be supported.],
+                 [enable_broadway_drv])
 
 dnl **** Check for OpenCL ****
 if test "$ac_cv_header_CL_cl_h" = "yes"
@@ -3204,7 +3214,6 @@ WINE_CONFIG_MAKEFILE(dlls/winevulkan)
 WINE_CONFIG_MAKEFILE(dlls/winewayland.drv)
 WINE_CONFIG_MAKEFILE(dlls/winex11.drv)
 WINE_CONFIG_MAKEFILE(dlls/winebroadway.drv)
-WINE_CONFIG_MAKEFILE(dlls/winerdp.drv)
 WINE_CONFIG_MAKEFILE(dlls/winexinput.sys)
 WINE_CONFIG_MAKEFILE(dlls/wing.dll16,enable_win16)
 WINE_CONFIG_MAKEFILE(dlls/wing32)
