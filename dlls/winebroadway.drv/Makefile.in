@@ -1,15 +1,16 @@
 MODULE    = winebroadway.drv
 UNIXLIB   = winebroadway.so
-IMPORTS   = ntoskrnl
-UNIX_CFLAGS  = $(BROADWAY_CLIENT_CFLAGS)
+IMPORTS   = uuid user32 gdi32 win32u
+DELAYIMPORTS = comctl32 ole32 shell32 imm32
+EXTRAINCL = $(BROADWAY_CLIENT_CFLAGS)
 UNIX_LIBS  = -lwin32u $(PTHREAD_LIBS) $(BROADWAY_CLIENT_LIBS)
 
 C_SRCS = \
 	dllmain.c \
 	init.c \
-	display.c \
+	broadway-server.c \
 	broadway-buffer.c \
-	broadway-server.c
+	broadway-output.c
 
 #IN_SRCS = \
 #	build.gradle.in
