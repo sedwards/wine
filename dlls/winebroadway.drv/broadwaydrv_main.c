@@ -55,9 +55,6 @@ static NTSTATUS broadwaydrv_init( void *arg )
 
     /* Open display */
 
-    if (!XInitThreads()) ERR( "XInitThreads failed, trouble ahead\n" );
-    if (!(display = XOpenDisplay( NULL ))) return STATUS_UNSUCCESSFUL;
-
     client_foreign_window_proc = params->foreign_window_proc;
 
     fcntl( ConnectionNumber(display), F_SETFD, 1 ); /* set close on exec flag */
@@ -68,8 +65,6 @@ static NTSTATUS broadwaydrv_init( void *arg )
     init_pixmap_formats( display );
     init_visuals( display, DefaultScreen( display ));
     screen_bpp = pixmap_formats[default_visual.depth]->bits_per_pixel;
-
-    XInternAtoms( display, (char **)atom_names, NB_XATOMS - FIRST_XATOM, False, X11DRV_Atoms );
 
     init_win_context();
 
@@ -90,7 +85,6 @@ static NTSTATUS broadwaydrv_init( void *arg )
 
     XkbUseExtension( gdi_display, NULL, NULL );
     X11DRV_InitKeyboard( gdi_display );
-    if (use_xim) use_xim = xim_init( input_style );
 
     init_user_driver();
     X11DRV_DisplayDevices_Init(FALSE);
