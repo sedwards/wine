@@ -134,19 +134,6 @@ BOOL WINAPI DllMain( HINSTANCE instance, DWORD reason, void *reserved )
 #if 0
     struct init_params params;
     void **callback_table;
-
-    if (reason == DLL_PROCESS_ATTACH) return TRUE;
-
-    DisableThreadLibraryCalls( inst );
-    if (__wine_init_unix_call()) return FALSE;
-
-    //params.register_window_callback = register_window_callback;
-    //if (BROADWAY_CALL( init, &params )) return FALSE;
-
-    callback_table = NtCurrentTeb()->Peb->KernelCallbackTable;
-    callback_table[client_start_device] = broadway_start_device;
-    
-    broadway_start_device(NULL,NULL);
 #endif
 
     void **callback_table;
@@ -154,15 +141,21 @@ BOOL WINAPI DllMain( HINSTANCE instance, DWORD reason, void *reserved )
     {
     };
 
-    if (reason != DLL_PROCESS_ATTACH) return TRUE;
+    if (reason != DLL_PROCESS_ATTACH)
+	return TRUE;
 
     DisableThreadLibraryCalls( instance );
     broadwaydrv_module = instance;
-    if (__wine_init_unix_call()) return FALSE;
-    if (BROADWAYDRV_CALL( init, &params )) return FALSE;
+
+    if (__wine_init_unix_call())
+	return FALSE;
+
+    if (BROADWAYDRV_CALL( init, &params ))
+	return FALSE;
 
     callback_table = NtCurrentTeb()->Peb->KernelCallbackTable;
     memcpy( callback_table + NtUserDriverCallbackFirst, kernel_callbacks, sizeof(kernel_callbacks) );
+
     ERR("At least we got to DLLmain\n");
     return TRUE;
 }

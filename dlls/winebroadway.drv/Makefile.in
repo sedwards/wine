@@ -3,7 +3,7 @@ UNIXLIB   = winebroadway.so
 IMPORTS   = uuid user32 gdi32 win32u
 DELAYIMPORTS = comctl32 ole32 shell32 imm32
 EXTRAINCL = $(BROADWAY_CLIENT_CFLAGS)
-UNIX_LIBS  = -lwin32u $(PTHREAD_LIBS) $(BROADWAY_CLIENT_LIBS)
+UNIX_LIBS  = -lwin32u -lbroadway-win $(PTHREAD_LIBS) $(BROADWAY_CLIENT_LIBS)
 
 C_SRCS = \
 	dllmain.c \

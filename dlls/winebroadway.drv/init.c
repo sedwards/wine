@@ -147,6 +147,7 @@ static const struct user_driver_funcs broadway_funcs =
 
 void init_user_driver(void)
 {
+    ERR("Inside init_user_driver\n");
     __wine_set_user_driver( &broadway_funcs, WINE_GDI_DRIVER_VERSION );
 }
 
