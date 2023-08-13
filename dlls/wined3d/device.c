@@ -1181,6 +1181,7 @@ bool wined3d_device_gl_create_bo(struct wined3d_device_gl *device_gl, struct win
     bo->b.memory_offset = bo->b.buffer_offset;
     bo->b.map_ptr = NULL;
     bo->b.client_map_count = 0;
+    bo->b.refcount = 1;
 
     return true;
 }
@@ -1407,6 +1408,8 @@ void wined3d_device_uninit_3d(struct wined3d_device *device)
     struct wined3d_resource *resource, *cursor;
     struct wined3d_rendertarget_view *view;
     struct wined3d_texture *texture;
+    struct wined3d_buffer *buffer;
+    unsigned int i;
 
     TRACE("device %p.\n", device);
 
@@ -1431,6 +1434,13 @@ void wined3d_device_uninit_3d(struct wined3d_device *device)
         device->cursor_texture = NULL;
         wined3d_texture_decref(texture);
     }
+
+    for (i = 0; i < ARRAY_SIZE(device->push_constants); ++i)
+    {
+        if ((buffer = device->push_constants[i]))
+            wined3d_buffer_decref(buffer);
+    }
+    memset(device->push_constants, 0, sizeof(device->push_constants));
 
     wined3d_device_context_emit_reset_state(&device->cs->c, true);
     state_cleanup(state);

@@ -1609,6 +1609,11 @@ struct wined3d_bo
     size_t memory_offset;
     unsigned int client_map_count;
     bool coherent;
+    /* Number of resources referencing this BO, used for COW tracking.
+     * If a resource has this BO as a location and wants to write to it, it
+     * needs to make a copy unless it's the only owner (refcount == 1).
+     * Deferred contexts may also hold a reference. */
+    uint8_t refcount;
 };
 
 struct wined3d_bo_user
@@ -4394,6 +4399,16 @@ static inline struct wined3d_buffer *buffer_from_resource(struct wined3d_resourc
     return CONTAINING_RECORD(resource, struct wined3d_buffer, resource);
 }
 
+static inline void wined3d_buffer_validate_user(struct wined3d_buffer *buffer)
+{
+    if (buffer->bo_user.valid)
+        return;
+    buffer->bo_user.valid = true;
+    list_add_head(&buffer->buffer_object->users, &buffer->bo_user.entry);
+}
+
+void wined3d_buffer_acquire_bo_for_write(struct wined3d_buffer *buffer,
+        struct wined3d_context *context) DECLSPEC_HIDDEN;
 void wined3d_buffer_cleanup(struct wined3d_buffer *buffer) DECLSPEC_HIDDEN;
 void wined3d_buffer_copy(struct wined3d_buffer *dst_buffer, unsigned int dst_offset,
         struct wined3d_buffer *src_buffer, unsigned int src_offset, unsigned int size) DECLSPEC_HIDDEN;
