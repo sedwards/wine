@@ -31,12 +31,15 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(broadway);
 
+extern NTSTATUS broadwaydrv_client_func( enum broadwaydrv_client_funcs func, const void *params,
+                                    ULONG size ) DECLSPEC_HIDDEN;
+
 
 extern NTSTATUS CDECL wine_ntoskrnl_main_loop( HANDLE stop_event );
 static HANDLE stop_event;
 static HANDLE thread;
-
-
+HMODULE broadwaydrv_module = 0;
+#if 0
 static NTSTATUS WINAPI ioctl_callback( DEVICE_OBJECT *device, IRP *irp )
 {
     NTSTATUS status = STATUS_SUCCESS;
@@ -71,7 +74,7 @@ static DWORD CALLBACK device_thread( void *arg )
     NTSTATUS status;
     DWORD ret;
 
-    TRACE( "starting process %lx\n", GetCurrentProcessId() );
+    ERR( "device_thread: starting process %lx\n", GetCurrentProcessId() );
 
     /* not running under Java */
     //if (BROADWAY_CALL( java_init, NULL )) return 0;
@@ -85,8 +88,6 @@ static DWORD CALLBACK device_thread( void *arg )
 
     stop_event = CreateEventW( NULL, TRUE, FALSE, NULL );
     SetEvent( start_event );
-
-    ret = wine_ntoskrnl_main_loop( stop_event );
 
     //BROADWAY_CALL( java_uninit, NULL );
     return ret;
@@ -102,22 +103,37 @@ static NTSTATUS WINAPI broadway_start_device(void *param, ULONG size)
     CloseHandle( handles[0] );
     return HandleToULong( thread );
 }
+#endif
 
+typedef NTSTATUS (*callback_func)( UINT arg );
+static const callback_func callback_funcs[] =
+{
+};
 
-//static void CALLBACK register_window_callback( ULONG_PTR arg1, ULONG_PTR arg2, ULONG_PTR arg3 )
-//{
-  //  struct register_window_params params = { .arg1 = arg1, .arg2 = arg2, .arg3 = arg3 };
-    //BROADWAY_CALL( register_window, &params );
-//}
+C_ASSERT( ARRAYSIZE(callback_funcs) == client_funcs_count );
 
+static NTSTATUS WINAPI broadwaydrv_callback( void *arg, ULONG size )
+{
+    struct client_callback_params *params = arg;
+    return callback_funcs[params->id]( params->arg );
+}
+
+typedef NTSTATUS (WINAPI *kernel_callback)( void *params, ULONG size );
+static const kernel_callback kernel_callbacks[] =
+{
+    broadwaydrv_callback,
+};
+
+C_ASSERT( NtUserDriverCallbackFirst + ARRAYSIZE(kernel_callbacks) == client_func_last );
 
 /***********************************************************************
  *       dll initialisation routine
  */
-BOOL WINAPI DllMain( HINSTANCE inst, DWORD reason, LPVOID reserved )
+BOOL WINAPI DllMain( HINSTANCE instance, DWORD reason, void *reserved )
 {
-  //  struct init_params params;
-  //  void **callback_table;
+#if 0
+    struct init_params params;
+    void **callback_table;
 
     if (reason == DLL_PROCESS_ATTACH) return TRUE;
 
@@ -127,11 +143,27 @@ BOOL WINAPI DllMain( HINSTANCE inst, DWORD reason, LPVOID reserved )
     //params.register_window_callback = register_window_callback;
     //if (BROADWAY_CALL( init, &params )) return FALSE;
 
-   // callback_table = NtCurrentTeb()->Peb->KernelCallbackTable;
-    //callback_table[client_start_device] = broadway_start_device;
+    callback_table = NtCurrentTeb()->Peb->KernelCallbackTable;
+    callback_table[client_start_device] = broadway_start_device;
     
-//    broadway_start_device(NULL,NULL);
+    broadway_start_device(NULL,NULL);
+#endif
 
+    void **callback_table;
+    struct init_params params =
+    {
+    };
+
+    if (reason != DLL_PROCESS_ATTACH) return TRUE;
+
+    DisableThreadLibraryCalls( instance );
+    broadwaydrv_module = instance;
+    if (__wine_init_unix_call()) return FALSE;
+    if (BROADWAYDRV_CALL( init, &params )) return FALSE;
+
+    callback_table = NtCurrentTeb()->Peb->KernelCallbackTable;
+    memcpy( callback_table + NtUserDriverCallbackFirst, kernel_callbacks, sizeof(kernel_callbacks) );
+    ERR("At least we got to DLLmain\n");
     return TRUE;
 }
 

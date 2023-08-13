@@ -8,9 +8,7 @@ UNIX_LIBS  = -lwin32u $(PTHREAD_LIBS) $(BROADWAY_CLIENT_LIBS)
 C_SRCS = \
 	dllmain.c \
 	init.c \
-	broadway-server.c \
-	broadway-buffer.c \
-	broadway-output.c
+	broadwaydrv_main.c
 
 #IN_SRCS = \
 #	build.gradle.in

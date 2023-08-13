@@ -19,13 +19,10 @@
 #include "ntuser.h"
 #include "wine/unixlib.h"
 
-//UNIX_CFLAGS  = $(GSTREAMER_CFLAGS)
-//UNIX_LIBS    = $(GSTREAMER_LIBS) $(PTHREAD_LIBS)
-
 enum broadwaydrv_funcs
 {
     unix_init,
-    unix_funcs_count
+    unix_funcs_count,
 };
 
 #define BROADWAYDRV_CALL(func, params) WINE_UNIX_CALL( unix_ ## func, params )
@@ -56,5 +53,10 @@ struct client_callback_params
 {
     UINT id;
     UINT arg;
+};
+
+enum
+{
+    client_start_device = NtUserDriverCallbackFirst,
 };
 
