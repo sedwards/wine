@@ -138,8 +138,6 @@ static const struct user_driver_funcs broadway_funcs =
     .pWindowMessage = X11DRV_WindowMessage,
     .pWindowPosChanging = X11DRV_WindowPosChanging,
     .pWindowPosChanged = X11DRV_WindowPosChanged,
-    .pSystemParametersInfo = X11DRV_SystemParametersInfo,
-    .pwine_get_vulkan_driver = X11DRV_wine_get_vulkan_driver,
     .pwine_get_wgl_driver = X11DRV_wine_get_wgl_driver,
     .pThreadDetach = X11DRV_ThreadDetach,
 #endif

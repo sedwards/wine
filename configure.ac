@@ -1375,7 +1375,7 @@ WINE_NOTICE_WITH(wayland, [test -z "$WAYLAND_CLIENT_LIBS" -o -z "$WAYLAND_SCANNE
 
 if test "x$with_broadway" != "xno"
 then
-    WINE_PACKAGE_FLAGS(BROADWAY_CLIENT,[gio-2.0 gobject-2.0 cairo glib-2.0],,,,,
+    WINE_PACKAGE_FLAGS(BROADWAY_CLIENT,[gio-2.0 gobject-2.0 cairo glib-2.0 gtk+-3.0],,,,,
               [BROADWAY_CLIENT_LIBS=""],[$BROADWAY_CLIENT_LIBS])
 fi
 WINE_NOTICE_WITH(broadway, [test -z "$BROADWAY_CLIENT_LIBS"],
