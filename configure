@@ -2591,11 +2591,9 @@ Some influential environment variables:
   WAYLAND_CLIENT_LIBS
               Linker flags for wayland-client, overriding pkg-config
   BROADWAY_CLIENT_CFLAGS
-              C compiler flags for gio-2.0 gobject-2.0 cairo glib-2.0
-              gtk+-3.0, overriding pkg-config
+              C compiler flags for gtk+-3.0, overriding pkg-config
   BROADWAY_CLIENT_LIBS
-              Linker flags for gio-2.0 gobject-2.0 cairo glib-2.0 gtk+-3.0,
-              overriding pkg-config
+              Linker flags for gtk+-3.0, overriding pkg-config
   INOTIFY_CFLAGS
               C compiler flags for libinotify, overriding pkg-config
   INOTIFY_LIBS
@@ -15725,7 +15723,7 @@ if ${BROADWAY_CLIENT_CFLAGS:+false} :
 then :
   if test ${PKG_CONFIG+y}
 then :
-  BROADWAY_CLIENT_CFLAGS=`$PKG_CONFIG --cflags gio-2.0 gobject-2.0 cairo glib-2.0 gtk+-3.0 2>conftest.err`
+  BROADWAY_CLIENT_CFLAGS=`$PKG_CONFIG --cflags gtk+-3.0 2>conftest.err`
 fi
 fi
 
@@ -15733,15 +15731,15 @@ if ${BROADWAY_CLIENT_LIBS:+false} :
 then :
   if test ${PKG_CONFIG+y}
 then :
-  BROADWAY_CLIENT_LIBS=`$PKG_CONFIG --libs gio-2.0 gobject-2.0 cairo glib-2.0 gtk+-3.0 2>/dev/null`
+  BROADWAY_CLIENT_LIBS=`$PKG_CONFIG --libs gtk+-3.0 2>/dev/null`
 fi
 fi
 
 
-printf "%s\n" "$as_me:${as_lineno-$LINENO}: gio-2.0 gobject-2.0 cairo glib-2.0 gtk+-3.0 cflags: $BROADWAY_CLIENT_CFLAGS" >&5
-printf "%s\n" "$as_me:${as_lineno-$LINENO}: gio-2.0 gobject-2.0 cairo glib-2.0 gtk+-3.0 libs: $BROADWAY_CLIENT_LIBS" >&5
+printf "%s\n" "$as_me:${as_lineno-$LINENO}: gtk+-3.0 cflags: $BROADWAY_CLIENT_CFLAGS" >&5
+printf "%s\n" "$as_me:${as_lineno-$LINENO}: gtk+-3.0 libs: $BROADWAY_CLIENT_LIBS" >&5
 if test -s conftest.err; then
-     printf %s "$as_me:${as_lineno-$LINENO}: gio-2.0 gobject-2.0 cairo glib-2.0 gtk+-3.0 errors: " >&5
+     printf %s "$as_me:${as_lineno-$LINENO}: gtk+-3.0 errors: " >&5
      cat conftest.err >&5
 fi
 rm -f conftest.err

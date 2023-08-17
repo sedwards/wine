@@ -30,6 +30,8 @@
 
 #include <cairo.h>
 
+#include <gtk/gtk.h>
+
 #include "unixlib.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(broadwaydrv);
@@ -49,18 +51,18 @@ struct _BroadwayServer {
 
 typedef struct _BroadwayServer BroadwayServer;
 
-BroadwayServer * _win_broadway_server_new (const char *display, GError **error);
-guint32 _win_broadway_server_get_last_seen_time (BroadwayServer *server);
-void _win_broadway_server_flush (BroadwayServer *server);
-void _win_broadway_server_sync (BroadwayServer *server);
-void _win_broadway_server_query_mouse (BroadwayServer *server,
+BroadwayServer * wine_broadway_server_new (const char *display, GError **error);
+guint32 wine_broadway_server_get_last_seen_time (BroadwayServer *server);
+void wine_broadway_server_flush (BroadwayServer *server);
+void wine_broadway_server_sync (BroadwayServer *server);
+void wine_broadway_server_query_mouse (BroadwayServer *server,
                                   guint32            *toplevel,
                                   gint32             *root_x,
                                   gint32             *root_y,
                                   guint32            *mask);
 
 guint32
-_win_broadway_server_new_window (BroadwayServer *server,
+wine_broadway_server_new_window (BroadwayServer *server,
                                  int x,
                                  int y,
                                  int width,
@@ -68,17 +70,33 @@ _win_broadway_server_new_window (BroadwayServer *server,
                                  gboolean is_temp);
 
 
-gboolean _win_broadway_server_window_show (BroadwayServer *server, gint id);
+gboolean wine_broadway_server_window_show (BroadwayServer *server, gint id);
 
 cairo_surface_t *
-_win_broadway_server_create_surface (int width, int height);
+wine_broadway_server_create_surface (int width, int height);
 
-void _win_broadway_server_window_update (BroadwayServer *server, gint id,
+void wine_broadway_server_window_update (BroadwayServer *server, gint id,
                                     cairo_surface_t *surface);
-
 
 void test_connection(void)
 {
+    GdkDisplay *display;
+    GtkWidget *window;
+#if 0
+    int argc;
+    char **argv;
+
+    gtk_init (&argc, &argv);
+
+    window = gtk_window_new (GTK_WINDOW_TOPLEVEL);
+    gtk_widget_show (window);
+
+    //dm = wine_broadway_device_manager_new (display);
+
+    display = gdk_display_get_default ();
+
+    gtk_main();
+#endif
     GError *error;
     error = NULL;
     guint32 id;
@@ -87,10 +105,10 @@ void test_connection(void)
     cairo_surface_t *surface;
 
     char *client_port;
-    client_port = ":2";
+    client_port = ":0";
 
     //dir = g_dir_open(target.c_str(), 0, &error);
-    broadway_server = _win_broadway_server_new(client_port, &error);
+    broadway_server = wine_broadway_server_new(client_port, &error);
     if( error != NULL )
     {
         //std::cout << error->message << std::endl;
@@ -98,22 +116,22 @@ void test_connection(void)
         g_clear_error (&error);
     }
     
-    //printf("_win_broadway_server_new function did something: %s", error-> message);
-    printf("_win_broadway_server_new function did something\n");
+    //printf("wine_broadway_server_new function did something: %s", error-> message);
+    printf("wine_broadway_server_new function did something\n");
 
-    id = _win_broadway_server_new_window(broadway_server,100,100,100,100,0);
+    id = wine_broadway_server_new_window(broadway_server,100,100,100,100,0);
     
-    printf("_win_broadway_server_new_window function did something\n");
+    printf("wine_broadway_server_new_window function did something\n");
 
-    _win_broadway_server_window_show (broadway_server, id);
+    wine_broadway_server_window_show (broadway_server, id);
 
-    surface = _win_broadway_server_create_surface(100,100);
+    surface = wine_broadway_server_create_surface(100,100);
 
-    _win_broadway_server_window_update (broadway_server, id, surface);
+    wine_broadway_server_window_update (broadway_server, id, surface);
 
-    _win_broadway_server_window_show (broadway_server, id);
-    
+    wine_broadway_server_window_show (broadway_server, id);
     //return id;
+
 }
 
 
@@ -182,7 +200,7 @@ static NTSTATUS broadwaydrv_init( void *arg )
     *params->show_systray = show_systray;
 #endif
 
-    init_user_driver();
+    //init_user_driver();
     //X11DRV_DisplayDevices_Init(FALSE);
     ERR("broadwaydrv_init - we made it\n");
     return STATUS_SUCCESS;

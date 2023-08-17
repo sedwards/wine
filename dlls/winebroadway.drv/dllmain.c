@@ -39,6 +39,7 @@ extern NTSTATUS CDECL wine_ntoskrnl_main_loop( HANDLE stop_event );
 static HANDLE stop_event;
 static HANDLE thread;
 HMODULE broadwaydrv_module = 0;
+
 #if 0
 static NTSTATUS WINAPI ioctl_callback( DEVICE_OBJECT *device, IRP *irp )
 {
@@ -133,7 +134,6 @@ BOOL WINAPI DllMain( HINSTANCE instance, DWORD reason, void *reserved )
 {
 #if 0
     struct init_params params;
-    void **callback_table;
 #endif
 
     void **callback_table;
