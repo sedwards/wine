@@ -526,7 +526,7 @@ static HRESULT WINAPI HTMLXMLHttpRequest_QueryInterface(IHTMLXMLHttpRequest *ifa
     }else if(IsEqualGUID(&IID_IProvideClassInfo2, riid)) {
         *ppv = &This->IProvideClassInfo2_iface;
     }else {
-        return EventTarget_QI(&This->event_target, riid, ppv);
+        return EventTarget_QI_no_cc(&This->event_target, riid, ppv);
     }
 
     IUnknown_AddRef((IUnknown*)*ppv);
@@ -1592,13 +1592,13 @@ static void HTMLXMLHttpRequest_init_dispex_info(dispex_data_t *info, compat_mode
         compat_mode < COMPAT_MODE_IE11 ? private_ie10_hooks : NULL);
 }
 
-static event_target_vtbl_t HTMLXMLHttpRequest_event_target_vtbl = {
+static const event_target_vtbl_t HTMLXMLHttpRequest_event_target_vtbl = {
     {
-        HTMLXMLHttpRequest_destructor,
-        HTMLXMLHttpRequest_unlink
+        .destructor          = HTMLXMLHttpRequest_destructor,
+        .unlink              = HTMLXMLHttpRequest_unlink
     },
-    HTMLXMLHttpRequest_get_gecko_target,
-    HTMLXMLHttpRequest_bind_event
+    .get_gecko_target        = HTMLXMLHttpRequest_get_gecko_target,
+    .bind_event              = HTMLXMLHttpRequest_bind_event
 };
 
 static const tid_t HTMLXMLHttpRequest_iface_tids[] = {
@@ -1606,7 +1606,7 @@ static const tid_t HTMLXMLHttpRequest_iface_tids[] = {
     0
 };
 static dispex_static_data_t HTMLXMLHttpRequest_dispex = {
-    L"XMLHttpRequest",
+    "XMLHttpRequest",
     &HTMLXMLHttpRequest_event_target_vtbl.dispex_vtbl,
     DispHTMLXMLHttpRequest_tid,
     HTMLXMLHttpRequest_iface_tids,
@@ -1632,7 +1632,7 @@ static HRESULT WINAPI HTMLXMLHttpRequestFactory_QueryInterface(IHTMLXMLHttpReque
         *ppv = &This->IHTMLXMLHttpRequestFactory_iface;
     }else if(IsEqualGUID(&IID_IHTMLXMLHttpRequestFactory, riid)) {
         *ppv = &This->IHTMLXMLHttpRequestFactory_iface;
-    }else if(dispex_query_interface(&This->dispex, riid, ppv)) {
+    }else if(dispex_query_interface_no_cc(&This->dispex, riid, ppv)) {
         return *ppv ? S_OK : E_NOINTERFACE;
     }else {
         *ppv = NULL;
@@ -1815,9 +1815,8 @@ static HRESULT HTMLXMLHttpRequestFactory_value(DispatchEx *iface, LCID lcid, WOR
 }
 
 static const dispex_static_data_vtbl_t HTMLXMLHttpRequestFactory_dispex_vtbl = {
-    HTMLXMLHttpRequestFactory_destructor,
-    NULL,
-    HTMLXMLHttpRequestFactory_value
+    .destructor       = HTMLXMLHttpRequestFactory_destructor,
+    .value            = HTMLXMLHttpRequestFactory_value
 };
 
 static const tid_t HTMLXMLHttpRequestFactory_iface_tids[] = {
@@ -1825,7 +1824,7 @@ static const tid_t HTMLXMLHttpRequestFactory_iface_tids[] = {
     0
 };
 static dispex_static_data_t HTMLXMLHttpRequestFactory_dispex = {
-    L"Function",
+    "Function",
     &HTMLXMLHttpRequestFactory_dispex_vtbl,
     IHTMLXMLHttpRequestFactory_tid,
     HTMLXMLHttpRequestFactory_iface_tids

@@ -93,7 +93,7 @@ static HRESULT WINAPI HTMLStyleSheetRule_QueryInterface(IHTMLStyleSheetRule *ifa
         *ppv = &This->IHTMLStyleSheetRule_iface;
     else if (IsEqualGUID(&IID_IHTMLStyleSheetRule, riid))
         *ppv = &This->IHTMLStyleSheetRule_iface;
-    else if (dispex_query_interface(&This->dispex, riid, ppv))
+    else if (dispex_query_interface_no_cc(&This->dispex, riid, ppv))
         return *ppv ? S_OK : E_NOINTERFACE;
     else
     {
@@ -220,8 +220,8 @@ static void HTMLStyleSheetRule_destructor(DispatchEx *dispex)
 }
 
 static const dispex_static_data_vtbl_t HTMLStyleSheetRule_dispex_vtbl = {
-    HTMLStyleSheetRule_destructor,
-    HTMLStyleSheetRule_unlink
+    .destructor       = HTMLStyleSheetRule_destructor,
+    .unlink           = HTMLStyleSheetRule_unlink
 };
 
 static const tid_t HTMLStyleSheetRule_iface_tids[] = {
@@ -229,7 +229,7 @@ static const tid_t HTMLStyleSheetRule_iface_tids[] = {
     0
 };
 static dispex_static_data_t HTMLStyleSheetRule_dispex = {
-    L"CSSStyleRule",
+    "CSSStyleRule",
     &HTMLStyleSheetRule_dispex_vtbl,
     DispHTMLStyleSheetRule_tid,
     HTMLStyleSheetRule_iface_tids
@@ -279,7 +279,7 @@ static HRESULT WINAPI HTMLStyleSheetRulesCollection_QueryInterface(IHTMLStyleShe
         *ppv = &This->IHTMLStyleSheetRulesCollection_iface;
     }else if(IsEqualGUID(&IID_IHTMLStyleSheetRulesCollection, riid)) {
         *ppv = &This->IHTMLStyleSheetRulesCollection_iface;
-    }else if(dispex_query_interface(&This->dispex, riid, ppv)) {
+    }else if(dispex_query_interface_no_cc(&This->dispex, riid, ppv)) {
         return *ppv ? S_OK : E_NOINTERFACE;
     }else {
         *ppv = NULL;
@@ -492,19 +492,18 @@ static HRESULT HTMLStyleSheetRulesCollection_invoke(DispatchEx *dispex, DISPID i
 }
 
 static const dispex_static_data_vtbl_t HTMLStyleSheetRulesCollection_dispex_vtbl = {
-    HTMLStyleSheetRulesCollection_destructor,
-    HTMLStyleSheetRulesCollection_unlink,
-    NULL,
-    HTMLStyleSheetRulesCollection_get_dispid,
-    HTMLStyleSheetRulesCollection_get_name,
-    HTMLStyleSheetRulesCollection_invoke
+    .destructor       = HTMLStyleSheetRulesCollection_destructor,
+    .unlink           = HTMLStyleSheetRulesCollection_unlink,
+    .get_dispid       = HTMLStyleSheetRulesCollection_get_dispid,
+    .get_name         = HTMLStyleSheetRulesCollection_get_name,
+    .invoke           = HTMLStyleSheetRulesCollection_invoke
 };
 static const tid_t HTMLStyleSheetRulesCollection_iface_tids[] = {
     IHTMLStyleSheetRulesCollection_tid,
     0
 };
 static dispex_static_data_t HTMLStyleSheetRulesCollection_dispex = {
-    L"MSCSSRuleList",
+    "MSCSSRuleList",
     &HTMLStyleSheetRulesCollection_dispex_vtbl,
     DispHTMLStyleSheetRulesCollection_tid,
     HTMLStyleSheetRulesCollection_iface_tids
@@ -674,7 +673,7 @@ static HRESULT WINAPI HTMLStyleSheetsCollection_QueryInterface(IHTMLStyleSheetsC
         *ppv = &This->IHTMLStyleSheetsCollection_iface;
     }else if(IsEqualGUID(&IID_IHTMLStyleSheetsCollection, riid)) {
         *ppv = &This->IHTMLStyleSheetsCollection_iface;
-    }else if(dispex_query_interface(&This->dispex, riid, ppv)) {
+    }else if(dispex_query_interface_no_cc(&This->dispex, riid, ppv)) {
         return *ppv ? S_OK : E_NOINTERFACE;
     }else {
         *ppv = NULL;
@@ -929,19 +928,18 @@ static HRESULT HTMLStyleSheetsCollection_invoke(DispatchEx *dispex, DISPID id, L
 }
 
 static const dispex_static_data_vtbl_t HTMLStyleSheetsCollection_dispex_vtbl = {
-    HTMLStyleSheetsCollection_destructor,
-    HTMLStyleSheetsCollection_unlink,
-    NULL,
-    HTMLStyleSheetsCollection_get_dispid,
-    HTMLStyleSheetsCollection_get_name,
-    HTMLStyleSheetsCollection_invoke
+    .destructor       = HTMLStyleSheetsCollection_destructor,
+    .unlink           = HTMLStyleSheetsCollection_unlink,
+    .get_dispid       = HTMLStyleSheetsCollection_get_dispid,
+    .get_name         = HTMLStyleSheetsCollection_get_name,
+    .invoke           = HTMLStyleSheetsCollection_invoke
 };
 static const tid_t HTMLStyleSheetsCollection_iface_tids[] = {
     IHTMLStyleSheetsCollection_tid,
     0
 };
 static dispex_static_data_t HTMLStyleSheetsCollection_dispex = {
-    L"StyleSheetList",
+    "StyleSheetList",
     &HTMLStyleSheetsCollection_dispex_vtbl,
     DispHTMLStyleSheetsCollection_tid,
     HTMLStyleSheetsCollection_iface_tids
@@ -988,7 +986,7 @@ static HRESULT WINAPI HTMLStyleSheet_QueryInterface(IHTMLStyleSheet *iface, REFI
         *ppv = &This->IHTMLStyleSheet_iface;
     }else if(IsEqualGUID(&IID_IHTMLStyleSheet4, riid)) {
         *ppv = &This->IHTMLStyleSheet4_iface;
-    }else if(dispex_query_interface(&This->dispex, riid, ppv)) {
+    }else if(dispex_query_interface_no_cc(&This->dispex, riid, ppv)) {
         return *ppv ? S_OK : E_NOINTERFACE;
     }else {
         *ppv = NULL;
@@ -1520,8 +1518,8 @@ static void HTMLStyleSheet_init_dispex_info(dispex_data_t *info, compat_mode_t m
 }
 
 static const dispex_static_data_vtbl_t HTMLStyleSheet_dispex_vtbl = {
-    HTMLStyleSheet_destructor,
-    HTMLStyleSheet_unlink
+    .destructor       = HTMLStyleSheet_destructor,
+    .unlink           = HTMLStyleSheet_unlink
 };
 
 static const tid_t HTMLStyleSheet_iface_tids[] = {
@@ -1529,7 +1527,7 @@ static const tid_t HTMLStyleSheet_iface_tids[] = {
     0
 };
 static dispex_static_data_t HTMLStyleSheet_dispex = {
-    L"CSSStyleSheet",
+    "CSSStyleSheet",
     &HTMLStyleSheet_dispex_vtbl,
     DispHTMLStyleSheet_tid,
     HTMLStyleSheet_iface_tids,

@@ -826,7 +826,7 @@ static HRESULT WINAPI HTMLTxtRange_QueryInterface(IHTMLTxtRange *iface, REFIID r
         *ppv = &This->IHTMLTxtRange_iface;
     }else if(IsEqualGUID(&IID_IOleCommandTarget, riid)) {
         *ppv = &This->IOleCommandTarget_iface;
-    }else if(dispex_query_interface(&This->dispex, riid, ppv)) {
+    }else if(dispex_query_interface_no_cc(&This->dispex, riid, ppv)) {
         return *ppv ? S_OK : E_NOINTERFACE;
     }else {
         *ppv = NULL;
@@ -1734,8 +1734,8 @@ static void HTMLTxtRange_destructor(DispatchEx *dispex)
 }
 
 static const dispex_static_data_vtbl_t HTMLTxtRange_dispex_vtbl = {
-    HTMLTxtRange_destructor,
-    HTMLTxtRange_unlink
+    .destructor       = HTMLTxtRange_destructor,
+    .unlink           = HTMLTxtRange_unlink
 };
 
 static const tid_t HTMLTxtRange_iface_tids[] = {
@@ -1743,7 +1743,7 @@ static const tid_t HTMLTxtRange_iface_tids[] = {
     0
 };
 static dispex_static_data_t HTMLTxtRange_dispex = {
-    L"TextRange",
+    "TextRange",
     &HTMLTxtRange_dispex_vtbl,
     IHTMLTxtRange_tid,
     HTMLTxtRange_iface_tids
@@ -1790,7 +1790,7 @@ static HRESULT WINAPI HTMLDOMRange_QueryInterface(IHTMLDOMRange *iface, REFIID r
         *ppv = &This->IHTMLDOMRange_iface;
     }else if(IsEqualGUID(&IID_IHTMLDOMRange, riid)) {
         *ppv = &This->IHTMLDOMRange_iface;
-    }else if(dispex_query_interface(&This->dispex, riid, ppv)) {
+    }else if(dispex_query_interface_no_cc(&This->dispex, riid, ppv)) {
         return *ppv ? S_OK : E_NOINTERFACE;
     }else {
         *ppv = NULL;
@@ -2097,8 +2097,8 @@ static void HTMLDOMRange_destructor(DispatchEx *dispex)
 }
 
 static const dispex_static_data_vtbl_t HTMLDOMRange_dispex_vtbl = {
-    HTMLDOMRange_destructor,
-    HTMLDOMRange_unlink
+    .destructor       = HTMLDOMRange_destructor,
+    .unlink           = HTMLDOMRange_unlink
 };
 
 static const tid_t HTMLDOMRange_iface_tids[] = {
@@ -2107,7 +2107,7 @@ static const tid_t HTMLDOMRange_iface_tids[] = {
 };
 
 static dispex_static_data_t HTMLDOMRange_dispex = {
-    L"Range",
+    "Range",
     &HTMLDOMRange_dispex_vtbl,
     DispHTMLDOMRange_tid,
     HTMLDOMRange_iface_tids

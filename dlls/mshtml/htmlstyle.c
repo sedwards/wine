@@ -4743,7 +4743,7 @@ static HRESULT WINAPI HTMLCSSStyleDeclaration_QueryInterface(IHTMLCSSStyleDeclar
         *ppv = &This->IHTMLCSSStyleDeclaration_iface;
     }else if(IsEqualGUID(&IID_IHTMLCSSStyleDeclaration2, riid)) {
         *ppv = &This->IHTMLCSSStyleDeclaration2_iface;
-    }else if(dispex_query_interface(&This->dispex, riid, ppv)) {
+    }else if(dispex_query_interface_no_cc(&This->dispex, riid, ppv)) {
         return *ppv ? S_OK : E_NOINTERFACE;
     }else if(!This->qi || !(*ppv = This->qi(This, riid))) {
         *ppv = NULL;
@@ -10005,12 +10005,9 @@ void CSSStyle_init_dispex_info(dispex_data_t *info, compat_mode_t mode)
 }
 
 const dispex_static_data_vtbl_t CSSStyle_dispex_vtbl = {
-    CSSStyle_destructor,
-    CSSStyle_unlink,
-    NULL,
-    CSSStyle_get_dispid,
-    NULL,
-    NULL
+    .destructor        = CSSStyle_destructor,
+    .unlink            = CSSStyle_unlink,
+    .get_dispid        = CSSStyle_get_dispid,
 };
 
 static const tid_t HTMLStyle_iface_tids[] = {
@@ -10023,7 +10020,7 @@ static const tid_t HTMLStyle_iface_tids[] = {
     0
 };
 static dispex_static_data_t HTMLStyle_dispex = {
-    L"MSStyleCSSProperties",
+    "MSStyleCSSProperties",
     &CSSStyle_dispex_vtbl,
     DispHTMLStyle_tid,
     HTMLStyle_iface_tids,
@@ -10119,7 +10116,7 @@ static const tid_t HTMLW3CComputedStyle_iface_tids[] = {
     0
 };
 static dispex_static_data_t HTMLW3CComputedStyle_dispex = {
-    L"CSSStyleDeclaration",
+    "CSSStyleDeclaration",
     &CSSStyle_dispex_vtbl,
     DispHTMLW3CComputedStyle_tid,
     HTMLW3CComputedStyle_iface_tids,

@@ -564,4 +564,330 @@ struct wined3d_rendertarget_info
     unsigned int layer_count;
 };
 
+struct wined3d_command_fence_gl
+{
+    uint64_t id;
+    struct wined3d_fence *fence;
+};
+
+#define MAX_GL_FRAGMENT_SAMPLERS 32
+
+struct wined3d_context_gl
+{
+    struct wined3d_context c;
+
+    const struct wined3d_gl_info *gl_info;
+
+    DWORD tid; /* Thread ID which owns this context at the moment. */
+
+    uint32_t dc_is_private : 1;
+    uint32_t dc_has_format : 1; /* Only meaningful for private DCs. */
+    uint32_t fog_enabled : 1;
+    uint32_t diffuse_attrib_to_1 : 1;
+    uint32_t rebind_fbo : 1;
+    uint32_t untracked_material_count : 2; /* Max value 2 */
+    uint32_t needs_set : 1;
+    uint32_t internal_format_set : 1;
+    uint32_t valid : 1;
+    uint32_t padding : 22;
+
+    uint32_t default_attrib_value_set;
+
+    GLenum tracking_parm; /* Which source is tracking current colour. */
+    GLenum untracked_materials[2];
+    SIZE blit_size;
+    unsigned int active_texture;
+
+    GLenum *texture_type;
+
+    /* The WGL context. */
+    unsigned int level;
+    HGLRC restore_ctx;
+    HDC restore_dc;
+    int restore_pf;
+    HWND restore_pf_win;
+    HGLRC gl_ctx;
+    HDC dc;
+    int pixel_format;
+    HWND window;
+    GLint aux_buffers;
+
+    /* FBOs. */
+    unsigned int fbo_entry_count;
+    struct list fbo_list;
+    struct list fbo_destroy_list;
+    struct fbo_entry *current_fbo;
+    GLuint fbo_read_binding;
+    GLuint fbo_draw_binding;
+    struct wined3d_rendertarget_info blit_targets[WINED3D_MAX_RENDER_TARGETS];
+    uint32_t draw_buffers_mask; /* Enabled draw buffers, 31 max. */
+
+    /* Queries. */
+    struct list occlusion_queries;
+    struct list fences;
+    struct list timestamp_queries;
+    struct list so_statistics_queries;
+    struct list pipeline_statistics_queries;
+
+    GLuint *free_occlusion_queries;
+    SIZE_T free_occlusion_query_size;
+    unsigned int free_occlusion_query_count;
+
+    union wined3d_gl_fence_object *free_fences;
+    SIZE_T free_fence_size;
+    unsigned int free_fence_count;
+
+    GLuint *free_timestamp_queries;
+    SIZE_T free_timestamp_query_size;
+    unsigned int free_timestamp_query_count;
+
+    union wined3d_gl_so_statistics_query *free_so_statistics_queries;
+    SIZE_T free_so_statistics_query_size;
+    unsigned int free_so_statistics_query_count;
+
+    union wined3d_gl_pipeline_statistics_query *free_pipeline_statistics_queries;
+    SIZE_T free_pipeline_statistics_query_size;
+    unsigned int free_pipeline_statistics_query_count;
+
+    GLuint blit_vbo;
+
+    unsigned int tex_unit_map[WINED3D_MAX_COMBINED_SAMPLERS];
+    unsigned int rev_tex_unit_map[MAX_GL_FRAGMENT_SAMPLERS + WINED3D_MAX_VERTEX_SAMPLERS];
+
+    /* Extension emulation. */
+    GLint gl_fog_source;
+    GLfloat fog_coord_value;
+    GLfloat colour[4], fog_start, fog_end, fog_colour[4];
+
+    GLuint dummy_arbfp_prog;
+
+    struct
+    {
+        struct wined3d_command_fence_gl *fences;
+        SIZE_T fences_size;
+        SIZE_T fence_count;
+    } submitted;
+};
+
+static inline struct wined3d_context_gl *wined3d_context_gl(struct wined3d_context *context)
+{
+    return CONTAINING_RECORD(context, struct wined3d_context_gl, c);
+}
+
+static inline const struct wined3d_context_gl *wined3d_context_gl_const(const struct wined3d_context *context)
+{
+    return CONTAINING_RECORD(context, struct wined3d_context_gl, c);
+}
+
+HGLRC context_create_wgl_attribs(const struct wined3d_gl_info *gl_info, HDC hdc, HGLRC share_ctx);
+DWORD context_get_tls_idx(void);
+void context_gl_apply_texture_draw_state(struct wined3d_context_gl *context_gl,
+        struct wined3d_texture *texture, unsigned int sub_resource_idx, unsigned int location);
+void context_gl_resource_released(struct wined3d_device *device, GLuint name, BOOL rb_namespace);
+
+struct wined3d_context *wined3d_context_gl_acquire(const struct wined3d_device *device,
+        struct wined3d_texture *texture, unsigned int sub_resource_idx);
+void wined3d_context_gl_active_texture(struct wined3d_context_gl *context_gl,
+        const struct wined3d_gl_info *gl_info, unsigned int unit);
+void wined3d_context_gl_alloc_fence(struct wined3d_context_gl *context_gl, struct wined3d_fence *fence);
+void wined3d_context_gl_alloc_occlusion_query(struct wined3d_context_gl *context_gl,
+        struct wined3d_occlusion_query *query);
+void wined3d_context_gl_alloc_pipeline_statistics_query(struct wined3d_context_gl *context_gl,
+        struct wined3d_pipeline_statistics_query *query);
+void wined3d_context_gl_alloc_so_statistics_query(struct wined3d_context_gl *context_gl,
+        struct wined3d_so_statistics_query *query);
+void wined3d_context_gl_alloc_timestamp_query(struct wined3d_context_gl *context_gl,
+        struct wined3d_timestamp_query *query);
+GLuint wined3d_context_gl_allocate_vram_chunk_buffer(struct wined3d_context_gl *context_gl,
+        unsigned int pool, size_t size);
+void wined3d_context_gl_apply_blit_state(struct wined3d_context_gl *context_gl, const struct wined3d_device *device);
+BOOL wined3d_context_gl_apply_clear_state(struct wined3d_context_gl *context_gl, const struct wined3d_state *state,
+        unsigned int rt_count, const struct wined3d_fb_state *fb);
+void wined3d_context_gl_apply_fbo_state_blit(struct wined3d_context_gl *context_gl, GLenum target,
+        struct wined3d_resource *rt, unsigned int rt_sub_resource_idx,
+        struct wined3d_resource *ds, unsigned int ds_sub_resource_idx, uint32_t location);
+void wined3d_context_gl_apply_ffp_blit_state(struct wined3d_context_gl *context_gl,
+        const struct wined3d_device *device);
+void wined3d_context_gl_bind_bo(struct wined3d_context_gl *context_gl, GLenum binding, GLuint name);
+void wined3d_context_gl_bind_dummy_textures(const struct wined3d_context_gl *context_gl);
+void wined3d_context_gl_bind_texture(struct wined3d_context_gl *context_gl, GLenum target, GLuint name);
+void wined3d_context_gl_check_fbo_status(const struct wined3d_context_gl *context_gl, GLenum target);
+void wined3d_context_gl_copy_bo_address(struct wined3d_context_gl *context_gl,
+        const struct wined3d_bo_address *dst, const struct wined3d_bo_address *src,
+        unsigned int range_count, const struct wined3d_range *ranges, uint32_t map_flags);
+void wined3d_context_gl_destroy(struct wined3d_context_gl *context_gl);
+void wined3d_context_gl_destroy_bo(struct wined3d_context_gl *context_gl, struct wined3d_bo_gl *bo);
+void wined3d_context_gl_draw_shaded_quad(struct wined3d_context_gl *context_gl, struct wined3d_texture_gl *texture_gl,
+        unsigned int sub_resource_idx, const RECT *src_rect, const RECT *dst_rect,
+        enum wined3d_texture_filter_type filter);
+void wined3d_context_gl_draw_textured_quad(struct wined3d_context_gl *context_gl,
+        struct wined3d_texture_gl *texture_gl, unsigned int sub_resource_idx,
+        const RECT *src_rect, const RECT *dst_rect, enum wined3d_texture_filter_type filter);
+void wined3d_context_gl_enable_clip_distances(struct wined3d_context_gl *context_gl, uint32_t mask);
+void wined3d_context_gl_end_transform_feedback(struct wined3d_context_gl *context_gl);
+void wined3d_context_gl_flush_bo_address(struct wined3d_context_gl *context_gl,
+        const struct wined3d_const_bo_address *data, size_t size);
+void wined3d_context_gl_free_fence(struct wined3d_fence *fence);
+void wined3d_context_gl_free_occlusion_query(struct wined3d_occlusion_query *query);
+void wined3d_context_gl_free_pipeline_statistics_query(struct wined3d_pipeline_statistics_query *query);
+void wined3d_context_gl_free_so_statistics_query(struct wined3d_so_statistics_query *query);
+void wined3d_context_gl_free_timestamp_query(struct wined3d_timestamp_query *query);
+struct wined3d_context_gl *wined3d_context_gl_get_current(void);
+GLenum wined3d_context_gl_get_offscreen_gl_buffer(const struct wined3d_context_gl *context_gl);
+const unsigned int *wined3d_context_gl_get_tex_unit_mapping(const struct wined3d_context_gl *context_gl,
+        const struct wined3d_shader_version *shader_version, unsigned int *base, unsigned int *count);
+HRESULT wined3d_context_gl_init(struct wined3d_context_gl *context_gl, struct wined3d_swapchain_gl *swapchain_gl);
+void wined3d_context_gl_load_tex_coords(const struct wined3d_context_gl *context_gl,
+        const struct wined3d_stream_info *si, GLuint *current_bo, const struct wined3d_state *state);
+void *wined3d_context_gl_map_bo_address(struct wined3d_context_gl *context_gl,
+        const struct wined3d_bo_address *data, size_t size, uint32_t flags);
+struct wined3d_context_gl *wined3d_context_gl_reacquire(struct wined3d_context_gl *context_gl);
+void wined3d_context_gl_release(struct wined3d_context_gl *context_gl);
+BOOL wined3d_context_gl_set_current(struct wined3d_context_gl *context_gl);
+void wined3d_context_gl_submit_command_fence(struct wined3d_context_gl *context_gl);
+void wined3d_context_gl_texture_update(struct wined3d_context_gl *context_gl,
+        const struct wined3d_texture_gl *texture_gl);
+void wined3d_context_gl_unload_tex_coords(const struct wined3d_context_gl *context_gl);
+void wined3d_context_gl_unmap_bo_address(struct wined3d_context_gl *context_gl, const struct wined3d_bo_address *data,
+        unsigned int range_count, const struct wined3d_range *ranges);
+void wined3d_context_gl_update_stream_sources(struct wined3d_context_gl *context_gl, const struct wined3d_state *state);
+void wined3d_context_gl_wait_command_fence(struct wined3d_context_gl *context_gl, uint64_t id);
+
+void wined3d_arbfp_blitter_create(struct wined3d_blitter **next, const struct wined3d_device *device);
+void wined3d_fbo_blitter_create(struct wined3d_blitter **next, const struct wined3d_gl_info *gl_info);
+void wined3d_ffp_blitter_create(struct wined3d_blitter **next, const struct wined3d_gl_info *gl_info);
+struct wined3d_blitter *wined3d_glsl_blitter_create(struct wined3d_blitter **next, const struct wined3d_device *device);
+void wined3d_raw_blitter_create(struct wined3d_blitter **next, const struct wined3d_gl_info *gl_info);
+
+struct wined3d_caps_gl_ctx
+{
+    HDC dc;
+    HWND wnd;
+    HGLRC gl_ctx;
+    HDC restore_dc;
+    HGLRC restore_gl_ctx;
+
+    const struct wined3d_gl_info *gl_info;
+    GLuint test_vbo;
+    GLuint test_program_id;
+
+    const struct wined3d_gpu_description *gpu_description;
+    UINT64 vram_bytes;
+};
+
+BOOL wined3d_caps_gl_ctx_test_viewport_subpixel_bits(struct wined3d_caps_gl_ctx *ctx);
+bool wined3d_caps_gl_ctx_test_filling_convention(struct wined3d_caps_gl_ctx *ctx, float offset);
+
+struct wined3d_adapter_gl
+{
+    struct wined3d_adapter a;
+
+    struct wined3d_gl_info gl_info;
+
+    struct wined3d_pixel_format *pixel_formats;
+    unsigned int pixel_format_count;
+};
+
+static inline struct wined3d_adapter_gl *wined3d_adapter_gl(struct wined3d_adapter *adapter)
+{
+    return CONTAINING_RECORD(adapter, struct wined3d_adapter_gl, a);
+}
+
+static inline const struct wined3d_adapter_gl *wined3d_adapter_gl_const(const struct wined3d_adapter *adapter)
+{
+    return CONTAINING_RECORD(adapter, struct wined3d_adapter_gl, a);
+}
+
+BOOL wined3d_adapter_gl_init_format_info(struct wined3d_adapter *adapter, struct wined3d_caps_gl_ctx *ctx);
+
+struct wined3d_allocator_chunk_gl
+{
+    struct wined3d_allocator_chunk c;
+    unsigned int memory_type;
+    GLuint gl_buffer;
+};
+
+static inline struct wined3d_allocator_chunk_gl *wined3d_allocator_chunk_gl(struct wined3d_allocator_chunk *chunk)
+{
+    return CONTAINING_RECORD(chunk, struct wined3d_allocator_chunk_gl, c);
+}
+
+struct wined3d_dummy_textures
+{
+    GLuint tex_1d;
+    GLuint tex_2d;
+    GLuint tex_rect;
+    GLuint tex_3d;
+    GLuint tex_cube;
+    GLuint tex_cube_array;
+    GLuint tex_1d_array;
+    GLuint tex_2d_array;
+    GLuint tex_buffer;
+    GLuint tex_2d_ms;
+    GLuint tex_2d_ms_array;
+};
+
+struct wined3d_device_gl
+{
+    struct wined3d_device d;
+
+    /* Textures for when no other textures are bound. */
+    struct wined3d_dummy_textures dummy_textures;
+
+    CRITICAL_SECTION allocator_cs;
+    struct wined3d_allocator allocator;
+    uint64_t completed_fence_id;
+    uint64_t current_fence_id;
+    uint64_t retired_bo_size;
+
+    struct wined3d_retired_block_gl
+    {
+        struct wined3d_allocator_block *block;
+        uint64_t fence_id;
+    } *retired_blocks;
+    SIZE_T retired_blocks_size;
+    SIZE_T retired_block_count;
+
+    HWND backup_wnd;
+    HDC backup_dc;
+};
+
+static inline struct wined3d_device_gl *wined3d_device_gl(struct wined3d_device *device)
+{
+    return CONTAINING_RECORD(device, struct wined3d_device_gl, d);
+}
+
+static inline struct wined3d_device_gl *wined3d_device_gl_from_allocator(struct wined3d_allocator *allocator)
+{
+    return CONTAINING_RECORD(allocator, struct wined3d_device_gl, allocator);
+}
+
+static inline void wined3d_device_gl_allocator_lock(struct wined3d_device_gl *device_gl)
+{
+    EnterCriticalSection(&device_gl->allocator_cs);
+}
+
+static inline void wined3d_device_gl_allocator_unlock(struct wined3d_device_gl *device_gl)
+{
+    LeaveCriticalSection(&device_gl->allocator_cs);
+}
+
+static inline void wined3d_allocator_chunk_gl_lock(struct wined3d_allocator_chunk_gl *chunk_gl)
+{
+    wined3d_device_gl_allocator_lock(wined3d_device_gl_from_allocator(chunk_gl->c.allocator));
+}
+
+static inline void wined3d_allocator_chunk_gl_unlock(struct wined3d_allocator_chunk_gl *chunk_gl)
+{
+    wined3d_device_gl_allocator_unlock(wined3d_device_gl_from_allocator(chunk_gl->c.allocator));
+}
+
+bool wined3d_device_gl_create_bo(struct wined3d_device_gl *device_gl,
+        struct wined3d_context_gl *context_gl, GLsizeiptr size, GLenum binding,
+        GLenum usage, bool coherent, GLbitfield flags, struct wined3d_bo_gl *bo);
+void wined3d_device_gl_create_primary_opengl_context_cs(void *object);
+void wined3d_device_gl_delete_opengl_contexts_cs(void *object);
+HDC wined3d_device_gl_get_backup_dc(struct wined3d_device_gl *device_gl);
+GLbitfield wined3d_device_gl_get_memory_type_flags(unsigned int memory_type_idx);
+
 #endif /* __WINE_WINED3D_GL */

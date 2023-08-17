@@ -64,7 +64,7 @@ static HRESULT WINAPI HTMLSelectionObject_QueryInterface(IHTMLSelectionObject *i
         *ppv = &This->IHTMLSelectionObject_iface;
     }else if(IsEqualGUID(&IID_IHTMLSelectionObject2, riid)) {
         *ppv = &This->IHTMLSelectionObject2_iface;
-    }else if(dispex_query_interface(&This->dispex, riid, ppv)) {
+    }else if(dispex_query_interface_no_cc(&This->dispex, riid, ppv)) {
         return *ppv ? S_OK : E_NOINTERFACE;
     }else {
         *ppv = NULL;
@@ -345,8 +345,8 @@ static void HTMLSelectionObject_destructor(DispatchEx *dispex)
 }
 
 static const dispex_static_data_vtbl_t HTMLSelectionObject_dispex_vtbl = {
-    HTMLSelectionObject_destructor,
-    HTMLSelectionObject_unlink
+    .destructor       = HTMLSelectionObject_destructor,
+    .unlink           = HTMLSelectionObject_unlink
 };
 
 static const tid_t HTMLSelectionObject_iface_tids[] = {
@@ -355,7 +355,7 @@ static const tid_t HTMLSelectionObject_iface_tids[] = {
     0
 };
 static dispex_static_data_t HTMLSelectionObject_dispex = {
-    L"MSSelection",
+    "MSSelection",
     &HTMLSelectionObject_dispex_vtbl,
     IHTMLSelectionObject_tid, /* FIXME: We have a test for that, but it doesn't expose IHTMLSelectionObject2 iface. */
     HTMLSelectionObject_iface_tids

@@ -50,7 +50,7 @@ static HRESULT WINAPI HTMLDOMAttribute_QueryInterface(IHTMLDOMAttribute *iface,
         *ppv = &This->IHTMLDOMAttribute_iface;
     }else if(IsEqualGUID(&IID_IHTMLDOMAttribute2, riid)) {
         *ppv = &This->IHTMLDOMAttribute2_iface;
-    }else if(dispex_query_interface(&This->dispex, riid, ppv)) {
+    }else if(dispex_query_interface_no_cc(&This->dispex, riid, ppv)) {
         return *ppv ? S_OK : E_NOINTERFACE;
     }else {
         WARN("%s not supported\n", debugstr_mshtml_guid(riid));
@@ -496,8 +496,8 @@ static void HTMLDOMAttribute_destructor(DispatchEx *dispex)
 }
 
 static const dispex_static_data_vtbl_t HTMLDOMAttribute_dispex_vtbl = {
-    HTMLDOMAttribute_destructor,
-    HTMLDOMAttribute_unlink
+    .destructor       = HTMLDOMAttribute_destructor,
+    .unlink           = HTMLDOMAttribute_unlink
 };
 
 static const tid_t HTMLDOMAttribute_iface_tids[] = {
@@ -506,7 +506,7 @@ static const tid_t HTMLDOMAttribute_iface_tids[] = {
     0
 };
 static dispex_static_data_t HTMLDOMAttribute_dispex = {
-    L"Attr",
+    "Attr",
     &HTMLDOMAttribute_dispex_vtbl,
     DispHTMLDOMAttribute_tid,
     HTMLDOMAttribute_iface_tids

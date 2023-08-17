@@ -1098,7 +1098,7 @@ static HRESULT WINAPI MutationObserver_QueryInterface(IWineMSHTMLMutationObserve
 
     if(IsEqualGUID(&IID_IUnknown, riid) || IsEqualGUID(&IID_IWineMSHTMLMutationObserver, riid)) {
         *ppv = &This->IWineMSHTMLMutationObserver_iface;
-    } else if(dispex_query_interface(&This->dispex, riid, ppv)) {
+    } else if(dispex_query_interface_no_cc(&This->dispex, riid, ppv)) {
         return *ppv ? S_OK : E_NOINTERFACE;
     } else {
         WARN("(%p)->(%s %p)\n", This, debugstr_mshtml_guid(riid), ppv);
@@ -1228,8 +1228,8 @@ static void mutation_observer_destructor(DispatchEx *dispex)
 }
 
 static const dispex_static_data_vtbl_t mutation_observer_dispex_vtbl = {
-    mutation_observer_destructor,
-    mutation_observer_unlink
+    .destructor       = mutation_observer_destructor,
+    .unlink           = mutation_observer_unlink
 };
 
 static const tid_t mutation_observer_iface_tids[] = {
@@ -1237,7 +1237,7 @@ static const tid_t mutation_observer_iface_tids[] = {
     0
 };
 static dispex_static_data_t mutation_observer_dispex = {
-    L"MutationObserver",
+    "MutationObserver",
     &mutation_observer_dispex_vtbl,
     IWineMSHTMLMutationObserver_tid,
     mutation_observer_iface_tids
@@ -1293,7 +1293,7 @@ static HRESULT WINAPI mutation_observer_ctor_QueryInterface(IUnknown *iface, REF
 
     if(IsEqualGUID(&IID_IUnknown, riid)) {
         *ppv = &This->IUnknown_iface;
-    }else if(dispex_query_interface(&This->dispex, riid, ppv)) {
+    }else if(dispex_query_interface_no_cc(&This->dispex, riid, ppv)) {
         return *ppv ? S_OK : E_NOINTERFACE;
     }else {
         WARN("(%p)->(%s %p)\n", This, debugstr_mshtml_guid(riid), ppv);
@@ -1388,9 +1388,8 @@ static HRESULT mutation_observer_ctor_value(DispatchEx *dispex, LCID lcid,
 }
 
 static dispex_static_data_vtbl_t mutation_observer_ctor_dispex_vtbl = {
-    mutation_observer_ctor_destructor,
-    NULL,
-    mutation_observer_ctor_value
+    .destructor       = mutation_observer_ctor_destructor,
+    .value            = mutation_observer_ctor_value
 };
 
 static const tid_t mutation_observer_ctor_iface_tids[] = {
@@ -1398,7 +1397,7 @@ static const tid_t mutation_observer_ctor_iface_tids[] = {
 };
 
 static dispex_static_data_t mutation_observer_ctor_dispex = {
-    L"Function",
+    "Function",
     &mutation_observer_ctor_dispex_vtbl,
     NULL_tid,
     mutation_observer_ctor_iface_tids

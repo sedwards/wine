@@ -223,7 +223,7 @@ static HRESULT WINAPI HTMLElementCollection_QueryInterface(IHTMLElementCollectio
         *ppv = &This->IHTMLElementCollection_iface;
     }else if(IsEqualGUID(&IID_IHTMLElementCollection, riid)) {
         *ppv = &This->IHTMLElementCollection_iface;
-    }else if(dispex_query_interface(&This->dispex, riid, ppv)) {
+    }else if(dispex_query_interface_no_cc(&This->dispex, riid, ppv)) {
         return *ppv ? S_OK : E_NOINTERFACE;
     }else {
         *ppv = NULL;
@@ -633,13 +633,11 @@ static HRESULT HTMLElementCollection_invoke(DispatchEx *dispex, DISPID id, LCID 
 }
 
 static const dispex_static_data_vtbl_t HTMLElementColection_dispex_vtbl = {
-    HTMLElementCollection_destructor,
-    HTMLElementCollection_unlink,
-    NULL,
-    HTMLElementCollection_get_dispid,
-    HTMLElementCollection_get_name,
-    HTMLElementCollection_invoke,
-    NULL
+    .destructor       = HTMLElementCollection_destructor,
+    .unlink           = HTMLElementCollection_unlink,
+    .get_dispid       = HTMLElementCollection_get_dispid,
+    .get_name         = HTMLElementCollection_get_name,
+    .invoke           = HTMLElementCollection_invoke,
 };
 
 static const tid_t HTMLElementCollection_iface_tids[] = {
@@ -648,7 +646,7 @@ static const tid_t HTMLElementCollection_iface_tids[] = {
 };
 
 static dispex_static_data_t HTMLElementCollection_dispex = {
-    L"HTMLCollection",
+    "HTMLCollection",
     &HTMLElementColection_dispex_vtbl,
     DispHTMLElementCollection_tid,
     HTMLElementCollection_iface_tids

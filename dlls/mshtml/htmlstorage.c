@@ -282,6 +282,8 @@ static HRESULT send_storage_event_impl(struct send_storage_event_ctx *ctx, HTMLI
         origin = storage->session_storage->origin;
         origin_len = ctx->skip_window ? wcslen(origin) : storage->session_storage->origin_len;
         bstr = NULL;
+    }else if(!window->base.outer_window->uri) {
+        return S_OK;
     }else {
         hres = IUri_GetHost(window->base.outer_window->uri, &bstr);
         if(hres != S_OK) {
@@ -368,7 +370,7 @@ static HRESULT WINAPI HTMLStorage_QueryInterface(IHTMLStorage *iface, REFIID rii
         *ppv = &This->IHTMLStorage_iface;
     }else if(IsEqualGUID(&IID_IHTMLStorage, riid)) {
         *ppv = &This->IHTMLStorage_iface;
-    }else if(dispex_query_interface(&This->dispex, riid, ppv)) {
+    }else if(dispex_query_interface_no_cc(&This->dispex, riid, ppv)) {
         return *ppv ? S_OK : E_NOINTERFACE;
     }else {
         *ppv = NULL;
@@ -1312,15 +1314,12 @@ static HRESULT HTMLStorage_next_dispid(DispatchEx *dispex, DISPID id, DISPID *pi
 }
 
 static const dispex_static_data_vtbl_t HTMLStorage_dispex_vtbl = {
-    HTMLStorage_destructor,
-    NULL,
-    NULL,
-    HTMLStorage_get_dispid,
-    HTMLStorage_get_name,
-    HTMLStorage_invoke,
-    HTMLStorage_delete,
-    HTMLStorage_next_dispid,
-    NULL
+    .destructor       = HTMLStorage_destructor,
+    .get_dispid       = HTMLStorage_get_dispid,
+    .get_name         = HTMLStorage_get_name,
+    .invoke           = HTMLStorage_invoke,
+    .delete           = HTMLStorage_delete,
+    .next_dispid      = HTMLStorage_next_dispid,
 };
 
 static const tid_t HTMLStorage_iface_tids[] = {
@@ -1328,7 +1327,7 @@ static const tid_t HTMLStorage_iface_tids[] = {
     0
 };
 static dispex_static_data_t HTMLStorage_dispex = {
-    L"Storage",
+    "Storage",
     &HTMLStorage_dispex_vtbl,
     IHTMLStorage_tid,
     HTMLStorage_iface_tids

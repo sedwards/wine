@@ -415,24 +415,17 @@ static void HTMLLinkElement_unlink(HTMLDOMNode *iface)
     unlink_ref(&This->nslink);
 }
 static const NodeImplVtbl HTMLLinkElementImplVtbl = {
-    &CLSID_HTMLLinkElement,
-    HTMLLinkElement_QI,
-    HTMLElement_destructor,
-    HTMLElement_cpc,
-    HTMLElement_clone,
-    HTMLElement_handle_event,
-    HTMLElement_get_attr_col,
-    NULL,
-    HTMLLinkElementImpl_put_disabled,
-    HTMLLinkElementImpl_get_disabled,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    HTMLLinkElement_traverse,
-    HTMLLinkElement_unlink
+    .clsid                 = &CLSID_HTMLLinkElement,
+    .qi                    = HTMLLinkElement_QI,
+    .destructor            = HTMLElement_destructor,
+    .cpc_entries           = HTMLElement_cpc,
+    .clone                 = HTMLElement_clone,
+    .handle_event          = HTMLElement_handle_event,
+    .get_attr_col          = HTMLElement_get_attr_col,
+    .put_disabled          = HTMLLinkElementImpl_put_disabled,
+    .get_disabled          = HTMLLinkElementImpl_get_disabled,
+    .traverse              = HTMLLinkElement_traverse,
+    .unlink                = HTMLLinkElement_unlink
 };
 
 static const tid_t HTMLLinkElement_iface_tids[] = {
@@ -441,7 +434,7 @@ static const tid_t HTMLLinkElement_iface_tids[] = {
     0
 };
 static dispex_static_data_t HTMLLinkElement_dispex = {
-    L"HTMLLinkElement",
+    "HTMLLinkElement",
     &HTMLElement_event_target_vtbl.dispex_vtbl,
     DispHTMLLinkElement_tid,
     HTMLLinkElement_iface_tids,

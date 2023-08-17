@@ -553,7 +553,7 @@ static HRESULT WINAPI HTMLRect_QueryInterface(IHTMLRect *iface, REFIID riid, voi
         *ppv = &This->IHTMLRect_iface;
     }else if (IsEqualGUID(&IID_IHTMLRect2, riid)) {
         *ppv = &This->IHTMLRect2_iface;
-    }else if(dispex_query_interface(&This->dispex, riid, ppv)) {
+    }else if(dispex_query_interface_no_cc(&This->dispex, riid, ppv)) {
         return *ppv ? S_OK : E_NOINTERFACE;
     }else {
         FIXME("(%p)->(%s %p)\n", This, debugstr_mshtml_guid(riid), ppv);
@@ -861,8 +861,8 @@ void HTMLRect_init_dispex_info(dispex_data_t *info, compat_mode_t mode)
 }
 
 static const dispex_static_data_vtbl_t HTMLRect_dispex_vtbl = {
-    HTMLRect_destructor,
-    HTMLRect_unlink
+    .destructor       = HTMLRect_destructor,
+    .unlink           = HTMLRect_unlink
 };
 
 static const tid_t HTMLRect_iface_tids[] = {
@@ -870,7 +870,7 @@ static const tid_t HTMLRect_iface_tids[] = {
     0
 };
 static dispex_static_data_t HTMLRect_dispex = {
-    L"ClientRect",
+    "ClientRect",
     &HTMLRect_dispex_vtbl,
     IHTMLRect_tid,
     HTMLRect_iface_tids,
@@ -1055,7 +1055,7 @@ static HRESULT WINAPI HTMLRectCollection_QueryInterface(IHTMLRectCollection *ifa
         *ppv = &This->IHTMLRectCollection_iface;
     }else if(IsEqualGUID(&IID_IHTMLRectCollection, riid)) {
         *ppv = &This->IHTMLRectCollection_iface;
-    }else if(dispex_query_interface(&This->dispex, riid, ppv)) {
+    }else if(dispex_query_interface_no_cc(&This->dispex, riid, ppv)) {
         return *ppv ? S_OK : E_NOINTERFACE;
     }else {
         FIXME("(%p)->(%s %p)\n", This, debugstr_mshtml_guid(riid), ppv);
@@ -1295,20 +1295,18 @@ static HRESULT HTMLRectCollection_invoke(DispatchEx *dispex, DISPID id, LCID lci
 }
 
 static const dispex_static_data_vtbl_t HTMLRectCollection_dispex_vtbl = {
-    HTMLRectCollection_destructor,
-    HTMLRectCollection_unlink,
-    NULL,
-    HTMLRectCollection_get_dispid,
-    HTMLRectCollection_get_name,
-    HTMLRectCollection_invoke,
-    NULL
+    .destructor       = HTMLRectCollection_destructor,
+    .unlink           = HTMLRectCollection_unlink,
+    .get_dispid       = HTMLRectCollection_get_dispid,
+    .get_name         = HTMLRectCollection_get_name,
+    .invoke           = HTMLRectCollection_invoke,
 };
 static const tid_t HTMLRectCollection_iface_tids[] = {
     IHTMLRectCollection_tid,
     0
 };
 static dispex_static_data_t HTMLRectCollection_dispex = {
-    L"ClientRectList",
+    "ClientRectList",
     &HTMLRectCollection_dispex_vtbl,
     IHTMLRectCollection_tid,
     HTMLRectCollection_iface_tids
@@ -6876,8 +6874,6 @@ void HTMLElement_destructor(HTMLDOMNode *iface)
     }
 
     free(This->filter);
-
-    HTMLDOMNode_destructor(&This->node);
 }
 
 HRESULT HTMLElement_clone(HTMLDOMNode *iface, nsIDOMNode *nsnode, HTMLDOMNode **ret)
@@ -6947,13 +6943,13 @@ const cpc_entry_t HTMLElement_cpc[] = {
 };
 
 static const NodeImplVtbl HTMLElementImplVtbl = {
-    &CLSID_HTMLUnknownElement,
-    HTMLElement_QI,
-    HTMLElement_destructor,
-    HTMLElement_cpc,
-    HTMLElement_clone,
-    HTMLElement_handle_event,
-    HTMLElement_get_attr_col
+    .clsid                 = &CLSID_HTMLUnknownElement,
+    .qi                    = HTMLElement_QI,
+    .destructor            = HTMLElement_destructor,
+    .cpc_entries           = HTMLElement_cpc,
+    .clone                 = HTMLElement_clone,
+    .handle_event          = HTMLElement_handle_event,
+    .get_attr_col          = HTMLElement_get_attr_col
 };
 
 static inline HTMLElement *impl_from_DispatchEx(DispatchEx *iface)
@@ -7356,23 +7352,20 @@ static const tid_t HTMLElement_iface_tids[] = {
 
 const event_target_vtbl_t HTMLElement_event_target_vtbl = {
     {
-        NULL,
-        NULL,
-        NULL,
-        HTMLElement_get_dispid,
-        HTMLElement_get_name,
-        HTMLElement_invoke,
-        NULL,
-        NULL,
-        NULL,
-        HTMLElement_populate_props
+        .destructor          = HTMLDOMNode_destructor,
+        .traverse            = HTMLDOMNode_traverse,
+        .unlink              = HTMLDOMNode_unlink,
+        .get_dispid          = HTMLElement_get_dispid,
+        .get_name            = HTMLElement_get_name,
+        .invoke              = HTMLElement_invoke,
+        .populate_props      = HTMLElement_populate_props
     },
-    HTMLElement_get_gecko_target,
-    HTMLElement_bind_event,
-    HTMLElement_get_parent_event_target,
-    HTMLElement_handle_event_default,
-    HTMLElement_get_cp_container,
-    HTMLElement_set_current_event
+    .get_gecko_target        = HTMLElement_get_gecko_target,
+    .bind_event              = HTMLElement_bind_event,
+    .get_parent_event_target = HTMLElement_get_parent_event_target,
+    .handle_event_default    = HTMLElement_handle_event_default,
+    .get_cp_container        = HTMLElement_get_cp_container,
+    .set_current_event       = HTMLElement_set_current_event
 };
 
 struct token_list {
@@ -7398,7 +7391,7 @@ static HRESULT WINAPI token_list_QueryInterface(IWineDOMTokenList *iface, REFIID
         *ppv = &token_list->IWineDOMTokenList_iface;
     }else if(IsEqualGUID(&IID_IWineDOMTokenList, riid)) {
         *ppv = &token_list->IWineDOMTokenList_iface;
-    }else if(dispex_query_interface(&token_list->dispex, riid, ppv)) {
+    }else if(dispex_query_interface_no_cc(&token_list->dispex, riid, ppv)) {
         return *ppv ? S_OK : E_NOINTERFACE;
     }else {
         WARN("(%p)->(%s %p)\n", token_list, debugstr_mshtml_guid(riid), ppv);
@@ -7834,12 +7827,12 @@ static HRESULT token_list_invoke(DispatchEx *dispex, DISPID id, LCID lcid, WORD 
 }
 
 static const dispex_static_data_vtbl_t token_list_dispex_vtbl = {
-    token_list_destructor,
-    token_list_unlink,
-    token_list_value,
-    token_list_get_dispid,
-    token_list_get_name,
-    token_list_invoke
+    .destructor       = token_list_destructor,
+    .unlink           = token_list_unlink,
+    .value            = token_list_value,
+    .get_dispid       = token_list_get_dispid,
+    .get_name         = token_list_get_name,
+    .invoke           = token_list_invoke
 };
 
 static const tid_t token_list_iface_tids[] = {
@@ -7847,7 +7840,7 @@ static const tid_t token_list_iface_tids[] = {
     0
 };
 static dispex_static_data_t token_list_dispex = {
-    L"DOMTokenList",
+    "DOMTokenList",
     &token_list_dispex_vtbl,
     IWineDOMTokenList_tid,
     token_list_iface_tids
@@ -7958,7 +7951,7 @@ static const IWineHTMLElementPrivateVtbl WineHTMLElementPrivateVtbl = {
 };
 
 static dispex_static_data_t HTMLElement_dispex = {
-    L"HTMLElement",
+    "HTMLElement",
     &HTMLElement_event_target_vtbl.dispex_vtbl,
     DispHTMLUnknownElement_tid,
     HTMLElement_iface_tids,
@@ -7966,7 +7959,7 @@ static dispex_static_data_t HTMLElement_dispex = {
 };
 
 static dispex_static_data_t HTMLUnknownElement_dispex = {
-    L"HTMLUnknownElement",
+    "HTMLUnknownElement",
     &HTMLElement_event_target_vtbl.dispex_vtbl,
     DispHTMLUnknownElement_tid,
     HTMLElement_iface_tids,
@@ -8105,7 +8098,7 @@ static HRESULT WINAPI HTMLFiltersCollection_QueryInterface(IHTMLFiltersCollectio
     }else if(IsEqualGUID(&IID_IHTMLFiltersCollection, riid)) {
         TRACE("(%p)->(IID_IHTMLFiltersCollection %p)\n", This, ppv);
         *ppv = &This->IHTMLFiltersCollection_iface;
-    }else if(dispex_query_interface(&This->dispex, riid, ppv)) {
+    }else if(dispex_query_interface_no_cc(&This->dispex, riid, ppv)) {
         return *ppv ? S_OK : E_NOINTERFACE;
     }else {
         *ppv = NULL;
@@ -8261,13 +8254,10 @@ static HRESULT HTMLFiltersCollection_invoke(DispatchEx *dispex, DISPID id, LCID 
 }
 
 static const dispex_static_data_vtbl_t HTMLFiltersCollection_dispex_vtbl = {
-    HTMLFiltersCollection_destructor,
-    NULL,
-    NULL,
-    HTMLFiltersCollection_get_dispid,
-    HTMLFiltersCollection_get_name,
-    HTMLFiltersCollection_invoke,
-    NULL
+    .destructor       = HTMLFiltersCollection_destructor,
+    .get_dispid       = HTMLFiltersCollection_get_dispid,
+    .get_name         = HTMLFiltersCollection_get_name,
+    .invoke           = HTMLFiltersCollection_invoke,
 };
 
 static const tid_t HTMLFiltersCollection_iface_tids[] = {
@@ -8275,7 +8265,7 @@ static const tid_t HTMLFiltersCollection_iface_tids[] = {
     0
 };
 static dispex_static_data_t HTMLFiltersCollection_dispex = {
-    L"FiltersCollection",
+    "FiltersCollection",
     &HTMLFiltersCollection_dispex_vtbl,
     IHTMLFiltersCollection_tid,
     HTMLFiltersCollection_iface_tids
@@ -8565,7 +8555,7 @@ static HRESULT WINAPI HTMLAttributeCollection_QueryInterface(IHTMLAttributeColle
         *ppv = &This->IHTMLAttributeCollection2_iface;
     }else if(IsEqualGUID(&IID_IHTMLAttributeCollection3, riid)) {
         *ppv = &This->IHTMLAttributeCollection3_iface;
-    }else if(dispex_query_interface(&This->dispex, riid, ppv)) {
+    }else if(dispex_query_interface_no_cc(&This->dispex, riid, ppv)) {
         return *ppv ? S_OK : E_NOINTERFACE;
     }else {
         *ppv = NULL;
@@ -9028,13 +9018,11 @@ static HRESULT HTMLAttributeCollection_invoke(DispatchEx *dispex, DISPID id, LCI
 }
 
 static const dispex_static_data_vtbl_t HTMLAttributeCollection_dispex_vtbl = {
-    HTMLAttributeCollection_destructor,
-    HTMLAttributeCollection_unlink,
-    NULL,
-    HTMLAttributeCollection_get_dispid,
-    HTMLAttributeCollection_get_name,
-    HTMLAttributeCollection_invoke,
-    NULL
+    .destructor       = HTMLAttributeCollection_destructor,
+    .unlink           = HTMLAttributeCollection_unlink,
+    .get_dispid       = HTMLAttributeCollection_get_dispid,
+    .get_name         = HTMLAttributeCollection_get_name,
+    .invoke           = HTMLAttributeCollection_invoke,
 };
 
 static const tid_t HTMLAttributeCollection_iface_tids[] = {
@@ -9045,7 +9033,7 @@ static const tid_t HTMLAttributeCollection_iface_tids[] = {
 };
 
 static dispex_static_data_t HTMLAttributeCollection_dispex = {
-    L"NamedNodeMap",
+    "NamedNodeMap",
     &HTMLAttributeCollection_dispex_vtbl,
     DispHTMLAttributeCollection_tid,
     HTMLAttributeCollection_iface_tids
