@@ -35,6 +35,22 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(broadway);
 
+BOOL BROADWAYDRV_UpdateDisplayDevices( const struct gdi_device_manager *device_manager, BOOL force, void *param );
+LONG BROADWAYDRV_ChangeDisplaySettings( LPDEVMODEW displays, LPCWSTR primary_name, HWND hwnd, DWORD flags, LPVOID lpvoid );
+BOOL BROADWAYDRV_GetCurrentDisplaySettings( LPCWSTR name, BOOL is_primary, LPDEVMODEW devmode );
+
+unsigned int screen_width = 0;
+unsigned int screen_height = 0;
+RECT virtual_screen_rect = { 0, 0, 0, 0 };
+
+static const unsigned int screen_bpp = 32;  /* we don't support other modes */
+
+static RECT monitor_rc_work;
+static int device_init_done;
+static BOOL force_display_devices_refresh;
+
+//PNTAPCFUNC register_window_callback;
+
 typedef struct
 {
     struct gdi_physdev  dev;
@@ -108,10 +124,8 @@ static const struct user_driver_funcs broadway_funcs =
     .pGetCursorPos = X11DRV_GetCursorPos,
     .pSetCursorPos = X11DRV_SetCursorPos,
     .pClipCursor = X11DRV_ClipCursor,
-    .pChangeDisplaySettings = X11DRV_ChangeDisplaySettings,
     .pGetCurrentDisplaySettings = X11DRV_GetCurrentDisplaySettings,
     .pGetDisplayDepth = X11DRV_GetDisplayDepth,
-    .pUpdateDisplayDevices = X11DRV_UpdateDisplayDevices,
     .pCreateDesktop = X11DRV_CreateDesktop,
     .pCreateWindow = X11DRV_CreateWindow,
     .pDesktopWindowProc = X11DRV_DesktopWindowProc,
@@ -141,11 +155,79 @@ static const struct user_driver_funcs broadway_funcs =
     .pwine_get_wgl_driver = X11DRV_wine_get_wgl_driver,
     .pThreadDetach = X11DRV_ThreadDetach,
 #endif
+    .pChangeDisplaySettings = BROADWAYDRV_ChangeDisplaySettings,
+    .pGetCurrentDisplaySettings = BROADWAYDRV_GetCurrentDisplaySettings,
+    .pUpdateDisplayDevices = BROADWAYDRV_UpdateDisplayDevices,
 };
 
 void init_user_driver(void)
 {
     ERR("Inside init_user_driver\n");
     __wine_set_user_driver( &broadway_funcs, WINE_GDI_DRIVER_VERSION );
+}
+
+/***********************************************************************
+ *           BROADWAYDRV_UpdateDisplayDevices
+ */
+BOOL BROADWAYDRV_UpdateDisplayDevices( const struct gdi_device_manager *device_manager, BOOL force, void *param )
+{
+    if (force)
+    {
+        static const struct gdi_gpu gpu;
+        static const struct gdi_adapter adapter =
+        {
+            .state_flags = DISPLAY_DEVICE_ATTACHED_TO_DESKTOP | DISPLAY_DEVICE_PRIMARY_DEVICE | DISPLAY_DEVICE_VGA_COMPATIBLE,
+        };
+        struct gdi_monitor gdi_monitor =
+        {
+            .rc_monitor = virtual_screen_rect,
+            .rc_work = monitor_rc_work,
+            .state_flags = DISPLAY_DEVICE_ACTIVE | DISPLAY_DEVICE_ATTACHED,
+        };
+        const DEVMODEW mode =
+        {
+            .dmFields = DM_DISPLAYORIENTATION | DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL |
+                        DM_DISPLAYFLAGS | DM_DISPLAYFREQUENCY | DM_POSITION,
+            .dmBitsPerPel = screen_bpp, .dmPelsWidth = screen_width, .dmPelsHeight = screen_height, .dmDisplayFrequency = 60,
+        };
+        device_manager->add_gpu( &gpu, param );
+        device_manager->add_adapter( &adapter, param );
+        device_manager->add_monitor( &gdi_monitor, param );
+        device_manager->add_mode( &mode, TRUE, param );
+        force_display_devices_refresh = FALSE;
+    }
+
+    return TRUE;
+}
+
+/***********************************************************************
+ *           BROADWAYDRV_GetCurrentDisplaySettings
+ */
+BOOL BROADWAYDRV_GetCurrentDisplaySettings( LPCWSTR name, BOOL is_primary, LPDEVMODEW devmode )
+{
+    devmode->dmDisplayFlags = 0;
+    devmode->dmPosition.x = 0;
+    devmode->dmPosition.y = 0;
+    devmode->dmDisplayOrientation = 0;
+    devmode->dmDisplayFixedOutput = 0;
+    devmode->dmPelsWidth = screen_width;
+    devmode->dmPelsHeight = screen_height;
+    devmode->dmBitsPerPel = screen_bpp;
+    devmode->dmDisplayFrequency = 60;
+    devmode->dmFields = DM_POSITION | DM_DISPLAYORIENTATION | DM_PELSWIDTH | DM_PELSHEIGHT |
+                        DM_BITSPERPEL | DM_DISPLAYFLAGS | DM_DISPLAYFREQUENCY;
+    TRACE( "current mode -- %dx%d %d bpp @%d Hz\n",
+           (int)devmode->dmPelsWidth, (int)devmode->dmPelsHeight,
+           (int)devmode->dmBitsPerPel, (int)devmode->dmDisplayFrequency );
+    return TRUE;
+}
+
+/***********************************************************************
+ *           BROADWAYDRV_ChangeDisplaySettings
+ */
+LONG BROADWAYDRV_ChangeDisplaySettings( LPDEVMODEW displays, LPCWSTR primary_name, HWND hwnd, DWORD flags, LPVOID lpvoid )
+{
+    FIXME( "(%p,%s,%p,0x%08x,%p)\n", displays, debugstr_w(primary_name), hwnd, (int)flags, lpvoid );
+    return DISP_CHANGE_SUCCESSFUL;
 }
 

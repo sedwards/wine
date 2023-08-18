@@ -144,7 +144,7 @@ static NTSTATUS broadwaydrv_init( void *arg )
 {
     struct init_params *params = arg;
 
-    test_connection();
+    //test_connection();
 #if 0
     Display *display;
     void *libx11 = dlopen( SONAME_LIBX11, RTLD_NOW|RTLD_GLOBAL );
@@ -200,7 +200,7 @@ static NTSTATUS broadwaydrv_init( void *arg )
     *params->show_systray = show_systray;
 #endif
 
-    //init_user_driver();
+    init_user_driver();
     //X11DRV_DisplayDevices_Init(FALSE);
     ERR("broadwaydrv_init - we made it\n");
     return STATUS_SUCCESS;

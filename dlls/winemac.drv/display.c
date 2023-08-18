@@ -1135,7 +1135,7 @@ static const char *debugstr_devmodew(const DEVMODEW *devmode)
 BOOL macdrv_UpdateDisplayDevices( const struct gdi_device_manager *device_manager, BOOL force, void *param )
 {
     struct macdrv_adapter *adapters, *adapter;
-    struct macdrv_monitor *monitors, *monitor;
+    struct macdrv_monitor *qonitors, *monitor;
     struct macdrv_gpu *gpus, *gpu;
     struct macdrv_display *displays, *display;
     INT gpu_count, adapter_count, monitor_count, mode_count, display_count;
