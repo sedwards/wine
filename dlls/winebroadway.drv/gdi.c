@@ -37,9 +37,14 @@
 
 #include "broadwaydrv.h"
 
+#include <glib.h>
 #include <cairo.h>
+#include <gdk/gdk.h>
 
 #include "unixlib.h"
+#include "broadway-server.h"
+#include "broadwaydrv.h"
+
 #include "wine/list.h"
 #include "wine/debug.h"
 
@@ -95,11 +100,24 @@ static BOOL intersect_rect( RECT *dst, const RECT *src1, const RECT *src2 )
  */
 void device_init(void)
 {
-  /* From this point on, our device is just an image we are manipulating */
+  FIXME("device_init - Created a 1024x768x32bpp window. This should work...\n");
+  guint32 root_window_id;
+  root_window_id = _wine_broadway_server_new_window (server,
+                                                     0,0,
+						     screen_width,
+						     screen_height,
+						     0);
+
+  /* This code is for testing with a local cairo image as a virtual desktop */
+#if 0
   FIXME("device_init - Created a 1024x768x32bpp window. This should work...\n");
   surface = cairo_image_surface_create (CAIRO_FORMAT_ARGB32, screen_width, screen_height);
-
+#endif
   FIXME("device_init - We just created a surface here. This should work...\n");
+
+
+
+
   initialization = 1;
 
 #if 0
@@ -125,6 +143,7 @@ void macdrv_reset_device_metrics(void)
 static BROADWAY_PDEVICE *create_cairo_physdev(void)
 {
     BROADWAY_PDEVICE *physDev;
+    cairo_surface_t *surface;
 
 //    pthread_mutex_lock(&device_data_mutex);
 
@@ -133,9 +152,14 @@ static BROADWAY_PDEVICE *create_cairo_physdev(void)
 //    pthread_mutex_unlock(&device_data_mutex);
 
     if (!(physDev = calloc(1, sizeof(*physDev)))) return NULL;
-
+#if 0
+    /* This code is for testing with a local cairo surface */
     FIXME("create_cairo_physdev - We just create a surface here. This should work...\n");
     cr = cairo_create (surface);
+#endif
+
+    FIXME("create_cairo_physdev - Create a cairo surface on server. This should work...\n");
+    surface = _wine_broadway_server_create_surface (screen_width, screen_height);
 
 /*
     physDev->gc = XCreateGC( gdi_display, drawable, 0, NULL );
@@ -144,6 +168,7 @@ static BROADWAY_PDEVICE *create_cairo_physdev(void)
     XFlush( gdi_display );
 */
 
+    FIXME("create_cairo_physdev - Returning physDev to the WinApi This should work...\n");
     return physDev;
 }
 
@@ -154,12 +179,17 @@ BOOL BROADWAYDRV_CreateDC(PHYSDEV *pdev, LPCWSTR device, LPCWSTR output, const D
 {
     BROADWAY_PDEVICE *physDev = create_cairo_physdev();
 
-    FIXME("pdev %p hdc %p device %s output %s initData %p\n", pdev,
+    FIXME("CreateDC - pdev %p hdc %p device %s output %s initData %p\n", pdev,
           (*pdev)->hdc, debugstr_w(device), debugstr_w(output), initData);
 
-    if (!physDev) return FALSE;
+    if (!physDev)
+    {
+       FIXME("CreateDC - No physDev found, returning false\n");	   
+       return FALSE;
+    }
 
     push_dc_driver(pdev, &physDev->dev, &broadwaydrv_funcs.dc_funcs);
+    FIXME("CreateDC - Pushed DC Driver, returning true\n");	   
     return TRUE;
 }
 
@@ -171,12 +201,17 @@ BOOL BROADWAYDRV_CreateCompatibleDC(PHYSDEV orig, PHYSDEV *pdev)
 {
     BROADWAY_PDEVICE *physDev = create_cairo_physdev();
 
-    FIXME("Create Compatible DC orig %p orig->hdc %p pdev %p pdev->hdc %p\n", orig, (orig ? orig->hdc : NULL), pdev,
+    FIXME("CreateCompatibleDC - orig %p orig->hdc %p pdev %p pdev->hdc %p\n", orig, (orig ? orig->hdc : NULL), pdev,
           ((pdev && *pdev) ? (*pdev)->hdc : NULL));
 
-    if (!physDev) return FALSE;
+    if (!physDev)
+    {
+       FIXME("CreateCompatibleDC - No physDev found, returning false\n");	   
+       return FALSE;
+    }
 
     push_dc_driver(pdev, &physDev->dev, &broadwaydrv_funcs.dc_funcs);
+    FIXME("CreateDC - Pushed DC Driver, returning true\n");	   
     return TRUE;
 }
 

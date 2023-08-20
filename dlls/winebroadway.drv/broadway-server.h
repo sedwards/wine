@@ -1,8 +1,7 @@
 #ifndef ___BROADWAY_SERVER__
 #define ___BROADWAY_SERVER__
 
-//#include <gdk/gdk.h>
-//#include "gdk_structs.h"
+#include <gdk/gdk.h>
 #include "broadway-protocol.h"
 
 typedef struct _BroadwayServer BroadwayServer;

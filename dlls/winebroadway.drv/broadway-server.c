@@ -1,35 +1,3 @@
-#if 0
-#include "config.h"
-
-//#ifdef HAVE_SYS_MMAN_H
-#include <sys/mman.h>
-//#endif
-#include <sys/stat.h>
-#include <fcntl.h>
-
-#include "broadway-server.h"
-//#include "gdkprivate-broadway.h"
-
-#include <glib.h>
-//#include <glib/gprintf.h>
-#ifdef G_OS_UNIX
-#include <gio/gunixsocketaddress.h>
-#endif
-#include <stdlib.h>
-#include <string.h>
-#include <errno.h>
-#ifdef HAVE_UNISTD_H
-#include <unistd.h>
-#elif defined (G_OS_WIN32)
-#include <io.h>
-#define ftruncate _chsize_s
-#endif
-#include <sys/types.h>
-//#ifdef G_OS_WIN32
-//#include <windows.h>
-//#endif
-//#include "gdkintl.h"
-#endif
 
 #if 0
 #pragma makedep unix
