@@ -51,10 +51,9 @@ INT BROADWAYDRV_GetDeviceCaps(PHYSDEV dev, INT cap);
 
 unsigned int screen_width = 1024;
 unsigned int screen_height = 768;
-
-RECT virtual_screen_rect = { 0, 0, 0, 0 };
 static const unsigned int screen_bpp = 32;  /* we don't support other modes */
 static RECT monitor_rc_work;
+RECT virtual_screen_rect = { 0, 0, 0, 0 };
 
 //PNTAPCFUNC register_window_callback;
 

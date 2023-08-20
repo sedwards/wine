@@ -40,6 +40,17 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(clipboard);
 
+/* window */
+struct macdrv_window_features {
+    unsigned int    title_bar:1;
+    unsigned int    close_button:1;
+    unsigned int    minimize_button:1;
+    unsigned int    resizable:1;
+    unsigned int    maximize_button:1;
+    unsigned int    utility:1;
+    unsigned int    shadow:1;
+    unsigned int    prevents_app_activation:1;
+};
 
 /**************************************************************************
  *              Types

@@ -26,36 +26,51 @@
 
 #include "config.h"
 
-#include <assert.h>
 #include <fcntl.h>
 #include <poll.h>
-#include <errno.h>
 #include <stdarg.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/time.h>
 #include <unistd.h>
+#include <assert.h>
+#include <dlfcn.h>
 
-#define OEMRESOURCE
+#include "ntstatus.h"
+#define WIN32_NO_STATUS
+
+#include "basetsd.h"
 #include "windef.h"
 #include "winbase.h"
+#include "winreg.h"
 #include "wingdi.h"
-#include "winuser.h"
+#include "ntgdi.h"
 
-#include "android.h"
 #include "wine/server.h"
 #include "wine/debug.h"
+#include "wine/list.h"
 
-WINE_DEFAULT_DEBUG_CHANNEL(android);
+#include <glib.h>
+#include <gio/gunixsocketaddress.h>
+
+#include <cairo.h>
+
+#include "unixlib.h"
+#include "broadway-server.h"
+#include "broadwaydrv.h"
+                               
+WINE_DEFAULT_DEBUG_CHANNEL(broadway);
 
 /* private window data */
-struct android_win_data
+struct broadway_win_data
 {
     HWND           hwnd;           /* hwnd that this private data belongs to */
     HWND           parent;         /* parent hwnd for child windows */
     RECT           window_rect;    /* USER window rectangle relative to parent */
     RECT           whole_rect;     /* X window rectangle for the whole window relative to parent */
     RECT           client_rect;    /* client area relative to parent */
-    ANativeWindow *window;         /* native window wrapper that forwards calls to the desktop process */
+    BroadwayWindow *window;         /* native window wrapper that forwards calls to the desktop process */
     struct window_surface *surface;
 };
 
@@ -63,7 +78,7 @@ struct android_win_data
 
 pthread_mutex_t win_data_mutex;
 
-static struct android_win_data *win_data_context[32768];
+static struct broadway_win_data *win_data_context[32768];
 
 static inline int context_idx( HWND hwnd )
 {
@@ -115,15 +130,15 @@ static UINT get_win_monitor_dpi( HWND hwnd )
 /***********************************************************************
  *           alloc_win_data
  */
-static struct android_win_data *alloc_win_data( HWND hwnd )
+static struct broadway_win_data *alloc_win_data( HWND hwnd )
 {
-    struct android_win_data *data;
+    struct broadway_win_data *data;
 
     if ((data = calloc( 1, sizeof(*data) )))
     {
         data->hwnd = hwnd;
-        data->window = create_ioctl_window( hwnd, FALSE,
-                                            (float)get_win_monitor_dpi( hwnd ) / NtUserGetDpiForWindow( hwnd ));
+        //data->window = create_ioctl_window( hwnd, FALSE,
+        //                                    (float)get_win_monitor_dpi( hwnd ) / NtUserGetDpiForWindow( hwnd ));
         pthread_mutex_lock( &win_data_mutex );
         win_data_context[context_idx(hwnd)] = data;
     }
@@ -134,11 +149,13 @@ static struct android_win_data *alloc_win_data( HWND hwnd )
 /***********************************************************************
  *           free_win_data
  */
-static void free_win_data( struct android_win_data *data )
+static void free_win_data( struct broadway_win_data *data )
 {
     win_data_context[context_idx( data->hwnd )] = NULL;
     pthread_mutex_unlock( &win_data_mutex );
-    if (data->window) release_ioctl_window( data->window );
+    if (data->window) 
+	    FIXME("free_win_data - data->window\n");
+	    //release_ioctl_window( data->window );
     free( data );
 }
 
@@ -148,9 +165,9 @@ static void free_win_data( struct android_win_data *data )
  *
  * Lock and return the data structure associated with a window.
  */
-static struct android_win_data *get_win_data( HWND hwnd )
+struct broadway_win_data *get_win_data( HWND hwnd )
 {
-    struct android_win_data *data;
+    struct broadway_win_data *data;
 
     if (!hwnd) return NULL;
     pthread_mutex_lock( &win_data_mutex );
@@ -165,7 +182,7 @@ static struct android_win_data *get_win_data( HWND hwnd )
  *
  * Release the data returned by get_win_data.
  */
-static void release_win_data( struct android_win_data *data )
+void release_win_data( struct broadway_win_data *data )
 {
     if (data) pthread_mutex_unlock( &win_data_mutex );
 }
@@ -174,28 +191,28 @@ static void release_win_data( struct android_win_data *data )
 /***********************************************************************
  *           get_ioctl_window
  */
-static struct ANativeWindow *get_ioctl_window( HWND hwnd )
+static struct BroadwayWindow *get_ioctl_window( HWND hwnd )
 {
-    struct ANativeWindow *ret;
-    struct android_win_data *data = get_win_data( hwnd );
+    struct BroadwayWindow *ret;
+    struct broadway_win_data *data = get_win_data( hwnd );
 
-    if (!data || !data->window) return NULL;
-    ret = grab_ioctl_window( data->window );
+    if (!data || !data->window) 
+	return NULL;
+    //ret = grab_ioctl_window( data->window );
     release_win_data( data );
     return ret;
 }
 
-
 /* Handling of events coming from the Java side */
 
-struct java_event
+struct gobject_event
 {
     struct list      entry;
     union event_data data;
 };
 
 static struct list event_queue = LIST_INIT( event_queue );
-static struct java_event *current_event;
+static struct gobject_event *current_event;
 static int event_pipe[2];
 static DWORD desktop_tid;
 
@@ -208,13 +225,13 @@ int send_event( const union event_data *data )
 
     if ((res = write( event_pipe[1], data, sizeof(*data) )) != sizeof(*data))
     {
-        p__android_log_print( ANDROID_LOG_ERROR, "wine", "failed to send event" );
+        FIXME("window.c - failed to send event" );
         return -1;
     }
     return 0;
 }
 
-
+#if 0
 /***********************************************************************
  *           desktop_changed
  *
@@ -228,7 +245,7 @@ void desktop_changed( JNIEnv *env, jobject obj, jint width, jint height )
     data.type = DESKTOP_CHANGED;
     data.desktop.width = width;
     data.desktop.height = height;
-    p__android_log_print( ANDROID_LOG_INFO, "wine", "desktop_changed: %ux%u", width, height );
+    p__broadway_log_print( BROADWAYDRV_LOG_INFO, "wine", "desktop_changed: %ux%u", width, height );
     send_event( &data );
 }
 
@@ -245,7 +262,7 @@ void config_changed( JNIEnv *env, jobject obj, jint dpi )
     memset( &data, 0, sizeof(data) );
     data.type = CONFIG_CHANGED;
     data.cfg.dpi = dpi;
-    p__android_log_print( ANDROID_LOG_INFO, "wine", "config_changed: %u dpi", dpi );
+    p__broadway_log_print( BROADWAYDRV_LOG_INFO, "wine", "config_changed: %u dpi", dpi );
     send_event( &data );
 }
 
@@ -265,14 +282,14 @@ void surface_changed( JNIEnv *env, jobject obj, jint win, jobject surface, jbool
     if (surface)
     {
         int width, height;
-        ANativeWindow *win = pANativeWindow_fromSurface( env, surface );
+        BroadwayWindow *win = pBroadway_fromSurface( env, surface );
 
         if (win->query( win, NATIVE_WINDOW_WIDTH, &width ) < 0) width = 0;
         if (win->query( win, NATIVE_WINDOW_HEIGHT, &height ) < 0) height = 0;
         data.surface.window = win;
         data.surface.width = width;
         data.surface.height = height;
-        p__android_log_print( ANDROID_LOG_INFO, "wine", "surface_changed: %p %s %ux%u",
+        p__broadway_log_print( BROADWAYDRV_LOG_INFO, "wine", "surface_changed: %p %s %ux%u",
                               data.surface.hwnd, client ? "client" : "whole", width, height );
     }
     data.type = SURFACE_CHANGED;
@@ -355,7 +372,7 @@ jboolean motion_event( JNIEnv *env, jobject obj, jint win, jint action, jint x, 
     send_event( &data );
     return JNI_TRUE;
 }
-
+#endif
 
 /***********************************************************************
  *           init_event_queue
@@ -398,7 +415,7 @@ static void init_event_queue(void)
  */
 static void pull_events(void)
 {
-    struct java_event *event;
+    struct gobject_event *event;
     int res;
 
     for (;;)
@@ -419,7 +436,7 @@ static void pull_events(void)
 static int process_events( DWORD mask )
 {
     DPI_AWARENESS_CONTEXT context;
-    struct java_event *event, *next, *previous;
+    struct gobject_event *event, *next, *previous;
     unsigned int count = 0;
 
     assert( GetCurrentThreadId() == desktop_tid );
@@ -428,7 +445,7 @@ static int process_events( DWORD mask )
 
     previous = current_event;
 
-    LIST_FOR_EACH_ENTRY_SAFE( event, next, &event_queue, struct java_event, entry )
+    LIST_FOR_EACH_ENTRY_SAFE( event, next, &event_queue, struct gobject_event, entry )
     {
         switch (event->data.type)
         {
@@ -462,7 +479,7 @@ static int process_events( DWORD mask )
             context = SetThreadDpiAwarenessContext( DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE );
             screen_width = event->data.desktop.width;
             screen_height = event->data.desktop.height;
-            init_monitors( screen_width, screen_height );
+            //init_monitors( screen_width, screen_height );
             NtUserSetWindowPos( NtUserGetDesktopWindow(), 0, 0, 0, screen_width, screen_height,
                                 SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW );
             SetThreadDpiAwarenessContext( context );
@@ -470,7 +487,7 @@ static int process_events( DWORD mask )
 
         case CONFIG_CHANGED:
             TRACE( "CONFIG_CHANGED dpi %u\n", event->data.cfg.dpi );
-            set_screen_dpi( event->data.cfg.dpi );
+            //set_screen_dpi( event->data.cfg.dpi );
             break;
 
         case SURFACE_CHANGED:
@@ -478,7 +495,7 @@ static int process_events( DWORD mask )
                   event->data.surface.window, event->data.surface.client ? "client" : "whole",
                   event->data.surface.width, event->data.surface.height );
 
-            register_native_window( event->data.surface.hwnd, event->data.surface.window, event->data.surface.client );
+            //register_native_window( event->data.surface.hwnd, event->data.surface.window, event->data.surface.client );
             break;
 
         case MOTION_EVENT:
@@ -527,7 +544,7 @@ static int process_events( DWORD mask )
                 TRACE("KEYDOWN hwnd %p vkey %x '%c' scancode %x\n", event->data.kbd.hwnd,
                       event->data.kbd.input.ki.wVk, event->data.kbd.input.ki.wVk,
                       event->data.kbd.input.ki.wScan );
-            update_keyboard_lock_state( event->data.kbd.input.ki.wVk, event->data.kbd.lock_state );
+            //update_keyboard_lock_state( event->data.kbd.input.ki.wVk, event->data.kbd.lock_state );
             __wine_send_input( 0, &event->data.kbd.input, NULL );
             break;
 
@@ -537,7 +554,7 @@ static int process_events( DWORD mask )
         free( event );
         count++;
         /* next may have been removed by a recursive call, so reset it to the beginning of the list */
-        next = LIST_ENTRY( event_queue.next, struct java_event, entry );
+        next = LIST_ENTRY( event_queue.next, struct gobject_event, entry );
     }
     current_event = previous;
     return count;
@@ -568,11 +585,11 @@ static int wait_events( int timeout )
 
 /* Window surface support */
 
-struct android_window_surface
+struct broadway_window_surface
 {
     struct window_surface header;
     HWND                  hwnd;
-    ANativeWindow        *window;
+    BroadwayWindow        *window;
     RECT                  bounds;
     BOOL                  byteswap;
     RGNDATA              *region_data;
@@ -584,9 +601,9 @@ struct android_window_surface
     BITMAPINFO            info;   /* variable size, must be last */
 };
 
-static struct android_window_surface *get_android_surface( struct window_surface *surface )
+static struct broadway_window_surface *get_broadway_surface( struct window_surface *surface )
 {
-    return (struct android_window_surface *)surface;
+    return (struct broadway_window_surface *)surface;
 }
 
 static inline void reset_bounds( RECT *bounds )
@@ -647,52 +664,52 @@ static void apply_line_region( DWORD *dst, int width, int x, int y, const RECT *
 }
 
 /***********************************************************************
- *           android_surface_lock
+ *           broadway_surface_lock
  */
-static void android_surface_lock( struct window_surface *window_surface )
+static void broadway_surface_lock( struct window_surface *window_surface )
 {
-    struct android_window_surface *surface = get_android_surface( window_surface );
+    struct broadway_window_surface *surface = get_broadway_surface( window_surface );
 
     pthread_mutex_lock( &surface->mutex );
 }
 
 /***********************************************************************
- *           android_surface_unlock
+ *           broadway_surface_unlock
  */
-static void android_surface_unlock( struct window_surface *window_surface )
+static void broadway_surface_unlock( struct window_surface *window_surface )
 {
-    struct android_window_surface *surface = get_android_surface( window_surface );
+    struct broadway_window_surface *surface = get_broadway_surface( window_surface );
 
     pthread_mutex_unlock( &surface->mutex );
 }
 
 /***********************************************************************
- *           android_surface_get_bitmap_info
+ *           broadway_surface_get_bitmap_info
  */
-static void *android_surface_get_bitmap_info( struct window_surface *window_surface, BITMAPINFO *info )
+static void *broadway_surface_get_bitmap_info( struct window_surface *window_surface, BITMAPINFO *info )
 {
-    struct android_window_surface *surface = get_android_surface( window_surface );
+    struct broadway_window_surface *surface = get_broadway_surface( window_surface );
 
     memcpy( info, &surface->info, get_dib_info_size( &surface->info, DIB_RGB_COLORS ));
     return surface->bits;
 }
 
 /***********************************************************************
- *           android_surface_get_bounds
+ *           broadway_surface_get_bounds
  */
-static RECT *android_surface_get_bounds( struct window_surface *window_surface )
+static RECT *broadway_surface_get_bounds( struct window_surface *window_surface )
 {
-    struct android_window_surface *surface = get_android_surface( window_surface );
+    struct broadway_window_surface *surface = get_broadway_surface( window_surface );
 
     return &surface->bounds;
 }
 
 /***********************************************************************
- *           android_surface_set_region
+ *           broadway_surface_set_region
  */
-static void android_surface_set_region( struct window_surface *window_surface, HRGN region )
+static void broadway_surface_set_region( struct window_surface *window_surface, HRGN region )
 {
-    struct android_window_surface *surface = get_android_surface( window_surface );
+    struct broadway_window_surface *surface = get_broadway_surface( window_surface );
 
     TRACE( "updating surface %p hwnd %p with %p\n", surface, surface->hwnd, region );
 
@@ -711,13 +728,21 @@ static void android_surface_set_region( struct window_surface *window_surface, H
     set_surface_region( &surface->header, (HRGN)1 );
 }
 
+typedef struct BroadwayWindowBuffer{
+  unsigned int bits;
+  unsigned long stride;
+  unsigned int height;
+  unsigned int width;
+};
+
 /***********************************************************************
- *           android_surface_flush
+ *           broadway_surface_flush
  */
-static void android_surface_flush( struct window_surface *window_surface )
+static void broadway_surface_flush( struct window_surface *window_surface )
 {
-    struct android_window_surface *surface = get_android_surface( window_surface );
-    ANativeWindow_Buffer buffer;
+    struct broadway_window_surface *surface = get_broadway_surface( window_surface );
+#if 0
+    BroadwayWindowBuffer buffer;
     ARect rc;
     RECT rect;
     BOOL needs_flush;
@@ -792,45 +817,49 @@ static void android_surface_flush( struct window_surface *window_surface )
     }
     else TRACE( "Unable to lock surface %p window %p buffer %p\n",
                 surface, surface->hwnd, surface->window );
+#endif
+    FIXME("Unable to lock surface %p window %p buffer %p\n",
+		    surface, surface->hwnd, surface->window );
+
 }
 
 /***********************************************************************
- *           android_surface_destroy
+ *           broadway_surface_destroy
  */
-static void android_surface_destroy( struct window_surface *window_surface )
+static void broadway_surface_destroy( struct window_surface *window_surface )
 {
-    struct android_window_surface *surface = get_android_surface( window_surface );
+    struct broadway_window_surface *surface = get_broadway_surface( window_surface );
 
     TRACE( "freeing %p bits %p\n", surface, surface->bits );
 
     free( surface->region_data );
     if (surface->region) NtGdiDeleteObjectApp( surface->region );
-    release_ioctl_window( surface->window );
+    //release_ioctl_window( surface->window );
     free( surface->bits );
     free( surface );
 }
 
-static const struct window_surface_funcs android_surface_funcs =
+static const struct window_surface_funcs broadway_surface_funcs =
 {
-    android_surface_lock,
-    android_surface_unlock,
-    android_surface_get_bitmap_info,
-    android_surface_get_bounds,
-    android_surface_set_region,
-    android_surface_flush,
-    android_surface_destroy
+    broadway_surface_lock,
+    broadway_surface_unlock,
+    broadway_surface_get_bitmap_info,
+    broadway_surface_get_bounds,
+    broadway_surface_set_region,
+    broadway_surface_flush,
+    broadway_surface_destroy
 };
 
 static BOOL is_argb_surface( struct window_surface *surface )
 {
-    return surface && surface->funcs == &android_surface_funcs &&
-        get_android_surface( surface )->info.bmiHeader.biCompression == BI_RGB;
+    return surface && surface->funcs == &broadway_surface_funcs &&
+        get_broadway_surface( surface )->info.bmiHeader.biCompression == BI_RGB;
 }
 
 /***********************************************************************
  *           set_color_key
  */
-static void set_color_key( struct android_window_surface *surface, COLORREF key )
+static void set_color_key( struct broadway_window_surface *surface, COLORREF key )
 {
     if (key == CLR_INVALID)
         surface->color_key = CLR_INVALID;
@@ -851,14 +880,14 @@ static void set_color_key( struct android_window_surface *surface, COLORREF key 
  */
 static void set_surface_region( struct window_surface *window_surface, HRGN win_region )
 {
-    struct android_window_surface *surface = get_android_surface( window_surface );
-    struct android_win_data *win_data;
+    struct broadway_window_surface *surface = get_broadway_surface( window_surface );
+    struct broadway_win_data *win_data;
     HRGN region = win_region;
     RGNDATA *data = NULL;
     DWORD size;
     int offset_x, offset_y;
 
-    if (window_surface->funcs != &android_surface_funcs) return;  /* we may get the null surface */
+    if (window_surface->funcs != &broadway_surface_funcs) return;  /* we may get the null surface */
 
     if (!(win_data = get_win_data( surface->hwnd ))) return;
     offset_x = win_data->window_rect.left - win_data->whole_rect.left;
@@ -899,11 +928,11 @@ done:
 static struct window_surface *create_surface( HWND hwnd, const RECT *rect,
                                               BYTE alpha, COLORREF color_key, BOOL src_alpha )
 {
-    struct android_window_surface *surface;
+    struct broadway_window_surface *surface;
     int width = rect->right - rect->left, height = rect->bottom - rect->top;
     pthread_mutexattr_t attr;
 
-    surface = calloc( 1, FIELD_OFFSET( struct android_window_surface, info.bmiColors[3] ));
+    surface = calloc( 1, FIELD_OFFSET( struct broadway_window_surface, info.bmiColors[3] ));
     if (!surface) return NULL;
     set_color_info( &surface->info, src_alpha );
     surface->info.bmiHeader.biWidth       = width;
@@ -916,7 +945,7 @@ static struct window_surface *create_surface( HWND hwnd, const RECT *rect,
     pthread_mutex_init( &surface->mutex, &attr );
     pthread_mutexattr_destroy( &attr );
 
-    surface->header.funcs = &android_surface_funcs;
+    surface->header.funcs = &broadway_surface_funcs;
     surface->header.rect  = *rect;
     surface->header.ref   = 1;
     surface->hwnd         = hwnd;
@@ -935,7 +964,7 @@ static struct window_surface *create_surface( HWND hwnd, const RECT *rect,
     return &surface->header;
 
 failed:
-    android_surface_destroy( &surface->header );
+    broadway_surface_destroy( &surface->header );
     return NULL;
 }
 
@@ -944,11 +973,11 @@ failed:
  */
 static void set_surface_layered( struct window_surface *window_surface, BYTE alpha, COLORREF color_key )
 {
-    struct android_window_surface *surface = get_android_surface( window_surface );
+    struct broadway_window_surface *surface = get_broadway_surface( window_surface );
     COLORREF prev_key;
     BYTE prev_alpha;
 
-    if (window_surface->funcs != &android_surface_funcs) return;  /* we may get the null surface */
+    if (window_surface->funcs != &broadway_surface_funcs) return;  /* we may get the null surface */
 
     window_surface->funcs->lock( window_surface );
     prev_key = surface->color_key;
@@ -1071,7 +1100,7 @@ failed:
 }
 
 
-enum android_system_cursors
+enum broadway_system_cursors
 {
     TYPE_ARROW = 1000,
     TYPE_CONTEXT_MENU = 1001,
@@ -1099,11 +1128,12 @@ enum android_system_cursors
 struct system_cursors
 {
     WORD id;
-    enum android_system_cursors android_id;
+    enum broadway_system_cursors broadway_id;
 };
 
 static const struct system_cursors user32_cursors[] =
 {
+#if 0
     { OCR_NORMAL,      TYPE_ARROW },
     { OCR_IBEAM,       TYPE_TEXT },
     { OCR_WAIT,        TYPE_WAIT },
@@ -1117,6 +1147,7 @@ static const struct system_cursors user32_cursors[] =
     { OCR_NO,          TYPE_NO_DROP },
     { OCR_HAND,        TYPE_HAND },
     { OCR_HELP,        TYPE_HELP },
+#endif
     { 0 }
 };
 
@@ -1178,18 +1209,18 @@ static int get_cursor_system_id( const ICONINFOEXW *info )
 
     cursors = module_cursors[i].cursors;
     for (i = 0; cursors[i].id; i++)
-        if (cursors[i].id == info->wResID) return cursors[i].android_id;
+        if (cursors[i].id == info->wResID) return cursors[i].broadway_id;
 
     return 0;
 }
 
 
-LRESULT ANDROID_DesktopWindowProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
+LRESULT BROADWAYDRV_DesktopWindowProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 {
     switch (msg)
     {
     case WM_PARENTNOTIFY:
-        if (LOWORD(wp) == WM_DESTROY) destroy_ioctl_window( (HWND)lp, FALSE );
+        //if (LOWORD(wp) == WM_DESTROY) destroy_ioctl_window( (HWND)lp, FALSE );
         break;
     }
     return NtUserMessageCall( hwnd, msg, wp, lp, 0, NtUserDefWindowProc, FALSE );
@@ -1197,9 +1228,9 @@ LRESULT ANDROID_DesktopWindowProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 
 
 /***********************************************************************
- *           ANDROID_ProcessEvents
+ *           BROADWAYDRV_ProcessEvents
  */
-BOOL ANDROID_ProcessEvents( DWORD mask )
+BOOL BROADWAYDRV_ProcessEvents( DWORD mask )
 {
     if (GetCurrentThreadId() == desktop_tid)
     {
@@ -1211,19 +1242,23 @@ BOOL ANDROID_ProcessEvents( DWORD mask )
 }
 
 /**********************************************************************
- *           ANDROID_CreateWindow
+ *           BROADWAYDRV_CreateWindow
  */
-BOOL ANDROID_CreateWindow( HWND hwnd )
+BOOL BROADWAYDRV_CreateWindow( HWND hwnd )
 {
     TRACE( "%p\n", hwnd );
 
     if (hwnd == NtUserGetDesktopWindow())
     {
-        struct android_win_data *data;
+        struct broadway_win_data *data;
 
-        init_event_queue();
-        start_android_device();
-        if (!(data = alloc_win_data( hwnd ))) return FALSE;
+        //init_event_queue();
+        //start_broadway_device();
+        if (!(data = alloc_win_data( hwnd )))
+	{
+	    FIXME("BROADWAYDRV_CreateWindow failed \n");	
+            return FALSE;
+	}
         release_win_data( data );
     }
     return TRUE;
@@ -1231,17 +1266,17 @@ BOOL ANDROID_CreateWindow( HWND hwnd )
 
 
 /***********************************************************************
- *           ANDROID_DestroyWindow
+ *           BROADWAYDRV_DestroyWindow
  */
-void ANDROID_DestroyWindow( HWND hwnd )
+void BROADWAYDRV_DestroyWindow( HWND hwnd )
 {
-    struct android_win_data *data;
+    struct broadway_win_data *data;
 
     if (!(data = get_win_data( hwnd ))) return;
 
     if (data->surface) window_surface_release( data->surface );
     data->surface = NULL;
-    destroy_gl_drawable( hwnd );
+    //destroy_gl_drawable( hwnd );
     free_win_data( data );
 }
 
@@ -1251,10 +1286,10 @@ void ANDROID_DestroyWindow( HWND hwnd )
  *
  * Create a data window structure for an existing window.
  */
-static struct android_win_data *create_win_data( HWND hwnd, const RECT *window_rect,
+static struct broadway_win_data *create_win_data( HWND hwnd, const RECT *window_rect,
                                                  const RECT *client_rect )
 {
-    struct android_win_data *data;
+    struct broadway_win_data *data;
     HWND parent;
 
     if (!(parent = NtUserGetAncestor( hwnd, GA_PARENT ))) return NULL;  /* desktop or HWND_MESSAGE */
@@ -1281,13 +1316,13 @@ static inline BOOL get_surface_rect( const RECT *visible_rect, RECT *surface_rec
 
 
 /***********************************************************************
- *           ANDROID_WindowPosChanging
+ *           BROADWAYDRV_WindowPosChanging
  */
-BOOL ANDROID_WindowPosChanging( HWND hwnd, HWND insert_after, UINT swp_flags,
+BOOL BROADWAYDRV_WindowPosChanging( HWND hwnd, HWND insert_after, UINT swp_flags,
                                 const RECT *window_rect, const RECT *client_rect, RECT *visible_rect,
                                 struct window_surface **surface )
 {
-    struct android_win_data *data = get_win_data( hwnd );
+    struct broadway_win_data *data = get_win_data( hwnd );
     RECT surface_rect;
     DWORD flags;
     COLORREF key;
@@ -1337,14 +1372,14 @@ done:
 
 
 /***********************************************************************
- *           ANDROID_WindowPosChanged
+ *           BROADWAYDRV_WindowPosChanged
  */
-void ANDROID_WindowPosChanged( HWND hwnd, HWND insert_after, UINT swp_flags,
+void BROADWAYDRV_WindowPosChanged( HWND hwnd, HWND insert_after, UINT swp_flags,
                                const RECT *window_rect, const RECT *client_rect,
                                const RECT *visible_rect, const RECT *valid_rects,
                                struct window_surface *surface )
 {
-    struct android_win_data *data;
+    struct broadway_win_data *data;
     UINT new_style = NtUserGetWindowLongW( hwnd, GWL_STYLE );
     HWND owner = 0;
 
@@ -1369,15 +1404,15 @@ void ANDROID_WindowPosChanged( HWND hwnd, HWND insert_after, UINT swp_flags,
            wine_dbgstr_rect(window_rect), wine_dbgstr_rect(client_rect),
            new_style, owner, insert_after, swp_flags );
 
-    ioctl_window_pos_changed( hwnd, window_rect, client_rect, visible_rect,
-                              new_style, swp_flags, insert_after, owner );
+    //ioctl_window_pos_changed( hwnd, window_rect, client_rect, visible_rect,
+      //                        new_style, swp_flags, insert_after, owner );
 }
 
 
 /***********************************************************************
- *           ANDROID_ShowWindow
+ *           BROADWAYDRV_ShowWindow
  */
-UINT ANDROID_ShowWindow( HWND hwnd, INT cmd, RECT *rect, UINT swp )
+UINT BROADWAYDRV_ShowWindow( HWND hwnd, INT cmd, RECT *rect, UINT swp )
 {
     if (!(NtUserGetWindowLongW( hwnd, GWL_STYLE ) & WS_MINIMIZE)) return swp;
     /* always hide icons off-screen */
@@ -1391,11 +1426,11 @@ UINT ANDROID_ShowWindow( HWND hwnd, INT cmd, RECT *rect, UINT swp )
 
 
 /*****************************************************************
- *	     ANDROID_SetParent
+ *	     BROADWAYDRV_SetParent
  */
-void ANDROID_SetParent( HWND hwnd, HWND parent, HWND old_parent )
+void BROADWAYDRV_SetParent( HWND hwnd, HWND parent, HWND old_parent )
 {
-    struct android_win_data *data;
+    struct broadway_win_data *data;
 
     if (parent == old_parent) return;
     if (!(data = get_win_data( hwnd ))) return;
@@ -1403,18 +1438,18 @@ void ANDROID_SetParent( HWND hwnd, HWND parent, HWND old_parent )
     TRACE( "win %p parent %p -> %p\n", hwnd, old_parent, parent );
 
     data->parent = (parent == NtUserGetDesktopWindow()) ? 0 : parent;
-    ioctl_set_window_parent( hwnd, parent, (float)get_win_monitor_dpi( hwnd ) / NtUserGetDpiForWindow( hwnd ));
+    //ioctl_set_window_parent( hwnd, parent, (float)get_win_monitor_dpi( hwnd ) / NtUserGetDpiForWindow( hwnd ));
     release_win_data( data );
 }
 
 
 /***********************************************************************
- *           ANDROID_SetCapture
+ *           BROADWAYDRV_SetCapture
  */
-void ANDROID_SetCapture( HWND hwnd, UINT flags )
+void BROADWAYDRV_SetCapture( HWND hwnd, UINT flags )
 {
     if (!(flags & (GUI_INMOVESIZE | GUI_INMENUMODE))) return;
-    ioctl_set_capture( hwnd );
+    //ioctl_set_capture( hwnd );
 }
 
 
@@ -1441,9 +1476,9 @@ static BOOL get_icon_info( HICON handle, ICONINFOEXW *ret )
 
 
 /***********************************************************************
- *           ANDROID_SetCursor
+ *           BROADWAYDRV_SetCursor
  */
-void ANDROID_SetCursor( HWND hwnd, HCURSOR handle )
+void BROADWAYDRV_SetCursor( HWND hwnd, HCURSOR handle )
 {
     if (handle)
     {
@@ -1466,21 +1501,21 @@ void ANDROID_SetCursor( HWND hwnd, HCURSOR handle )
                 info.yHotspot = height / 2;
             }
         }
-        ioctl_set_cursor( id, width, height, info.xHotspot, info.yHotspot, bits );
+        //ioctl_set_cursor( id, width, height, info.xHotspot, info.yHotspot, bits );
         free( bits );
         NtGdiDeleteObjectApp( info.hbmColor );
         NtGdiDeleteObjectApp( info.hbmMask );
     }
-    else ioctl_set_cursor( 0, 0, 0, 0, 0, NULL );
+    //else ioctl_set_cursor( 0, 0, 0, 0, 0, NULL );
 }
 
 
 /***********************************************************************
- *           ANDROID_SetWindowStyle
+ *           BROADWAYDRV_SetWindowStyle
  */
-void ANDROID_SetWindowStyle( HWND hwnd, INT offset, STYLESTRUCT *style )
+void BROADWAYDRV_SetWindowStyle( HWND hwnd, INT offset, STYLESTRUCT *style )
 {
-    struct android_win_data *data;
+    struct broadway_win_data *data;
     DWORD changed = style->styleNew ^ style->styleOld;
 
     if (hwnd == NtUserGetDesktopWindow()) return;
@@ -1500,11 +1535,11 @@ void ANDROID_SetWindowStyle( HWND hwnd, INT offset, STYLESTRUCT *style )
 
 
 /***********************************************************************
- *           ANDROID_SetWindowRgn
+ *           BROADWAYDRV_SetWindowRgn
  */
-void ANDROID_SetWindowRgn( HWND hwnd, HRGN hrgn, BOOL redraw )
+void BROADWAYDRV_SetWindowRgn( HWND hwnd, HRGN hrgn, BOOL redraw )
 {
-    struct android_win_data *data;
+    struct broadway_win_data *data;
 
     if ((data = get_win_data( hwnd )))
     {
@@ -1516,11 +1551,11 @@ void ANDROID_SetWindowRgn( HWND hwnd, HRGN hrgn, BOOL redraw )
 
 
 /***********************************************************************
- *	     ANDROID_SetLayeredWindowAttributes
+ *	     BROADWAYDRV_SetLayeredWindowAttributes
  */
-void ANDROID_SetLayeredWindowAttributes( HWND hwnd, COLORREF key, BYTE alpha, DWORD flags )
+void BROADWAYDRV_SetLayeredWindowAttributes( HWND hwnd, COLORREF key, BYTE alpha, DWORD flags )
 {
-    struct android_win_data *data;
+    struct broadway_win_data *data;
 
     if (!(flags & LWA_ALPHA)) alpha = 255;
     if (!(flags & LWA_COLORKEY)) key = CLR_INVALID;
@@ -1534,13 +1569,13 @@ void ANDROID_SetLayeredWindowAttributes( HWND hwnd, COLORREF key, BYTE alpha, DW
 
 
 /*****************************************************************************
- *           ANDROID_UpdateLayeredWindow
+ *           BROADWAYDRV_UpdateLayeredWindow
  */
-BOOL ANDROID_UpdateLayeredWindow( HWND hwnd, const UPDATELAYEREDWINDOWINFO *info,
+BOOL BROADWAYDRV_UpdateLayeredWindow( HWND hwnd, const UPDATELAYEREDWINDOWINFO *info,
                                   const RECT *window_rect )
 {
     struct window_surface *surface;
-    struct android_win_data *data;
+    struct broadway_win_data *data;
     BLENDFUNCTION blend = { AC_SRC_OVER, 0, 255, 0 };
     COLORREF color_key = (info->dwFlags & ULW_COLORKEY) ? info->crKey : CLR_INVALID;
     char buffer[FIELD_OFFSET( BITMAPINFO, bmiColors[256] )];
@@ -1624,20 +1659,27 @@ done:
 
 
 /**********************************************************************
- *           ANDROID_WindowMessage
+ *           BROADWAYDRV_WindowMessage
  */
-LRESULT ANDROID_WindowMessage( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
+LRESULT BROADWAYDRV_WindowMessage( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 {
-    struct android_win_data *data;
+    struct broadway_win_data *data;
 
     switch (msg)
     {
-    case WM_ANDROID_REFRESH:
+    default:
+        FIXME( " BROADWAYDRV_WindowMessage -got window msg %x hwnd %p wp %lx lp %lx\n", msg, hwnd, (long)wp, lp );
+ 
+#if 0
+    case WM_REFRESH:
         if (wp)  /* opengl client window */
         {
-            update_gl_drawable( hwnd );
+            //update_gl_drawable( hwnd );
+	    FIXME("BROADWAYDRV_WindowMessage - Can't support opengl at this time\n");
         }
-        else if ((data = get_win_data( hwnd )))
+#endif
+     //   else if ((data = get_win_data( hwnd )))
+        if ((data = get_win_data( hwnd )))
         {
             struct window_surface *surface = data->surface;
             if (surface)
@@ -1650,17 +1692,17 @@ LRESULT ANDROID_WindowMessage( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
             release_win_data( data );
         }
         return 0;
-    default:
-        FIXME( "got window msg %x hwnd %p wp %lx lp %lx\n", msg, hwnd, (long)wp, lp );
-        return 0;
+///    default:
+  //      FIXME( "got window msg %x hwnd %p wp %lx lp %lx\n", msg, hwnd, (long)wp, lp );
+    //    return 0;
     }
 }
 
 
 /***********************************************************************
- *           ANDROID_CreateDesktop
+ *           BROADWAYDRV_CreateDesktop
  */
-BOOL ANDROID_CreateDesktop( const WCHAR *name, UINT width, UINT height )
+BOOL BROADWAYDRV_CreateDesktop( const WCHAR *name, UINT width, UINT height )
 {
     /* wait until we receive the surface changed event */
     while (!screen_width)
@@ -1673,5 +1715,11 @@ BOOL ANDROID_CreateDesktop( const WCHAR *name, UINT width, UINT height )
         process_events( QS_ALLINPUT );
     }
     return 0;
+}
+
+/* get the capture window stored in the desktop process */
+HWND get_capture_window(void)
+{
+    return capture_window;
 }
 

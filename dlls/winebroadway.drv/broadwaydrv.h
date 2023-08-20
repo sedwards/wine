@@ -1,6 +1,8 @@
 #ifndef BROADWAYDRV_H
 #define BROADWAYDRV_H
 
+#include "wine/gdi_driver.h"
+
 #include <glib.h>
 #include <gio/gunixsocketaddress.h>
 #include <cairo.h>
@@ -30,6 +32,8 @@ extern BroadwayServer *server;
 extern unsigned int screen_width;
 extern unsigned int screen_height;
 
+extern RECT virtual_screen_rect;// = { 0, 0, 0, 0 };
+
 /* broadwaydrv private window data */
 struct broadwaydrv_thread_data
 {
@@ -52,6 +56,7 @@ static inline struct broadwaydrv_thread_data *broadwaydrv_thread_data(void)
     return (struct broadwaydrv_thread_data *)(UINT_PTR)NtUserGetThreadInfo()->driver_data;
 }
 
+#if 0
 struct broadway_win_data
 {
     GObject             parent_instance;      
@@ -79,11 +84,27 @@ struct broadway_win_data
     //GdkGeometry         geometry_hints;
     //GdkWindowHints      geometry_hints_mask;
 };
+#endif
 
 extern struct broadway_win_data *get_win_data(HWND hwnd) DECLSPEC_HIDDEN;
 extern void release_win_data(struct broadway_win_data *data) DECLSPEC_HIDDEN;
 extern void init_win_context(void) DECLSPEC_HIDDEN;
 extern RGNDATA *get_region_data(HRGN hrgn, HDC hdc_lptodp) DECLSPEC_HIDDEN;
+
+struct broadwaydrv_window_surface
+{
+    struct window_surface   header;
+    HWND                    window;
+    RECT                    bounds;
+    HRGN                    region;
+    HRGN                    drawn;
+    BOOL                    use_alpha;
+    RGNDATA                *blit_data;
+    BYTE                   *bits;
+    pthread_mutex_t         mutex;
+    BITMAPINFO              info;   /* variable size, must be last */
+};
+
 
 /* Proposed Window Structure Object */
 struct _BroadwayWindow
@@ -169,5 +190,7 @@ union event_data
 };
 
 int send_event( const union event_data *data ) DECLSPEC_HIDDEN;
+static HWND capture_window;
+extern HWND get_capture_window(void) DECLSPEC_HIDDEN;
 
 #endif /* BROADWAYDRV_H */

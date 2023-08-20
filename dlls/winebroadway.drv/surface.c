@@ -45,6 +45,8 @@
 #include "windef.h"
 #include "winbase.h"
 #include "winreg.h"
+#include "wingdi.h"
+#include "ntgdi.h"
 
 #include "wine/server.h"
 #include "wine/debug.h"
@@ -93,7 +95,8 @@ static inline void reset_bounds(RECT *bounds)
     bounds->right = bounds->bottom = INT_MIN;
 }
 
-
+#if 0
+// in broadwaydrv.h
 struct broadwaydrv_window_surface
 {
     struct window_surface   header;
@@ -107,6 +110,7 @@ struct broadwaydrv_window_surface
     pthread_mutex_t         mutex;
     BITMAPINFO              info;   /* variable size, must be last */
 };
+#endif
 
 static struct broadwaydrv_window_surface *get_broadway_surface(struct window_surface *surface)
 {
@@ -131,7 +135,7 @@ RGNDATA *get_region_data(HRGN hrgn, HDC hdc_lptodp)
     rect = (RECT *)data->Buffer;
     if (hdc_lptodp)  /* map to device coordinates */
     {        
-        LPtoDP(hdc_lptodp, (POINT *)rect, data->rdh.nCount * 2);
+	NtGdiTransformPoints(hdc_lptodp, (POINT *)rect, (POINT *)rect, data->rdh.nCount * 2, NtGdiLPtoDP );
         for (i = 0; i < data->rdh.nCount; i++)
         {
             if (rect[i].right < rect[i].left)
@@ -275,9 +279,9 @@ static void broadwaydrv_surface_flush(struct window_surface *window_surface)
 
     if (!isBoundsEmpty)
     {
-        RECT r;
+        //RECT r;
 
-        GetWindowRect(surface->window, &r);
+        //GetWindowRect(surface->window, &r);
         if (surface->blit_data) 
 		FIXME("broadwaydrv_surface_flush - is broken surface->blit_data\n");
 #if 0
@@ -462,4 +466,36 @@ void surface_clip_to_visible_rect(struct window_surface *window_surface, const R
 
     window_surface->funcs->unlock(window_surface);
 }
+
+/***********************************************************************
+ *              GetSystemPaletteEntries   (X11DRV.@)
+ */
+UINT BROADWAYDRV_GetSystemPaletteEntries( PHYSDEV dev, UINT start, UINT count, LPPALETTEENTRY entries )
+{
+#if 0
+    UINT i;
+
+    if (!palette_size)
+    {
+        dev = GET_NEXT_PHYSDEV(dev, pGetSystemPaletteEntries);
+        return dev->funcs->pGetSystemPaletteEntries(dev, start, count, entries);
+    }
+    if (!entries) return palette_size;
+    if (start >= palette_size) return 0;
+    if (start + count >= palette_size) count = palette_size - start;
+
+    pthread_mutex_lock( &palette_mutex );
+    for (i = 0; i < count; i++)
+    {
+        entries[i].peRed   = COLOR_sysPal[start + i].peRed;
+        entries[i].peGreen = COLOR_sysPal[start + i].peGreen;
+        entries[i].peBlue  = COLOR_sysPal[start + i].peBlue;
+        entries[i].peFlags = 0;
+        TRACE("\tidx(%02x) -> %s\n", start + i, debugstr_color(*(COLORREF *)(entries + i)) );
+    }
+    pthread_mutex_unlock( &palette_mutex );
+#endif
+    return count;
+}
+
 
