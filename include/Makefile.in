@@ -847,7 +847,9 @@ SOURCES = \
 	windows.security.credentials.idl \
 	windows.security.cryptography.idl \
 	windows.security.isolation.idl \
+	windows.storage.fileproperties.idl \
 	windows.storage.idl \
+	windows.storage.search.idl \
 	windows.storage.streams.idl \
 	windows.system.idl \
 	windows.system.power.idl \
