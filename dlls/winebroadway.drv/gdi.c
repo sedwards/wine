@@ -25,11 +25,17 @@
 
 #include "config.h"
 
+#include <stdlib.h>
+
 #include "windef.h"
 #include "winbase.h"
 #include "winreg.h"
 #include "ntgdi.h"
 #include "wine/gdi_driver.h"
+
+#include <pthread.h>
+
+#include "broadwaydrv.h"
 
 #include <cairo.h>
 
@@ -39,29 +45,32 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(broadwaydrv);
 
-/* in init in broadway
+static unsigned int screen_width = 1024;
+static unsigned int screen_height = 768;
+static unsigned int screen_bpp = 32;
+//static int palette_size;
+
+cairo_surface_t *surface;
+cairo_t *cr;
+int initialization = 0;
+
 typedef struct
 {
     struct gdi_physdev  dev;
 } BROADWAY_PDEVICE;
 
-static inline BROADWAY_PDEVICE *get_macdrv_dev(PHYSDEV dev)
+static inline BROADWAY_PDEVICE *get_broadwaydrv_dev(PHYSDEV dev)
 {
     return (BROADWAY_PDEVICE*)dev;
 }
-*/
-
-/* a few dynamic device caps */
-static int bits_per_pixel;      /* pixel depth of screen */
-static int device_data_valid;   /* do the above variables have up-to-date values? */
-
-unsigned int screen_width = 1024;
-unsigned int screen_height = 768;
 
 //int retina_on = FALSE;
-//static pthread_mutex_t device_data_mutex = PTHREAD_MUTEX_INITIALIZER;
-//static const struct user_driver_funcs macdrv_funcs;
+static pthread_mutex_t device_data_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_once_t init_once = PTHREAD_ONCE_INIT;
 
+static const struct user_driver_funcs broadwaydrv_funcs;
+
+#if 0
 /***********************************************************************
  *              compute_desktop_rect
  */
@@ -77,7 +86,7 @@ static BOOL intersect_rect( RECT *dst, const RECT *src1, const RECT *src2 )
     dst->bottom = min(src1->bottom, src2->bottom);
     return !IsRectEmpty( dst );
 }
-
+#endif
 
 /**********************************************************************
  *              device_init
@@ -87,17 +96,20 @@ static BOOL intersect_rect( RECT *dst, const RECT *src1, const RECT *src2 )
 void device_init(void)
 {
   /* From this point on, our device is just an image we are manipulating */
-  cairo_surface_t *surface = cairo_image_surface_create (CAIRO_FORMAT_ARGB32, screen_width, screen_height);
-  cairo_t *cr = cairo_create (surface);
-
   FIXME("device_init - Created a 1024x768x32bpp window. This should work...\n");
+  surface = cairo_image_surface_create (CAIRO_FORMAT_ARGB32, screen_width, screen_height);
 
+  FIXME("device_init - We just created a surface here. This should work...\n");
+  initialization = 1;
+
+#if 0
   /* Fill the entire surface with red. */
   cairo_set_source_rgb(cr, 1, 0, 0);
   cairo_rectangle(cr, 0, 0, screen_width, screen_height);
   cairo_fill(cr);
 
   FIXME("device_init - And filled it with red. This is totally wrong\n");
+#endif
 }
 
 #if 0
@@ -108,34 +120,46 @@ void macdrv_reset_device_metrics(void)
     pthread_mutex_unlock(&device_data_mutex);
 }
 
+#endif
 
-static BROADWAY_PDEVICE *create_mac_physdev(void)
+static BROADWAY_PDEVICE *create_cairo_physdev(void)
 {
     BROADWAY_PDEVICE *physDev;
 
-    pthread_mutex_lock(&device_data_mutex);
-    if (!device_data_valid) device_init();
-    pthread_mutex_unlock(&device_data_mutex);
+//    pthread_mutex_lock(&device_data_mutex);
+
+    pthread_once( &init_once, device_init );
+
+//    pthread_mutex_unlock(&device_data_mutex);
 
     if (!(physDev = calloc(1, sizeof(*physDev)))) return NULL;
+
+    FIXME("create_cairo_physdev - We just create a surface here. This should work...\n");
+    cr = cairo_create (surface);
+
+/*
+    physDev->gc = XCreateGC( gdi_display, drawable, 0, NULL );
+    XSetGraphicsExposures( gdi_display, physDev->gc, False );
+    XSetSubwindowMode( gdi_display, physDev->gc, IncludeInferiors );
+    XFlush( gdi_display );
+*/
 
     return physDev;
 }
 
-
 /**********************************************************************
  *              CreateDC (MACDRV.@)
  */
-static BOOL macdrv_CreateDC(PHYSDEV *pdev, LPCWSTR device, LPCWSTR output, const DEVMODEW* initData)
+BOOL BROADWAYDRV_CreateDC(PHYSDEV *pdev, LPCWSTR device, LPCWSTR output, const DEVMODEW* initData)
 {
-    BROADWAY_PDEVICE *physDev = create_mac_physdev();
+    BROADWAY_PDEVICE *physDev = create_cairo_physdev();
 
-    TRACE("pdev %p hdc %p device %s output %s initData %p\n", pdev,
+    FIXME("pdev %p hdc %p device %s output %s initData %p\n", pdev,
           (*pdev)->hdc, debugstr_w(device), debugstr_w(output), initData);
 
     if (!physDev) return FALSE;
 
-    push_dc_driver(pdev, &physDev->dev, &macdrv_funcs.dc_funcs);
+    push_dc_driver(pdev, &physDev->dev, &broadwaydrv_funcs.dc_funcs);
     return TRUE;
 }
 
@@ -143,16 +167,16 @@ static BOOL macdrv_CreateDC(PHYSDEV *pdev, LPCWSTR device, LPCWSTR output, const
 /**********************************************************************
  *              CreateCompatibleDC (MACDRV.@)
  */
-static BOOL macdrv_CreateCompatibleDC(PHYSDEV orig, PHYSDEV *pdev)
+BOOL BROADWAYDRV_CreateCompatibleDC(PHYSDEV orig, PHYSDEV *pdev)
 {
-    BROADWAY_PDEVICE *physDev = create_mac_physdev();
+    BROADWAY_PDEVICE *physDev = create_cairo_physdev();
 
-    TRACE("orig %p orig->hdc %p pdev %p pdev->hdc %p\n", orig, (orig ? orig->hdc : NULL), pdev,
+    FIXME("Create Compatible DC orig %p orig->hdc %p pdev %p pdev->hdc %p\n", orig, (orig ? orig->hdc : NULL), pdev,
           ((pdev && *pdev) ? (*pdev)->hdc : NULL));
 
     if (!physDev) return FALSE;
 
-    push_dc_driver(pdev, &physDev->dev, &macdrv_funcs.dc_funcs);
+    push_dc_driver(pdev, &physDev->dev, &broadwaydrv_funcs.dc_funcs);
     return TRUE;
 }
 
@@ -160,11 +184,11 @@ static BOOL macdrv_CreateCompatibleDC(PHYSDEV orig, PHYSDEV *pdev)
 /**********************************************************************
  *              DeleteDC (MACDRV.@)
  */
-static BOOL macdrv_DeleteDC(PHYSDEV dev)
+BOOL BROADWAYDRV_DeleteDC(PHYSDEV dev)
 {
-    BROADWAY_PDEVICE *physDev = get_macdrv_dev(dev);
+    BROADWAY_PDEVICE *physDev = get_broadwaydrv_dev(dev);
 
-    TRACE("hdc %p\n", dev->hdc);
+    FIXME("DeleteDC hdc %p\n", dev->hdc);
 
     free(physDev);
     return TRUE;
@@ -174,43 +198,44 @@ static BOOL macdrv_DeleteDC(PHYSDEV dev)
 /***********************************************************************
  *              GetDeviceCaps (MACDRV.@)
  */
-static INT macdrv_GetDeviceCaps(PHYSDEV dev, INT cap)
+INT BROADWAYDRV_GetDeviceCaps(PHYSDEV dev, INT cap)
 {
     INT ret;
 
-    pthread_mutex_lock(&device_data_mutex);
+    //pthread_mutex_lock(&device_data_mutex);
 
-    if (!device_data_valid) device_init();
+    if (!initialization)
+	 device_init();
 
     switch(cap)
     {
+//    case SIZEPALETTE:
+//        return palette_size;
     case HORZSIZE:
-        ret = horz_size;
+        ret = screen_width;
         break;
     case VERTSIZE:
-        ret = vert_size;
+        ret = screen_height;
         break;
     case BITSPIXEL:
-        ret = bits_per_pixel;
+        ret = screen_bpp;
         break;
     case HORZRES:
     case VERTRES:
     default:
-        pthread_mutex_unlock(&device_data_mutex);
+        //pthread_mutex_unlock(&device_data_mutex);
         dev = GET_NEXT_PHYSDEV( dev, pGetDeviceCaps );
         ret = dev->funcs->pGetDeviceCaps( dev, cap );
-        if ((cap == HORZRES || cap == VERTRES) && retina_on)
-            ret *= 2;
         return ret;
     }
 
-    TRACE("cap %d -> %d\n", cap, ret);
+    FIXME("GetDeviceCaps cap %d -> %d\n", cap, ret);
 
-    pthread_mutex_unlock(&device_data_mutex);
+    //pthread_mutex_unlock(&device_data_mutex);
     return ret;
 }
 
-
+#if 0
 static const struct user_driver_funcs macdrv_funcs =
 {
     .dc_funcs.pCreateCompatibleDC = macdrv_CreateCompatibleDC,
@@ -274,3 +299,4 @@ void init_user_driver(void)
 }
 
 #endif
+

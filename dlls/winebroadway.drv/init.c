@@ -25,10 +25,16 @@
 
 #include "config.h"
 
+#include <stdarg.h>
+#include <string.h>
+
 #include "windef.h"
 #include "winbase.h"
 #include "ntgdi.h"
 #include "wine/gdi_driver.h"
+
+#include "broadwaydrv.h"
+
 #include "unixlib.h"
 #include "wine/list.h"
 #include "wine/debug.h"
@@ -38,10 +44,14 @@ WINE_DEFAULT_DEBUG_CHANNEL(broadway);
 BOOL BROADWAYDRV_UpdateDisplayDevices( const struct gdi_device_manager *device_manager, BOOL force, void *param );
 LONG BROADWAYDRV_ChangeDisplaySettings( LPDEVMODEW displays, LPCWSTR primary_name, HWND hwnd, DWORD flags, LPVOID lpvoid );
 BOOL BROADWAYDRV_GetCurrentDisplaySettings( LPCWSTR name, BOOL is_primary, LPDEVMODEW devmode );
+BOOL BROADWAYDRV_CreateDC(PHYSDEV *pdev, LPCWSTR device, LPCWSTR output, const DEVMODEW* initData);
+BOOL BROADWAYDRV_CreateCompatibleDC(PHYSDEV orig, PHYSDEV *pdev);
+BOOL BROADWAYDRV_DeleteDC(PHYSDEV dev);
+INT BROADWAYDRV_GetDeviceCaps(PHYSDEV dev, INT cap);
 
-/* See gdi.c - This is all hardcoded for now */
-unsigned int screen_width = 1024;
-unsigned int screen_height = 768;
+static unsigned int screen_width = 1024;
+static unsigned int screen_height = 768;
+
 RECT virtual_screen_rect = { 0, 0, 0, 0 };
 static const unsigned int screen_bpp = 32;  /* we don't support other modes */
 static RECT monitor_rc_work;
@@ -70,7 +80,6 @@ static const struct user_driver_funcs broadway_funcs =
     .dc_funcs.pExtEscape = X11DRV_ExtEscape,
     .dc_funcs.pExtFloodFill = X11DRV_ExtFloodFill,
     .dc_funcs.pFillPath = X11DRV_FillPath,
-    .dc_funcs.pGetDeviceCaps = X11DRV_GetDeviceCaps,
     .dc_funcs.pGetDeviceGammaRamp = X11DRV_GetDeviceGammaRamp,
     .dc_funcs.pGetICMProfile = X11DRV_GetICMProfile,
     .dc_funcs.pGetImage = X11DRV_GetImage,
@@ -152,6 +161,11 @@ static const struct user_driver_funcs broadway_funcs =
     .pwine_get_wgl_driver = X11DRV_wine_get_wgl_driver,
     .pThreadDetach = X11DRV_ThreadDetach,
 #endif
+    .dc_funcs.pCreateCompatibleDC = BROADWAYDRV_CreateCompatibleDC,
+    .dc_funcs.pCreateDC = BROADWAYDRV_CreateDC,
+    .dc_funcs.pDeleteDC = BROADWAYDRV_DeleteDC,
+    .dc_funcs.pGetDeviceCaps = BROADWAYDRV_GetDeviceCaps,
+
     .pChangeDisplaySettings = BROADWAYDRV_ChangeDisplaySettings,
     .pGetCurrentDisplaySettings = BROADWAYDRV_GetCurrentDisplaySettings,
     .pUpdateDisplayDevices = BROADWAYDRV_UpdateDisplayDevices,

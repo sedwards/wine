@@ -38,6 +38,7 @@ void init_user_driver(void);
 
 WINE_DEFAULT_DEBUG_CHANNEL(broadwaydrv);
 
+#if 0
 struct _BroadwayServer {
   GObject parent_instance;
 
@@ -85,7 +86,6 @@ void test_connection(void)
     GdkDisplay *display;
     GtkWidget *window;
 
-#if 0
     int argc;
     char **argv;
 
@@ -99,7 +99,6 @@ void test_connection(void)
     display = gdk_display_get_default ();
 
     gtk_main();
-#endif
 
     GError *error;
     error = NULL;
@@ -136,7 +135,7 @@ void test_connection(void)
     wine_broadway_server_window_show (broadway_server, id);
     //return id;
 }
-
+#endif
 
 static NTSTATUS WINAPI broadway_start_device(void *param, ULONG size);
 
@@ -148,61 +147,6 @@ static NTSTATUS broadwaydrv_init( void *arg )
     struct init_params *params = arg;
 
     //test_connection();
-#if 0
-    Display *display;
-    void *libx11 = dlopen( SONAME_LIBX11, RTLD_NOW|RTLD_GLOBAL );
-
-    if (!libx11)
-    {
-        ERR( "failed to load %s: %s\n", SONAME_LIBX11, dlerror() );
-        return STATUS_UNSUCCESSFUL;
-    }
-    pXGetEventData = dlsym( libx11, "XGetEventData" );
-    pXFreeEventData = dlsym( libx11, "XFreeEventData" );
-#ifdef SONAME_LIBXEXT
-    dlopen( SONAME_LIBXEXT, RTLD_NOW|RTLD_GLOBAL );
-#endif
-
-    setup_options();
-
-    /* Open display */
-
-    client_foreign_window_proc = params->foreign_window_proc;
-
-    fcntl( ConnectionNumber(display), F_SETFD, 1 ); /* set close on exec flag */
-    root_window = DefaultRootWindow( display );
-    gdi_display = display;
-    old_error_handler = XSetErrorHandler( error_handler );
-
-    init_pixmap_formats( display );
-    init_visuals( display, DefaultScreen( display ));
-    screen_bpp = pixmap_formats[default_visual.depth]->bits_per_pixel;
-
-    init_win_context();
-
-    if (TRACE_ON(synchronous)) XSynchronize( display, True );
-
-    xinerama_init( DisplayWidth( display, default_visual.screen ),
-                   DisplayHeight( display, default_visual.screen ));
-    X11DRV_Settings_Init();
-
-    /* initialize XVidMode */
-    X11DRV_XF86VM_Init();
-    /* initialize XRandR */
-    X11DRV_XRandR_Init();
-#ifdef SONAME_LIBXCOMPOSITE
-    X11DRV_XComposite_Init();
-#endif
-    X11DRV_XInput2_Init();
-
-    XkbUseExtension( gdi_display, NULL, NULL );
-    X11DRV_InitKeyboard( gdi_display );
-
-    init_user_driver();
-    X11DRV_DisplayDevices_Init(FALSE);
-    *params->show_systray = show_systray;
-#endif
-
     init_user_driver();
     //X11DRV_DisplayDevices_Init(FALSE);
     ERR("broadwaydrv_init - we made it\n");
