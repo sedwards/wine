@@ -52,11 +52,13 @@ static inline struct broadwaydrv_thread_data *broadwaydrv_thread_data(void)
     return (struct broadwaydrv_thread_data *)(UINT_PTR)NtUserGetThreadInfo()->driver_data;
 }
 
-struct broadwaydrv_win_data
+struct broadway_win_data
 {
     GObject             parent_instance;      
     HWND                *wrapper;                   /* hwnd that this private data belongs to */
     HWND                *screen;                   /* hwnd that this private data belongs to */
+    HWND                hwnd;
+    HWND                window;
     RECT                window_rect;            /* USER window rectangle relative to parent */
     RECT                whole_rect;             /* Mac window rectangle for the whole window relative to parent */
     RECT                client_rect;            /* client area relative to parent */
@@ -78,9 +80,94 @@ struct broadwaydrv_win_data
     //GdkWindowHints      geometry_hints_mask;
 };
 
-extern struct broadwaydrv_win_data *get_win_data(HWND hwnd) DECLSPEC_HIDDEN;
-extern void release_win_data(struct broadwaydrv_win_data *data) DECLSPEC_HIDDEN;
+extern struct broadway_win_data *get_win_data(HWND hwnd) DECLSPEC_HIDDEN;
+extern void release_win_data(struct broadway_win_data *data) DECLSPEC_HIDDEN;
 extern void init_win_context(void) DECLSPEC_HIDDEN;
 extern RGNDATA *get_region_data(HRGN hrgn, HDC hdc_lptodp) DECLSPEC_HIDDEN;
+
+/* Proposed Window Structure Object */
+struct _BroadwayWindow
+{
+    GObject             parent_instance;
+    HWND                *wrapper;                   /* hwnd that this private data belongs to */
+    HWND                *screen;                   /* hwnd that this private data belongs to */
+    RECT                window_rect;            /* USER window rectangle relative to parent */
+    RECT                whole_rect;             /* Mac window rectangle for the whole window relative to parent */
+    RECT                client_rect;            /* client area relative to parent */
+    cairo_surface_t     *surface;
+    cairo_surface_t     *last_surface;
+    cairo_surface_t     *ref_surface;
+    int                 id;
+    BOOL                visible;
+    BOOL                maximized;
+    int                 transient_for;
+    int                 pre_maximize_x;
+    int                 pre_maximize_y;
+    int                 pre_maximize_width;
+    int                 pre_maximize_height;
+    gint8               toplevel_window_type;
+    BOOL                dirty;
+    BOOL                last_synced;
+    guint8                  *display;
+    //XEvent              *current_event;        /* event currently being processed */
+    HWND                  grab_hwnd;            /* window that currently grabs the mouse */
+    HWND                  last_focus;           /* last window that had focus */
+    //XFontSet font_set;             /* international text drawing font set */
+    guint8                 selection_wnd;        /* window used for selection interactions */
+    guint8                 clip_window;          /* window used for cursor clipping */
+};
+typedef struct _BroadwayWindow BroadwayWindow;
+
+
+/* Event format for port */
+
+enum event_type
+{
+    DESKTOP_CHANGED,
+    CONFIG_CHANGED,
+    SURFACE_CHANGED,
+    MOTION_EVENT,
+    KEYBOARD_EVENT,
+};
+
+union event_data
+{
+    enum event_type type;
+    struct
+    {
+        enum event_type type;
+        unsigned int    width;
+        unsigned int    height;
+    } desktop;
+    struct
+    {
+        enum event_type type;
+        unsigned int    dpi;
+    } cfg;
+    struct
+    {
+        enum event_type type;
+        HWND            hwnd;
+        BroadwayWindow  *window;
+        BOOL            client;
+        unsigned int    width;
+        unsigned int    height;
+    } surface;
+    struct
+    {
+        enum event_type type;
+        HWND            hwnd;
+        INPUT           input;
+    } motion;
+    struct
+    {
+        enum event_type type;
+        HWND            hwnd;
+        UINT            lock_state;
+        INPUT           input;
+    } kbd;
+};
+
+int send_event( const union event_data *data ) DECLSPEC_HIDDEN;
 
 #endif /* BROADWAYDRV_H */

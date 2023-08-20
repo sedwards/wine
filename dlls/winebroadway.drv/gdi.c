@@ -50,8 +50,8 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(broadwaydrv);
 
-unsigned int screen_width = 1024;
-unsigned int screen_height = 768;
+//unsigned int screen_width = 1024;
+//unsigned int screen_height = 768;
 unsigned int screen_bpp = 32;
 //static int palette_size;
 

@@ -21,48 +21,49 @@
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
+
 #if 0
-MAKE_DEP_UNIX
+#pragma makedep unix
 #endif
 
-#if BOXED_WINE_VERSION <= 7110
-#define WINE_UNIX_LIB
-#endif
 #include "config.h"
 
-#include "winebroadway.h"
-
+#include <fcntl.h>
+#include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
-#include <limits.h>
-#include <pthread.h>
+#include <string.h>
+#include <sys/time.h>
+#include <unistd.h>
+#include <assert.h>
+#include <dlfcn.h>
 
-#include "wine/debug.h"
-#include "wine/gdi_driver.h"
+#include "ntstatus.h"
+#define WIN32_NO_STATUS
+
+#include "basetsd.h"
+#include "windef.h"
+#include "winbase.h"
 #include "winreg.h"
 
-#include "winternl.h"
-#include "winnt.h"
-#include "unixlib.h"
+#include "wine/server.h"
+#include "wine/debug.h"
+#include "wine/list.h"
+#include "wine/gdi_driver.h"
 
-#if 0
-#if BOXED_WINE_VERSION >= 7120
-#define OffsetRgn NtGdiOffsetRgn
-#define CombineRgn NtGdiCombineRgn
-#define CreateRectRgn NtGdiCreateRectRgn
-#define DeleteObject NtGdiDeleteObjectApp
-#define GetRegionData NtGdiGetRegionData
-#define LPtoDP(x, y, z) NtGdiTransformPoints(x, y, y, z, NtGdiLPtoDP);
-#define HeapAlloc(x, y, z) calloc(1, z)
-#define HeapFree(x, y, z) free(z)
-#define GetWindowLongW NtUserGetWindowLongW
-#define GetAncestor NtUserGetAncestor
-#define GetDesktopWindow NtUserGetDesktopWindow
-#define GetWindowRect NtUserGetWindowRect
-#define GetWindowThreadProcessId NtUserGetWindowThread
-#endif
+#include <cairo.h>
+
+#include "unixlib.h"
+#include "broadway-server.h"
+#include "broadwaydrv.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(broadwaydrv);
 
+INT BROADWAYDRV_GetDeviceCaps(PHYSDEV dev, INT cap);
+UINT BROADWAYDRV_GetSystemPaletteEntries( PHYSDEV dev, UINT start, UINT count, LPPALETTEENTRY entries );
+
+#define HeapAlloc(x, y, z) calloc(1, z)
+#define HeapFree(x, y, z) free(z)
 
 /* only for use on sanitized BITMAPINFO structures */
 static inline int get_dib_info_size(const BITMAPINFO *info, UINT coloruse)
@@ -119,9 +120,9 @@ RGNDATA *get_region_data(HRGN hrgn, HDC hdc_lptodp)
     int i;
     RECT *rect;
 
-    if (!hrgn || !(size = GetRegionData(hrgn, 0, NULL))) return NULL;
+    if (!hrgn || !(size = NtGdiGetRegionData(hrgn, 0, NULL))) return NULL;
     if (!(data = HeapAlloc(GetProcessHeap(), 0, size))) return NULL;
-    if (!GetRegionData(hrgn, size, data))
+    if (!NtGdiGetRegionData(hrgn, size, data))
     {
         HeapFree(GetProcessHeap(), 0, data);
         return NULL;
@@ -160,14 +161,14 @@ static void update_blit_data(struct broadwaydrv_window_surface *surface)
 
     if (surface->drawn)
     {
-        HRGN blit = CreateRectRgn(0, 0, 0, 0);
+        HRGN blit = NtGdiCreateRectRgn(0, 0, 0, 0);
 
-        if (CombineRgn(blit, surface->drawn, 0, RGN_COPY) > NULLREGION &&
-            (!surface->region || CombineRgn(blit, blit, surface->region, RGN_AND) > NULLREGION) &&
-            OffsetRgn(blit, surface->header.rect.left, surface->header.rect.top) > NULLREGION)
+        if (NtGdiCombineRgn(blit, surface->drawn, 0, RGN_COPY) > NULLREGION &&
+            (!surface->region || NtGdiCombineRgn(blit, blit, surface->region, RGN_AND) > NULLREGION) &&
+            NtGdiOffsetRgn(blit, surface->header.rect.left, surface->header.rect.top) > NULLREGION)
             surface->blit_data = get_region_data(blit, 0);
 
-        DeleteObject(blit);
+        NtGdiDeleteObjectApp(blit);
     }
 }
 
@@ -199,7 +200,7 @@ static void *broadwaydrv_surface_get_bitmap_info(struct window_surface *window_s
 {
     struct broadwaydrv_window_surface *surface = get_broadway_surface(window_surface);
 
-    TRACE("sizeof(BITMAPINFO)=%d get_dib_info_size(&surface->info, DIB_RGB_COLORS)=%d\n", sizeof(BITMAPINFO), get_dib_info_size(&surface->info, DIB_RGB_COLORS));
+    TRACE("sizeof(BITMAPINFO)=%ld get_dib_info_size(&surface->info, DIB_RGB_COLORS)=%d\n", sizeof(BITMAPINFO), get_dib_info_size(&surface->info, DIB_RGB_COLORS));
     memcpy(info, &surface->info, get_dib_info_size(&surface->info, DIB_RGB_COLORS));
     return surface->bits;
 }
@@ -228,12 +229,12 @@ static void broadwaydrv_surface_set_region(struct window_surface *window_surface
 
     if (region)
     {
-        if (!surface->region) surface->region = CreateRectRgn(0, 0, 0, 0);
-        CombineRgn(surface->region, region, 0, RGN_COPY);
+        if (!surface->region) surface->region = NtGdiCreateRectRgn(0, 0, 0, 0);
+        NtGdiCombineRgn(surface->region, region, 0, RGN_COPY);
     }
     else
     {
-        if (surface->region) DeleteObject(surface->region);
+        if (surface->region) NtGdiDeleteObjectApp(surface->region);
         surface->region = 0;
     }
     update_blit_data(surface);
@@ -254,14 +255,14 @@ static void broadwaydrv_surface_flush(struct window_surface *window_surface)
           wine_dbgstr_rect(&surface->bounds), surface->bits);
 
     isBoundsEmpty = IsRectEmpty(&surface->bounds);
-    if (!isBoundsEmpty && (region = CreateRectRgn(surface->bounds.left, surface->bounds.top,
+    if (!isBoundsEmpty && (region = NtGdiCreateRectRgn(surface->bounds.left, surface->bounds.top,
         surface->bounds.right, surface->bounds.bottom)))
     {
         if (surface->drawn)
         {
             TRACE("drawn += bounds\n");
-            CombineRgn(surface->drawn, surface->drawn, region, RGN_OR);
-            DeleteObject(region);
+            NtGdiCombineRgn(surface->drawn, surface->drawn, region, RGN_OR);
+            NtGdiDeleteObjectApp(region);
         }
         else
         {
@@ -274,12 +275,16 @@ static void broadwaydrv_surface_flush(struct window_surface *window_surface)
 
     if (!isBoundsEmpty)
     {
-        //RECT r;
+        RECT r;
 
-        //GetWindowRect(surface->window, &r);
-        if (surface->blit_data) { // this can be changed to null sometimes, example: homeworld demo installer with wine 5.0
-            broadwaydrv_FlushSurface(surface->window, surface->bits, 0, 0, surface->info.bmiHeader.biWidth, surface->info.bmiHeader.biHeight, (RECT*)surface->blit_data->Buffer, surface->blit_data->rdh.nCount);
+        GetWindowRect(surface->window, &r);
+        if (surface->blit_data) 
+		FIXME("broadwaydrv_surface_flush - is broken surface->blit_data\n");
+#if 0
+	{ // this can be changed to null sometimes, example: homeworld demo installer with wine 5.0
+            BROADWAYDRV_FlushSurface(surface->window, surface->bits, 0, 0, surface->info.bmiHeader.biWidth, surface->info.bmiHeader.biHeight, (RECT*)surface->blit_data->Buffer, surface->blit_data->rdh.nCount);
         }
+#endif
     }
     window_surface->funcs->unlock(window_surface);
 }
@@ -328,7 +333,7 @@ static void set_color_info(BITMAPINFO *info)
         UINT i, count;
 
         info->bmiHeader.biClrUsed = 1 << info->bmiHeader.biBitCount;
-        count = broadwaydrv_GetSystemPaletteEntries(NULL, 0, info->bmiHeader.biClrUsed, palette);
+        count = BROADWAYDRV_GetSystemPaletteEntries(NULL, 0, info->bmiHeader.biClrUsed, palette);
         for (i = 0; i < count; i++)
         {
             rgb[i].rgbRed   = palette[i].peRed;
@@ -356,7 +361,6 @@ static void set_color_info(BITMAPINFO *info)
 /***********************************************************************
  *              create_surface
  */
-INT broadwaydrv_GetDeviceCaps(PHYSDEV dev, INT cap);
 struct window_surface *create_surface(HWND window, const RECT *rect, struct window_surface *old_surface, BOOL use_alpha)
 {
     struct broadwaydrv_window_surface *surface;
@@ -387,7 +391,7 @@ struct window_surface *create_surface(HWND window, const RECT *rect, struct wind
     surface->info.bmiHeader.biWidth       = width;
     surface->info.bmiHeader.biHeight      = height; /* bottom-up */
     surface->info.bmiHeader.biPlanes      = 1;
-    surface->info.bmiHeader.biBitCount    = broadwaydrv_GetDeviceCaps(NULL, BITSPIXEL);
+    surface->info.bmiHeader.biBitCount    = BROADWAYDRV_GetDeviceCaps(NULL, BITSPIXEL);
     if (surface->info.bmiHeader.biBitCount<=8)
         surface->info.bmiHeader.biBitCount = 32;
     surface->info.bmiHeader.biSizeImage   = get_dib_image_size(&surface->info);
@@ -402,11 +406,11 @@ struct window_surface *create_surface(HWND window, const RECT *rect, struct wind
     reset_bounds(&surface->bounds);
     if (old_broadway_surface && old_broadway_surface->drawn)
     {
-        surface->drawn = CreateRectRgn(rect->left, rect->top, rect->right, rect->bottom);
-        OffsetRgn(surface->drawn, -rect->left, -rect->top);
-        if (CombineRgn(surface->drawn, surface->drawn, old_broadway_surface->drawn, RGN_AND) <= NULLREGION)
+        surface->drawn = NtGdiCreateRectRgn(rect->left, rect->top, rect->right, rect->bottom);
+        NtGdiOffsetRgn(surface->drawn, -rect->left, -rect->top);
+        if (NtGdiCombineRgn(surface->drawn, surface->drawn, old_broadway_surface->drawn, RGN_AND) <= NULLREGION)
         {
-            DeleteObject(surface->drawn);
+            NtGdiDeleteObjectApp(surface->drawn);
             surface->drawn = 0;
         }
     }
@@ -447,10 +451,10 @@ void surface_clip_to_visible_rect(struct window_surface *window_surface, const R
         rect = *visible_rect;
         OffsetRect(&rect, -rect.left, -rect.top);
 
-        if ((region = CreateRectRgn(rect.left, rect.top, rect.right, rect.bottom)))
+        if ((region = NtGdiCreateRectRgn(rect.left, rect.top, rect.right, rect.bottom)))
         {
-            CombineRgn(surface->drawn, surface->drawn, region, RGN_AND);
-            DeleteObject(region);
+            NtGdiCombineRgn(surface->drawn, surface->drawn, region, RGN_AND);
+            NtGdiDeleteObjectApp(region);
 
             update_blit_data(surface);
         }
@@ -458,5 +462,4 @@ void surface_clip_to_visible_rect(struct window_surface *window_surface, const R
 
     window_surface->funcs->unlock(window_surface);
 }
-#endif
 

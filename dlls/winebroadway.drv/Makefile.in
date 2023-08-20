@@ -10,5 +10,6 @@ C_SRCS = \
 	broadway-server.c \
 	broadwaydrv_main.c \
 	init.c \
-	gdi.c
+	gdi.c \
+	surface.c
 

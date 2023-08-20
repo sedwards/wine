@@ -53,7 +53,6 @@ struct _BroadwayServer {
 
   guint process_input_idle;
   GList *incomming;
-  
 };
 
 struct _BroadwayServerClass
