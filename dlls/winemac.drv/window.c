@@ -641,7 +641,7 @@ static void sync_window_min_max_info(HWND hwnd)
             max_size = CGSizeMake(max_rect.right - max_rect.left, max_rect.bottom - max_rect.top);
         }
 
-        constrain_window_frame(NULL, &max_size);
+        //constrain_window_frame(NULL, &max_size);
 
         TRACE("min_size (%g,%g) max_size (%g,%g)\n", min_size.width, min_size.height, max_size.width, max_size.height);
         macdrv_set_window_min_max_sizes(data->cocoa_window, min_size, max_size);
@@ -706,7 +706,7 @@ static void create_cocoa_window(struct macdrv_win_data *data)
     get_cocoa_window_features(data, style, ex_style, &wf, &data->window_rect, &data->client_rect);
 
     frame = cgrect_from_rect(data->whole_rect);
-    constrain_window_frame(&frame.origin, &frame.size);
+    //constrain_window_frame(&frame.origin, &frame.size);
     if (frame.size.width < 1 || frame.size.height < 1)
         frame.size.width = frame.size.height = 1;
 
@@ -1147,7 +1147,7 @@ static void sync_window_position(struct macdrv_win_data *data, UINT swp_flags, c
     {
         if (data->minimized) return;
 
-        constrain_window_frame(&frame.origin, &frame.size);
+        //constrain_window_frame(&frame.origin, &frame.size);
         if (frame.size.width < 1 || frame.size.height < 1)
             frame.size.width = frame.size.height = 1;
 

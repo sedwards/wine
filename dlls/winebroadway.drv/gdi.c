@@ -25,8 +25,17 @@
 
 #include "config.h"
 
-//#include "macdrv.h"
+#include "windef.h"
+#include "winbase.h"
 #include "winreg.h"
+#include "ntgdi.h"
+#include "wine/gdi_driver.h"
+
+#include <cairo.h>
+
+#include "unixlib.h"
+#include "wine/list.h"
+#include "wine/debug.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(broadwaydrv);
 
@@ -43,41 +52,21 @@ static inline BROADWAY_PDEVICE *get_macdrv_dev(PHYSDEV dev)
 */
 
 /* a few dynamic device caps */
-static CGRect desktop_rect;     /* virtual desktop rectangle */
-static int horz_size;           /* horz. size of screen in millimeters */
-static int vert_size;           /* vert. size of screen in millimeters */
 static int bits_per_pixel;      /* pixel depth of screen */
 static int device_data_valid;   /* do the above variables have up-to-date values? */
 
+unsigned int screen_width = 1024;
+unsigned int screen_height = 768;
+
 //int retina_on = FALSE;
-
-static pthread_mutex_t device_data_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-static const struct user_driver_funcs macdrv_funcs;
+//static pthread_mutex_t device_data_mutex = PTHREAD_MUTEX_INITIALIZER;
+//static const struct user_driver_funcs macdrv_funcs;
 
 /***********************************************************************
  *              compute_desktop_rect
  */
 static void compute_desktop_rect(void)
 {
-/*
-    CGDirectDisplayID displayIDs[32];
-    uint32_t count, i;
-
-    desktop_rect = CGRectNull;
-    if (CGGetOnlineDisplayList(ARRAY_SIZE(displayIDs), displayIDs, &count) != kCGErrorSuccess ||
-        !count)
-    {
-        displayIDs[0] = CGMainDisplayID();
-        count = 1;
-    }
-
-    for (i = 0; i < count; i++)
-        desktop_rect = CGRectUnion(desktop_rect, CGDisplayBounds(displayIDs[i]));
-    desktop_rect = cgrect_win_from_mac(desktop_rect);
-
-    Maybe IntersectRect instead?
-*/
 }
 
 static BOOL intersect_rect( RECT *dst, const RECT *src1, const RECT *src2 )
@@ -90,75 +79,28 @@ static BOOL intersect_rect( RECT *dst, const RECT *src1, const RECT *src2 )
 }
 
 
-
-/***********************************************************************
- *              macdrv_get_desktop_rect
- *
- * Returns the rectangle encompassing all the screens.
- */
-CGRect macdrv_get_desktop_rect(void)
-{
-    CGRect ret;
-
-    pthread_mutex_lock(&device_data_mutex);
-
-    if (!device_data_valid)
-    {
-        check_retina_status();
-        compute_desktop_rect();
-    }
-    ret = desktop_rect;
-
-    pthread_mutex_unlock(&device_data_mutex);
-
-    TRACE("%s\n", wine_dbgstr_cgrect(ret));
-
-    return ret;
-}
-
-
 /**********************************************************************
  *              device_init
  *
  * Perform initializations needed upon creation of the first device.
  */
-static void device_init(void)
+void device_init(void)
 {
-    CGDirectDisplayID mainDisplay = CGMainDisplayID();
-    CGSize size_mm = CGDisplayScreenSize(mainDisplay);
-    CGDisplayModeRef mode = CGDisplayCopyDisplayMode(mainDisplay);
+  /* From this point on, our device is just an image we are manipulating */
+  cairo_surface_t *surface = cairo_image_surface_create (CAIRO_FORMAT_ARGB32, screen_width, screen_height);
+  cairo_t *cr = cairo_create (surface);
 
-    check_retina_status();
+  FIXME("device_init - Created a 1024x768x32bpp window. This should work...\n");
 
-    /* Initialize device caps */
-    horz_size = size_mm.width;
-    vert_size = size_mm.height;
+  /* Fill the entire surface with red. */
+  cairo_set_source_rgb(cr, 1, 0, 0);
+  cairo_rectangle(cr, 0, 0, screen_width, screen_height);
+  cairo_fill(cr);
 
-    bits_per_pixel = 32;
-    if (mode)
-    {
-        CFStringRef pixelEncoding = CGDisplayModeCopyPixelEncoding(mode);
-
-        if (pixelEncoding)
-        {
-            if (CFEqual(pixelEncoding, CFSTR(IO32BitDirectPixels)))
-                bits_per_pixel = 32;
-            else if (CFEqual(pixelEncoding, CFSTR(IO16BitDirectPixels)))
-                bits_per_pixel = 16;
-            else if (CFEqual(pixelEncoding, CFSTR(IO8BitIndexedPixels)))
-                bits_per_pixel = 8;
-            CFRelease(pixelEncoding);
-        }
-
-        CGDisplayModeRelease(mode);
-    }
-
-    compute_desktop_rect();
-
-    device_data_valid = TRUE;
+  FIXME("device_init - And filled it with red. This is totally wrong\n");
 }
 
-
+#if 0
 void macdrv_reset_device_metrics(void)
 {
     pthread_mutex_lock(&device_data_mutex);
@@ -330,3 +272,5 @@ void init_user_driver(void)
 {
     __wine_set_user_driver( &macdrv_funcs, WINE_GDI_DRIVER_VERSION );
 }
+
+#endif

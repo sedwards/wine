@@ -34,6 +34,8 @@
 
 #include "unixlib.h"
 
+void init_user_driver(void);
+
 WINE_DEFAULT_DEBUG_CHANNEL(broadwaydrv);
 
 struct _BroadwayServer {
@@ -82,6 +84,7 @@ void test_connection(void)
 {
     GdkDisplay *display;
     GtkWidget *window;
+
 #if 0
     int argc;
     char **argv;
@@ -97,6 +100,7 @@ void test_connection(void)
 
     gtk_main();
 #endif
+
     GError *error;
     error = NULL;
     guint32 id;
@@ -131,7 +135,6 @@ void test_connection(void)
 
     wine_broadway_server_window_show (broadway_server, id);
     //return id;
-
 }
 
 

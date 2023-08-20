@@ -8,5 +8,6 @@ UNIX_LIBS  = -lwin32u -lbroadway-wine $(PTHREAD_LIBS) $(BROADWAY_CLIENT_LIBS)
 C_SRCS = \
 	dllmain.c \
 	broadwaydrv_main.c \
-	init.c
+	init.c \
+	gdi.c
 

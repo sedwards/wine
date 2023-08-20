@@ -39,15 +39,12 @@ BOOL BROADWAYDRV_UpdateDisplayDevices( const struct gdi_device_manager *device_m
 LONG BROADWAYDRV_ChangeDisplaySettings( LPDEVMODEW displays, LPCWSTR primary_name, HWND hwnd, DWORD flags, LPVOID lpvoid );
 BOOL BROADWAYDRV_GetCurrentDisplaySettings( LPCWSTR name, BOOL is_primary, LPDEVMODEW devmode );
 
-unsigned int screen_width = 0;
-unsigned int screen_height = 0;
+/* See gdi.c - This is all hardcoded for now */
+unsigned int screen_width = 1024;
+unsigned int screen_height = 768;
 RECT virtual_screen_rect = { 0, 0, 0, 0 };
-
 static const unsigned int screen_bpp = 32;  /* we don't support other modes */
-
 static RECT monitor_rc_work;
-static int device_init_done;
-static BOOL force_display_devices_refresh;
 
 //PNTAPCFUNC register_window_callback;
 
@@ -194,7 +191,6 @@ BOOL BROADWAYDRV_UpdateDisplayDevices( const struct gdi_device_manager *device_m
         device_manager->add_adapter( &adapter, param );
         device_manager->add_monitor( &gdi_monitor, param );
         device_manager->add_mode( &mode, TRUE, param );
-        force_display_devices_refresh = FALSE;
     }
 
     return TRUE;
