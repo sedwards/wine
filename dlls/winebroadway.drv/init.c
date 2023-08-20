@@ -49,8 +49,8 @@ BOOL BROADWAYDRV_CreateCompatibleDC(PHYSDEV orig, PHYSDEV *pdev);
 BOOL BROADWAYDRV_DeleteDC(PHYSDEV dev);
 INT BROADWAYDRV_GetDeviceCaps(PHYSDEV dev, INT cap);
 
-static unsigned int screen_width = 1024;
-static unsigned int screen_height = 768;
+unsigned int screen_width = 1024;
+unsigned int screen_height = 768;
 
 RECT virtual_screen_rect = { 0, 0, 0, 0 };
 static const unsigned int screen_bpp = 32;  /* we don't support other modes */

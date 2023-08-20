@@ -50,9 +50,9 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(broadwaydrv);
 
-static unsigned int screen_width = 1024;
-static unsigned int screen_height = 768;
-static unsigned int screen_bpp = 32;
+unsigned int screen_width = 1024;
+unsigned int screen_height = 768;
+unsigned int screen_bpp = 32;
 //static int palette_size;
 
 cairo_surface_t *surface;
