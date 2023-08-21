@@ -66,8 +66,9 @@ static inline BROADWAY_PDEVICE *get_broadway_dev(PHYSDEV dev)
 {
     return (BROADWAY_PDEVICE*)dev;
 }
+static const struct user_driver_funcs broadwaydrv_funcs;
 
-static const struct user_driver_funcs broadway_funcs =
+static const struct user_driver_funcs broadwaydrv_funcs =
 {
 #if 0
     .dc_funcs.pArc = X11DRV_Arc,
@@ -164,6 +165,7 @@ static const struct user_driver_funcs broadway_funcs =
     .dc_funcs.pCreateDC = BROADWAYDRV_CreateDC,
     .dc_funcs.pDeleteDC = BROADWAYDRV_DeleteDC,
     .dc_funcs.pGetDeviceCaps = BROADWAYDRV_GetDeviceCaps,
+    .dc_funcs.priority = GDI_PRIORITY_GRAPHICS_DRV,
 
     .pChangeDisplaySettings = BROADWAYDRV_ChangeDisplaySettings,
     .pGetCurrentDisplaySettings = BROADWAYDRV_GetCurrentDisplaySettings,
@@ -173,7 +175,7 @@ static const struct user_driver_funcs broadway_funcs =
 void init_user_driver(void)
 {
     ERR("Inside init_user_driver\n");
-    __wine_set_user_driver( &broadway_funcs, WINE_GDI_DRIVER_VERSION );
+    __wine_set_user_driver( &broadwaydrv_funcs, WINE_GDI_DRIVER_VERSION );
 }
 
 /***********************************************************************

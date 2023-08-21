@@ -16,13 +16,16 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#ifndef _UNIXLIB_H
+#define _UNIXLIB_H
+
 #include "ntuser.h"
 #include "wine/unixlib.h"
 
 enum broadwaydrv_funcs
 {
     unix_init,
-    unix_funcs_count,
+    unix_funcs_count
 };
 
 #define BROADWAYDRV_CALL(func, params) WINE_UNIX_CALL( unix_ ## func, params )
@@ -59,4 +62,4 @@ enum
 {
     client_start_device = NtUserDriverCallbackFirst,
 };
-
+#endif

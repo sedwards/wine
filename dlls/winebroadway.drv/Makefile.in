@@ -1,9 +1,9 @@
 MODULE    = winebroadway.drv
 UNIXLIB   = winebroadway.so
-IMPORTS   = uuid rpcrt4 user32 gdi32 win32u
-DELAYIMPORTS = comctl32 ole32 shell32 imm32
-UNIX_CFLAGS  = $(BROADWAY_CLIENT_CFLAGS) -Wno-implicit-function-declaration
-UNIX_LIBS  = -lwin32u -lbroadway-wine $(PTHREAD_LIBS) $(BROADWAY_CLIENT_LIBS)
+IMPORTS   = uuid user32 gdi32 win32u
+DELAYIMPORTS = comctl32 ole32 shell32 
+UNIX_CFLAGS  = $(BROADWAY_CLIENT_CFLAGS) -Wno-implicit-function-declaration 
+UNIX_LIBS  = -lwin32u $(PTHREAD_LIBS) $(BROADWAY_CLIENT_LIBS)
 
 C_SRCS = \
 	dllmain.c \

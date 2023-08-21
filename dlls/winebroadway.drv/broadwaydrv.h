@@ -1,7 +1,18 @@
 #ifndef BROADWAYDRV_H
 #define BROADWAYDRV_H
 
+#include <limits.h>
+#include <stdarg.h>
+#include <stdlib.h>
+#include <pthread.h>
+
+#include "windef.h"
+#include "winbase.h"
+#include "ntgdi.h"
 #include "wine/gdi_driver.h"
+#include "unixlib.h"
+#include "wine/list.h"
+#include "wine/debug.h"
 
 #include <glib.h>
 #include <gio/gunixsocketaddress.h>

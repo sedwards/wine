@@ -20,44 +20,13 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#if 0
-#pragma makedep unix
-#endif
-
-#include "config.h"
-
-#include <fcntl.h>
-#include <poll.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/time.h>
-#include <unistd.h>
-#include <assert.h>
-#include <dlfcn.h>
-
-#include "ntstatus.h"
-#define WIN32_NO_STATUS
-
-#include "basetsd.h"
-#include "windef.h"
-#include "winbase.h"
-#include "winreg.h"
-#include "wingdi.h"
-#include "winuser.h"
-
-#include "ntgdi.h"
+#include "broadwaydrv_dll.h"
 
 #include "commctrl.h"
 #include "shellapi.h"
 
-#include "wine/server.h"
-#include "wine/debug.h"
 #include "wine/list.h"
-
-#include "unixlib.h"
-#include "broadwaydrv.h"
+#include "wine/debug.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(systray);
 
@@ -383,8 +352,8 @@ static void remove_from_standalone_tray( struct tray_icon *icon )
 static void repaint_tray_icon( struct tray_icon *icon )
 {
     BLENDFUNCTION blend = { AC_SRC_OVER, 0, 255, AC_SRC_ALPHA };
-    int width = GetSystemMetrics( SM_CXSMICON );
-    int height = GetSystemMetrics( SM_CYSMICON );
+    int width = NtUserGetSystemMetrics( SM_CXSMICON );
+    int height = NtUserGetSystemMetrics( SM_CYSMICON );
     BITMAPINFO *info;
     HBITMAP dib, mask;
     HDC hdc;
@@ -510,8 +479,8 @@ static LRESULT WINAPI tray_icon_wndproc(HWND hwnd, UINT msg, WPARAM wparam, LPAR
             PAINTSTRUCT ps;
             RECT rc;
             HDC hdc;
-            int cx = GetSystemMetrics( SM_CXSMICON );
-            int cy = GetSystemMetrics( SM_CYSMICON );
+            int cx = NtUserGetSystemMetrics( SM_CXSMICON );
+            int cy = NtUserGetSystemMetrics( SM_CYSMICON );
 
             hdc = BeginPaint(hwnd, &ps);
             GetClientRect(hwnd, &rc);
@@ -580,8 +549,8 @@ static BOOL init_systray(void)
     if (init_done) 
 	return TRUE;
 
-    icon_cx = GetSystemMetrics( SM_CXSMICON ) + 2 * ICON_BORDER;
-    icon_cy = GetSystemMetrics( SM_CYSMICON ) + 2 * ICON_BORDER;
+    icon_cx = NtUserGetSystemMetrics( SM_CXSMICON ) + 2 * ICON_BORDER;
+    icon_cy = NtUserGetSystemMetrics( SM_CYSMICON ) + 2 * ICON_BORDER;
 
     memset( &class, 0, sizeof(class) );
     class.cbSize        = sizeof(class);
