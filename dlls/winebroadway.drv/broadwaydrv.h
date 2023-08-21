@@ -67,36 +67,6 @@ static inline struct broadwaydrv_thread_data *broadwaydrv_thread_data(void)
     return (struct broadwaydrv_thread_data *)(UINT_PTR)NtUserGetThreadInfo()->driver_data;
 }
 
-#if 0
-struct broadway_win_data
-{
-    GObject             parent_instance;      
-    HWND                *wrapper;                   /* hwnd that this private data belongs to */
-    HWND                *screen;                   /* hwnd that this private data belongs to */
-    HWND                hwnd;
-    HWND                window;
-    RECT                window_rect;            /* USER window rectangle relative to parent */
-    RECT                whole_rect;             /* Mac window rectangle for the whole window relative to parent */
-    RECT                client_rect;            /* client area relative to parent */
-    cairo_surface_t     *surface;
-    cairo_surface_t     *last_surface;
-    cairo_surface_t     *ref_surface;
-    int                 id;
-    BOOL                visible;
-    BOOL                maximized;
-    int                 transient_for;
-    int                 pre_maximize_x;
-    int                 pre_maximize_y;
-    int                 pre_maximize_width;
-    int                 pre_maximize_height;
-    gint8               toplevel_window_type;
-    BOOL                dirty;
-    BOOL                last_synced;
-    //GdkGeometry         geometry_hints;
-    //GdkWindowHints      geometry_hints_mask;
-};
-#endif
-
 extern struct broadway_win_data *get_win_data(HWND hwnd) DECLSPEC_HIDDEN;
 extern void release_win_data(struct broadway_win_data *data) DECLSPEC_HIDDEN;
 extern void init_win_context(void) DECLSPEC_HIDDEN;

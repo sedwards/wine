@@ -34,6 +34,7 @@
 #include "broadway-server.h"
 #include "broadwaydrv.h"
 
+WNDPROC client_foreign_window_proc = NULL;
 BroadwayServer *server;
 void init_user_driver(void);
 
@@ -66,6 +67,10 @@ void init_broadway_connection(void)
 static NTSTATUS broadwaydrv_init( void *arg )
 {
     struct init_params *params = arg;
+
+    client_foreign_window_proc = params->foreign_window_proc;
+
+    //gdi_display = display;
 
     FIXME("broadwaydrv_init - about to start user driver\n");
     init_broadway_connection();
