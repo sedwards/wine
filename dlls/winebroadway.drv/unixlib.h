@@ -34,6 +34,7 @@ enum broadwaydrv_funcs
 struct init_params
 {
     WNDPROC foreign_window_proc;
+    BOOL *show_systray;
 };
 
 /* driver client callbacks exposed with KernelCallbackTable interface */

@@ -145,11 +145,7 @@ static BROADWAY_PDEVICE *create_cairo_physdev(void)
     BROADWAY_PDEVICE *physDev;
     cairo_surface_t *surface;
 
-//    pthread_mutex_lock(&device_data_mutex);
-
     pthread_once( &init_once, device_init );
-
-//    pthread_mutex_unlock(&device_data_mutex);
 
     if (!(physDev = calloc(1, sizeof(*physDev)))) return NULL;
 #if 0
@@ -163,8 +159,6 @@ static BROADWAY_PDEVICE *create_cairo_physdev(void)
 
 /*
     physDev->gc = XCreateGC( gdi_display, drawable, 0, NULL );
-    XSetGraphicsExposures( gdi_display, physDev->gc, False );
-    XSetSubwindowMode( gdi_display, physDev->gc, IncludeInferiors );
     XFlush( gdi_display );
 */
 

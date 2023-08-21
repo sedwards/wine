@@ -6,7 +6,6 @@
 #include "wine/gdi_driver.h"
 #include "driver.h"
 
-#if 0
 void initDesktop(HWND hwnd) {
     unsigned int width, height;
 
@@ -44,6 +43,18 @@ void initDesktop(HWND hwnd) {
     }
 }
 
+BOOL WINAPI boxeddrv_CreateDesktopWindow(HWND hwnd) {
+    int result;
+    initDesktop(hwnd);
+    return (BOOL)result;
+}
+
+BOOL WINAPI boxeddrv_CreateWindow(HWND hwnd) {
+    int result;
+    TRACE("hwnd=%p result=%d\n", hwnd, result);
+    return (BOOL)result;
+}
+
 /***********************************************************************
  *           X11DRV_CreateDesktop
  *
@@ -56,23 +67,6 @@ BOOL X11DRV_CreateDesktop( const WCHAR *name, UINT width, UINT height )
     Display *display = thread_init_display();
 
     TRACE( "%s %ux%u\n", debugstr_w(name), width, height );
-
-    /* Create window */
-    win_attr.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask | EnterWindowMask |
-                          PointerMotionMask | ButtonPressMask | ButtonReleaseMask | FocusChangeMask;
-    win_attr.cursor = XCreateFontCursor( display, XC_top_left_arrow );
-
-    if (default_visual.visual != DefaultVisual( display, DefaultScreen(display) ))
-        win_attr.colormap = XCreateColormap( display, DefaultRootWindow(display),
-                                             default_visual.visual, AllocNone );
-    else
-        win_attr.colormap = None;
-
-    win = XCreateWindow( display, DefaultRootWindow(display),
-                         0, 0, width, height, 0, default_visual.depth, InputOutput,
-                         default_visual.visual, CWEventMask | CWCursor | CWColormap, &win_attr );
-    if (!win) return FALSE;
-    XFlush( display );
 
     X11DRV_init_desktop( win, width, height );
     return TRUE;

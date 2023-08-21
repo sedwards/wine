@@ -475,7 +475,7 @@ static int process_events( DWORD mask )
         switch (event->data.type)
         {
         case DESKTOP_CHANGED:
-            TRACE( "DESKTOP_CHANGED %ux%u\n", event->data.desktop.width, event->data.desktop.height );
+            FIXME( "DESKTOP_CHANGED %ux%u\n", event->data.desktop.width, event->data.desktop.height );
             context = SetThreadDpiAwarenessContext( DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE );
             screen_width = event->data.desktop.width;
             screen_height = event->data.desktop.height;
@@ -486,12 +486,12 @@ static int process_events( DWORD mask )
             break;
 
         case CONFIG_CHANGED:
-            TRACE( "CONFIG_CHANGED dpi %u\n", event->data.cfg.dpi );
+            FIXME( "CONFIG_CHANGED dpi %u\n", event->data.cfg.dpi );
             //set_screen_dpi( event->data.cfg.dpi );
             break;
 
         case SURFACE_CHANGED:
-            TRACE("SURFACE_CHANGED %p %p %s size %ux%u\n", event->data.surface.hwnd,
+            FIXME("SURFACE_CHANGED %p %p %s size %ux%u\n", event->data.surface.hwnd,
                   event->data.surface.window, event->data.surface.client ? "client" : "whole",
                   event->data.surface.width, event->data.surface.height );
 
@@ -503,15 +503,15 @@ static int process_events( DWORD mask )
                 HWND capture = get_capture_window();
 
                 if (event->data.motion.input.mi.dwFlags & (MOUSEEVENTF_LEFTDOWN|MOUSEEVENTF_RIGHTDOWN|MOUSEEVENTF_MIDDLEDOWN))
-                    TRACE( "BUTTONDOWN pos %d,%d hwnd %p flags %x\n",
+                    FIXME( "BUTTONDOWN pos %d,%d hwnd %p flags %x\n",
                            (int)event->data.motion.input.mi.dx, (int)event->data.motion.input.mi.dy,
                            event->data.motion.hwnd, (int)event->data.motion.input.mi.dwFlags );
                 else if (event->data.motion.input.mi.dwFlags & (MOUSEEVENTF_LEFTUP|MOUSEEVENTF_RIGHTUP|MOUSEEVENTF_MIDDLEUP))
-                    TRACE( "BUTTONUP pos %d,%d hwnd %p flags %x\n",
+                    FIXME( "BUTTONUP pos %d,%d hwnd %p flags %x\n",
                            (int)event->data.motion.input.mi.dx, (int)event->data.motion.input.mi.dy,
                            event->data.motion.hwnd, (int)event->data.motion.input.mi.dwFlags );
                 else
-                    TRACE( "MOUSEMOVE pos %d,%d hwnd %p flags %x\n",
+                    FIXME( "MOUSEMOVE pos %d,%d hwnd %p flags %x\n",
                            (int)event->data.motion.input.mi.dx, (int)event->data.motion.input.mi.dy,
                            event->data.motion.hwnd, (int)event->data.motion.input.mi.dwFlags );
                 if (!capture && (event->data.motion.input.mi.dwFlags & MOUSEEVENTF_ABSOLUTE))
@@ -537,11 +537,11 @@ static int process_events( DWORD mask )
 
         case KEYBOARD_EVENT:
             if (event->data.kbd.input.ki.dwFlags & KEYEVENTF_KEYUP)
-                TRACE("KEYUP hwnd %p vkey %x '%c' scancode %x\n", event->data.kbd.hwnd,
+                FIXME("KEYUP hwnd %p vkey %x '%c' scancode %x\n", event->data.kbd.hwnd,
                       event->data.kbd.input.ki.wVk, event->data.kbd.input.ki.wVk,
                       event->data.kbd.input.ki.wScan );
             else
-                TRACE("KEYDOWN hwnd %p vkey %x '%c' scancode %x\n", event->data.kbd.hwnd,
+                FIXME("KEYDOWN hwnd %p vkey %x '%c' scancode %x\n", event->data.kbd.hwnd,
                       event->data.kbd.input.ki.wVk, event->data.kbd.input.ki.wVk,
                       event->data.kbd.input.ki.wScan );
             //update_keyboard_lock_state( event->data.kbd.input.ki.wVk, event->data.kbd.lock_state );
@@ -711,7 +711,7 @@ static void broadway_surface_set_region( struct window_surface *window_surface, 
 {
     struct broadway_window_surface *surface = get_broadway_surface( window_surface );
 
-    TRACE( "updating surface %p hwnd %p with %p\n", surface, surface->hwnd, region );
+    FIXME( "updating surface %p hwnd %p with %p\n", surface, surface->hwnd, region );
 
     window_surface->funcs->lock( window_surface );
     if (!region)
@@ -755,7 +755,7 @@ static void broadway_surface_flush( struct window_surface *window_surface )
     window_surface->funcs->unlock( window_surface );
     if (!needs_flush) return;
 
-    TRACE( "flushing %p hwnd %p surface %s rect %s bits %p alpha %02x key %08x region %u rects\n",
+    FIXME( "flushing %p hwnd %p surface %s rect %s bits %p alpha %02x key %08x region %u rects\n",
            surface, surface->hwnd, wine_dbgstr_rect( &surface->header.rect ),
            wine_dbgstr_rect( &rect ), surface->bits, surface->alpha, (int)surface->color_key,
            surface->region_data ? (int)surface->region_data->rdh.nCount : 0 );
@@ -815,7 +815,7 @@ static void broadway_surface_flush( struct window_surface *window_surface )
         }
         surface->window->perform( surface->window, NATIVE_WINDOW_UNLOCK_AND_POST );
     }
-    else TRACE( "Unable to lock surface %p window %p buffer %p\n",
+    else FIXME( "Unable to lock surface %p window %p buffer %p\n",
                 surface, surface->hwnd, surface->window );
 #endif
     FIXME("Unable to lock surface %p window %p buffer %p\n",
@@ -830,7 +830,7 @@ static void broadway_surface_destroy( struct window_surface *window_surface )
 {
     struct broadway_window_surface *surface = get_broadway_surface( window_surface );
 
-    TRACE( "freeing %p bits %p\n", surface, surface->bits );
+    FIXME( "freeing %p bits %p\n", surface, surface->bits );
 
     free( surface->region_data );
     if (surface->region) NtGdiDeleteObjectApp( surface->region );
@@ -958,7 +958,7 @@ static struct window_surface *create_surface( HWND hwnd, const RECT *rect,
     if (!(surface->bits = malloc( surface->info.bmiHeader.biSizeImage )))
         goto failed;
 
-    TRACE( "created %p hwnd %p %s bits %p-%p\n", surface, hwnd, wine_dbgstr_rect(rect),
+    FIXME( "created %p hwnd %p %s bits %p-%p\n", surface, hwnd, wine_dbgstr_rect(rect),
            surface->bits, (char *)surface->bits + surface->info.bmiHeader.biSizeImage );
 
     return &surface->header;
@@ -1246,7 +1246,7 @@ BOOL BROADWAYDRV_ProcessEvents( DWORD mask )
  */
 BOOL BROADWAYDRV_CreateWindow( HWND hwnd )
 {
-    TRACE( "%p\n", hwnd );
+    FIXME( "BROADWAYDRV_CreateWindow - %p\n", hwnd );
 
     if (hwnd == NtUserGetDesktopWindow())
     {
@@ -1329,7 +1329,7 @@ BOOL BROADWAYDRV_WindowPosChanging( HWND hwnd, HWND insert_after, UINT swp_flags
     BYTE alpha;
     BOOL layered = NtUserGetWindowLongW( hwnd, GWL_EXSTYLE ) & WS_EX_LAYERED;
 
-    TRACE( "win %p window %s client %s style %08x flags %08x\n",
+    FIXME( "win %p window %s client %s style %08x flags %08x\n",
            hwnd, wine_dbgstr_rect(window_rect), wine_dbgstr_rect(client_rect),
            (int)NtUserGetWindowLongW( hwnd, GWL_STYLE ), swp_flags );
 
@@ -1400,7 +1400,7 @@ void BROADWAYDRV_WindowPosChanged( HWND hwnd, HWND insert_after, UINT swp_flags,
 
     if (!(swp_flags & SWP_NOZORDER)) insert_after = NtUserGetWindowRelative( hwnd, GW_HWNDPREV );
 
-    TRACE( "win %p window %s client %s style %08x owner %p after %p flags %08x\n", hwnd,
+    FIXME( "win %p window %s client %s style %08x owner %p after %p flags %08x\n", hwnd,
            wine_dbgstr_rect(window_rect), wine_dbgstr_rect(client_rect),
            new_style, owner, insert_after, swp_flags );
 
@@ -1435,7 +1435,7 @@ void BROADWAYDRV_SetParent( HWND hwnd, HWND parent, HWND old_parent )
     if (parent == old_parent) return;
     if (!(data = get_win_data( hwnd ))) return;
 
-    TRACE( "win %p parent %p -> %p\n", hwnd, old_parent, parent );
+    FIXME( "win %p parent %p -> %p\n", hwnd, old_parent, parent );
 
     data->parent = (parent == NtUserGetDesktopWindow()) ? 0 : parent;
     //ioctl_set_window_parent( hwnd, parent, (float)get_win_monitor_dpi( hwnd ) / NtUserGetDpiForWindow( hwnd ));

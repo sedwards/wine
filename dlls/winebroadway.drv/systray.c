@@ -325,7 +325,7 @@ static void add_to_standalone_tray( struct tray_icon *icon )
     size = get_window_size();
     SetWindowPos( standalone_tray, 0, 0, 0, size.cx, size.cy, SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOZORDER );
     if (nb_displayed == 1 && show_systray) ShowWindow( standalone_tray, SW_SHOWNA );
-    TRACE( "added %u now %d icons\n", icon->id, nb_displayed );
+    FIXME( "added %u now %d icons\n", icon->id, nb_displayed );
 }
 
 /* remove an icon from the stand-alone tray */
@@ -346,7 +346,7 @@ static void remove_from_standalone_tray( struct tray_icon *icon )
     }
     icon->display = -1;
     if (!--nb_displayed) ShowWindow( standalone_tray, SW_HIDE );
-    TRACE( "removed %u now %d icons\n", icon->id, nb_displayed );
+    FIXME( "removed %u now %d icons\n", icon->id, nb_displayed );
 }
 
 static void repaint_tray_icon( struct tray_icon *icon )
@@ -438,11 +438,11 @@ static BOOL notify_owner( struct tray_icon *icon, UINT msg, LPARAM lparam )
         lp = MAKELPARAM( msg, icon->id );
     }
 
-    TRACE( "relaying 0x%x\n", msg );
+    FIXME( "relaying 0x%x\n", msg );
     if (!SendNotifyMessageW( icon->owner, icon->callback_message, wp, lp ) &&
         (GetLastError() == ERROR_INVALID_WINDOW_HANDLE))
     {
-        WARN( "application window was destroyed, removing icon %u\n", icon->id );
+        FIXME( "application window was destroyed, removing icon %u\n", icon->id );
         delete_icon( icon );
         return FALSE;
     }
@@ -454,7 +454,7 @@ static LRESULT WINAPI tray_icon_wndproc(HWND hwnd, UINT msg, WPARAM wparam, LPAR
 {
     struct tray_icon *icon = NULL;
 
-    TRACE("hwnd=%p, msg=0x%x\n", hwnd, msg);
+    FIXME("hwnd=%p, msg=0x%x\n", hwnd, msg);
 
     /* set the icon data for the window from the data passed into CreateWindow */
     if (msg == WM_NCCREATE)
@@ -484,7 +484,7 @@ static LRESULT WINAPI tray_icon_wndproc(HWND hwnd, UINT msg, WPARAM wparam, LPAR
 
             hdc = BeginPaint(hwnd, &ps);
             GetClientRect(hwnd, &rc);
-            TRACE("painting rect %s\n", wine_dbgstr_rect(&rc));
+            FIXME("painting rect %s\n", wine_dbgstr_rect(&rc));
             DrawIconEx( hdc, (rc.left + rc.right - cx) / 2, (rc.top + rc.bottom - cy) / 2,
                         icon->image, cx, cy, 0, 0, DI_DEFAULTSIZE|DI_NORMAL );
             EndPaint(hwnd, &ps);
@@ -532,7 +532,7 @@ static LRESULT WINAPI tray_icon_wndproc(HWND hwnd, UINT msg, WPARAM wparam, LPAR
     case WM_CLOSE:
         if (icon->display == -1)
         {
-            TRACE( "icon %u no longer embedded\n", icon->id );
+            FIXME( "icon %u no longer embedded\n", icon->id );
             hide_icon( icon );
             add_to_standalone_tray( icon );
         }
@@ -584,7 +584,7 @@ static BOOL init_systray(void)
 /* hide a tray icon */
 static BOOL hide_icon( struct tray_icon *icon )
 {
-    TRACE( "id=0x%x, hwnd=%p\n", icon->id, icon->owner );
+    FIXME( "id=0x%x, hwnd=%p\n", icon->id, icon->owner );
 
     if (!icon->window) 
 	    return TRUE;  /* already hidden */
@@ -607,7 +607,7 @@ static BOOL show_icon( struct tray_icon *icon )
     if (icon->window) 
 	    return TRUE;  /* already shown */
 
-    TRACE( "id=0x%x, hwnd=%p\n", icon->id, icon->owner );
+    FIXME( "id=0x%x, hwnd=%p\n", icon->id, icon->owner );
 
     params.event_handle = 0;
     params.icon = icon;
@@ -624,7 +624,7 @@ static BOOL show_icon( struct tray_icon *icon )
 /* Modifies an existing icon record */
 static BOOL modify_icon( struct tray_icon *icon, NOTIFYICONDATAW *nid )
 {
-    TRACE( "id=0x%x hwnd=%p flags=%x\n", nid->uID, nid->hWnd, nid->uFlags );
+    FIXME( "id=0x%x hwnd=%p flags=%x\n", nid->uID, nid->hWnd, nid->uFlags );
 
     if (nid->uFlags & NIF_STATE)
     {
@@ -670,11 +670,11 @@ static BOOL add_icon(NOTIFYICONDATAW *nid)
 {
     struct tray_icon  *icon;
 
-    TRACE("id=0x%x, hwnd=%p\n", nid->uID, nid->hWnd);
+    FIXME("id=0x%x, hwnd=%p\n", nid->uID, nid->hWnd);
 
     if ((icon = get_icon(nid->hWnd, nid->uID)))
     {
-        WARN("duplicate tray icon add, buggy app?\n");
+        FIXME("duplicate tray icon add, buggy app?\n");
         return FALSE;
     }
 
@@ -765,7 +765,7 @@ LRESULT WINAPI foreign_window_proc( HWND hwnd, UINT msg, WPARAM wparam, LPARAM l
     case WM_PARENTNOTIFY:
         if (LOWORD(wparam) == WM_DESTROY)
         {
-            TRACE( "%p: got parent notify destroy for win %Ix\n", hwnd, lparam );
+            FIXME( "%p: got parent notify destroy for win %Ix\n", hwnd, lparam );
             PostMessageW( hwnd, WM_CLOSE, 0, 0 );  /* so that we come back here once the child is gone */
         }
         return 0;

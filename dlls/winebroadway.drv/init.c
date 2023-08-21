@@ -41,13 +41,41 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(broadway);
 
+// clipboard.c
+void BROADWAYDRV_UpdateClipboard(void);
+
+BOOL BROADWAYDRV_CreateWindow( HWND hwnd );
+LRESULT BROADWAYDRV_DesktopWindowProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp );
 BOOL BROADWAYDRV_UpdateDisplayDevices( const struct gdi_device_manager *device_manager, BOOL force, void *param );
 LONG BROADWAYDRV_ChangeDisplaySettings( LPDEVMODEW displays, LPCWSTR primary_name, HWND hwnd, DWORD flags, LPVOID lpvoid );
 BOOL BROADWAYDRV_GetCurrentDisplaySettings( LPCWSTR name, BOOL is_primary, LPDEVMODEW devmode );
+
+// gdi.c
 BOOL BROADWAYDRV_CreateDC(PHYSDEV *pdev, LPCWSTR device, LPCWSTR output, const DEVMODEW* initData);
 BOOL BROADWAYDRV_CreateCompatibleDC(PHYSDEV orig, PHYSDEV *pdev);
 BOOL BROADWAYDRV_DeleteDC(PHYSDEV dev);
 INT BROADWAYDRV_GetDeviceCaps(PHYSDEV dev, INT cap);
+
+// window.c
+void BROADWAYDRV_DestroyWindow( HWND hwnd );
+BOOL BROADWAYDRV_ProcessEvents( DWORD mask );
+void BROADWAYDRV_SetParent( HWND hwnd, HWND parent, HWND old_parent );
+void BROADWAYDRV_SetCapture( HWND hwnd, UINT flags );
+void BROADWAYDRV_SetCursor( HWND hwnd, HCURSOR handle );
+void BROADWAYDRV_SetWindowStyle( HWND hwnd, INT offset, STYLESTRUCT *style );
+void BROADWAYDRV_SetWindowRgn( HWND hwnd, HRGN hrgn, BOOL redraw );
+void BROADWAYDRV_SetLayeredWindowAttributes( HWND hwnd, COLORREF key, BYTE alpha, DWORD flags );
+UINT BROADWAYDRV_ShowWindow( HWND hwnd, INT cmd, RECT *rect, UINT swp );
+BOOL BROADWAYDRV_UpdateLayeredWindow( HWND hwnd, const UPDATELAYEREDWINDOWINFO *info,
+                                  const RECT *window_rect );
+LRESULT BROADWAYDRV_WindowMessage( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp );
+BOOL BROADWAYDRV_WindowPosChanging( HWND hwnd, HWND insert_after, UINT swp_flags,
+                                const RECT *window_rect, const RECT *client_rect, RECT *visible_rect,
+                                struct window_surface **surface );
+void BROADWAYDRV_WindowPosChanged( HWND hwnd, HWND insert_after, UINT swp_flags,
+                               const RECT *window_rect, const RECT *client_rect,
+                               const RECT *visible_rect, const RECT *valid_rects,
+                               struct window_surface *surface );
 
 unsigned int screen_width = 1024;
 unsigned int screen_height = 768;
@@ -126,14 +154,12 @@ static const struct user_driver_funcs broadwaydrv_funcs =
     .pImeToAsciiEx = X11DRV_ImeToAsciiEx,
     .pNotifyIMEStatus = X11DRV_NotifyIMEStatus,
     .pDestroyCursorIcon = X11DRV_DestroyCursorIcon,
-    .pSetCursor = X11DRV_SetCursor,
     .pGetCursorPos = X11DRV_GetCursorPos,
     .pSetCursorPos = X11DRV_SetCursorPos,
     .pClipCursor = X11DRV_ClipCursor,
     .pGetCurrentDisplaySettings = X11DRV_GetCurrentDisplaySettings,
     .pGetDisplayDepth = X11DRV_GetDisplayDepth,
     .pCreateDesktop = X11DRV_CreateDesktop,
-    .pCreateWindow = X11DRV_CreateWindow,
     .pDesktopWindowProc = X11DRV_DesktopWindowProc,
     .pDestroyWindow = X11DRV_DestroyWindow,
     .pFlashWindowEx = X11DRV_FlashWindowEx,
@@ -141,23 +167,12 @@ static const struct user_driver_funcs broadwaydrv_funcs =
     .pProcessEvents = X11DRV_ProcessEvents,
     .pReleaseDC = X11DRV_ReleaseDC,
     .pScrollDC = X11DRV_ScrollDC,
-    .pSetCapture = X11DRV_SetCapture,
     .pSetDesktopWindow = X11DRV_SetDesktopWindow,
     .pSetFocus = X11DRV_SetFocus,
-    .pSetLayeredWindowAttributes = X11DRV_SetLayeredWindowAttributes,
-    .pSetParent = X11DRV_SetParent,
     .pSetWindowIcon = X11DRV_SetWindowIcon,
-    .pSetWindowRgn = X11DRV_SetWindowRgn,
-    .pSetWindowStyle = X11DRV_SetWindowStyle,
     .pSetWindowText = X11DRV_SetWindowText,
-    .pShowWindow = X11DRV_ShowWindow,
     .pSysCommand = X11DRV_SysCommand,
     .pClipboardWindowProc = X11DRV_ClipboardWindowProc,
-    .pUpdateClipboard = X11DRV_UpdateClipboard,
-    .pUpdateLayeredWindow = X11DRV_UpdateLayeredWindow,
-    .pWindowMessage = X11DRV_WindowMessage,
-    .pWindowPosChanging = X11DRV_WindowPosChanging,
-    .pWindowPosChanged = X11DRV_WindowPosChanged,
     .pwine_get_wgl_driver = X11DRV_wine_get_wgl_driver,
     .pThreadDetach = X11DRV_ThreadDetach,
 #endif
@@ -168,13 +183,29 @@ static const struct user_driver_funcs broadwaydrv_funcs =
     .dc_funcs.priority = GDI_PRIORITY_GRAPHICS_DRV,
 
     .pChangeDisplaySettings = BROADWAYDRV_ChangeDisplaySettings,
+    .pCreateWindow = BROADWAYDRV_CreateWindow,
+    .pDesktopWindowProc = BROADWAYDRV_DesktopWindowProc,
+    .pDestroyWindow = BROADWAYDRV_DestroyWindow,
     .pGetCurrentDisplaySettings = BROADWAYDRV_GetCurrentDisplaySettings,
+    .pProcessEvents = BROADWAYDRV_ProcessEvents,
+    .pSetParent = BROADWAYDRV_SetParent,
+    .pSetCapture = BROADWAYDRV_SetCapture,
+    .pSetCursor = BROADWAYDRV_SetCursor,
+    .pSetWindowStyle = BROADWAYDRV_SetWindowStyle,
+    .pSetLayeredWindowAttributes = BROADWAYDRV_SetLayeredWindowAttributes,
+    .pSetWindowRgn = BROADWAYDRV_SetWindowRgn,
+    .pShowWindow = BROADWAYDRV_ShowWindow,
+    .pUpdateClipboard = BROADWAYDRV_UpdateClipboard,
+    .pUpdateLayeredWindow = BROADWAYDRV_UpdateLayeredWindow,
     .pUpdateDisplayDevices = BROADWAYDRV_UpdateDisplayDevices,
+    .pWindowMessage = BROADWAYDRV_WindowMessage,
+    .pWindowPosChanging = BROADWAYDRV_WindowPosChanging,
+    .pWindowPosChanged = BROADWAYDRV_WindowPosChanged,
 };
 
 void init_user_driver(void)
 {
-    ERR("Inside init_user_driver\n");
+    FIXME("Inside init_user_driver\n");
     __wine_set_user_driver( &broadwaydrv_funcs, WINE_GDI_DRIVER_VERSION );
 }
 
