@@ -699,10 +699,11 @@ static HRESULT WINAPI DocObjPersistMoniker_Load(IPersistMoniker *iface, BOOL fFu
 
     if(This->is_mhtml) {
         IUnknown *unk;
-
+#if 0
         hres = MimeOleObjectFromMoniker(0, pimkName, pibc, &IID_IUnknown, (void**)&unk, &mon);
         if(FAILED(hres))
             return hres;
+#endif
         IUnknown_Release(unk);
         pibc = NULL;
     }else {

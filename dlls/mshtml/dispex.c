@@ -120,8 +120,8 @@ static REFIID tid_ids[] = {
 #define XIID(iface) &IID_ ## iface,
 #define XDIID(iface) &DIID_ ## iface,
 TID_LIST
-    NULL,
-PRIVATE_TID_LIST
+//    NULL,
+//PRIVATE_TID_LIST
 #undef XIID
 #undef XDIID
 };

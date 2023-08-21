@@ -1077,6 +1077,7 @@ void init_mutation(nsIComponentManager *component_manager)
         ERR("Could not create nsIContentUtils instance: %08lx\n", nsres);
 }
 
+#if 0
 struct mutation_observer {
     IWineMSHTMLMutationObserver IWineMSHTMLMutationObserver_iface;
 
@@ -1424,3 +1425,6 @@ HRESULT create_mutation_observer_ctor(compat_mode_t compat_mode, IDispatch **ret
     *ret = (IDispatch *)&obj->dispex.IDispatchEx_iface;
     return S_OK;
 }
+
+#endif
+

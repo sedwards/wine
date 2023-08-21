@@ -4136,7 +4136,6 @@ static void HTMLWindow_init_dispex_info(dispex_data_t *info, compat_mode_t compa
 
     /* Hide props not available in IE10 */
     static const dispex_hook_t private_ie10_hooks[] = {
-        {DISPID_IWINEHTMLWINDOWPRIVATE_MUTATIONOBSERVER},
         {DISPID_UNKNOWN}
     };
 
