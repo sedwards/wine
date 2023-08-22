@@ -73,6 +73,16 @@ static inline BROADWAY_PDEVICE *get_broadwaydrv_dev(PHYSDEV dev)
 static pthread_mutex_t device_data_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_once_t init_once = PTHREAD_ONCE_INIT;
 
+void init_recursive_mutex( pthread_mutex_t *mutex )
+{
+    pthread_mutexattr_t attr;
+
+    pthread_mutexattr_init( &attr );
+    pthread_mutexattr_settype( &attr, PTHREAD_MUTEX_RECURSIVE );
+    pthread_mutex_init( mutex, &attr );
+    pthread_mutexattr_destroy( &attr );
+}
+
 static const struct user_driver_funcs broadwaydrv_funcs;
 
 #if 0
@@ -114,9 +124,6 @@ void device_init(void)
   surface = cairo_image_surface_create (CAIRO_FORMAT_ARGB32, screen_width, screen_height);
 #endif
   FIXME("device_init - We just created a surface here. This should work...\n");
-
-
-
 
   initialization = 1;
 

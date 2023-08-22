@@ -36,6 +36,15 @@ typedef struct _BroadwayServer BroadwayServer;
 /* Global variable for our connection to the server */
 extern BroadwayServer *server;
 
+/* Broadway Display we are running on */
+/* Set something like BROADWAY_DISPLAY=:0 */
+extern const char *display;
+
+typedef struct _Display {
+    int fd;                          /* network socket */
+    char *display_name;              /* "host:display" string used on this connect*/
+} Display;
+
 /* a few dynamic device caps */
 //int bits_per_pixel;      /* pixel depth of screen */
 //int device_data_valid;   /* do the above variables have up-to-date values? */
@@ -49,11 +58,12 @@ extern RECT virtual_screen_rect;// = { 0, 0, 0, 0 };
 struct broadwaydrv_thread_data
 {
     GObject                parent_instance;
-    guint8                  *display;
+    BroadwayServer         *server;
+    char                   *display;
     guint8                 id;
-    //XEvent              *current_event;        /* event currently being processed */
-    HWND                  grab_hwnd;            /* window that currently grabs the mouse */
-    HWND                  last_focus;           /* last window that had focus */
+    //XEvent               *current_event;        /* event currently being processed */
+    HWND                   grab_hwnd;            /* window that currently grabs the mouse */
+    HWND                   last_focus;           /* last window that had focus */
     //XFontSet font_set;             /* international text drawing font set */
     guint8                 selection_wnd;        /* window used for selection interactions */
     guint8                 clip_window;          /* window used for cursor clipping */
@@ -65,6 +75,20 @@ extern struct broadwaydrv_thread_data *broadwaydrv_init_thread_data(void) DECLSP
 static inline struct broadwaydrv_thread_data *broadwaydrv_thread_data(void)
 {
     return (struct broadwaydrv_thread_data *)(UINT_PTR)NtUserGetThreadInfo()->driver_data;
+}
+
+/* retrieve the thread display, or NULL if not created yet */
+static inline Display *thread_display(void)
+{
+    struct broadwaydrv_thread_data *data = broadwaydrv_thread_data();
+    if (!data) return NULL;
+    return data->display;
+}
+
+/* retrieve the thread display, creating it if needed */
+static inline Display *thread_init_display(void)
+{
+    return broadwaydrv_init_thread_data()->display;
 }
 
 extern struct broadway_win_data *get_win_data(HWND hwnd) DECLSPEC_HIDDEN;
@@ -91,6 +115,7 @@ struct broadwaydrv_window_surface
 struct _BroadwayWindow
 {
     GObject             parent_instance;
+    char                *display;
     HWND                *wrapper;                   /* hwnd that this private data belongs to */
     HWND                *screen;                   /* hwnd that this private data belongs to */
     RECT                window_rect;            /* USER window rectangle relative to parent */
@@ -110,13 +135,12 @@ struct _BroadwayWindow
     gint8               toplevel_window_type;
     BOOL                dirty;
     BOOL                last_synced;
-    guint8                  *display;
     //XEvent              *current_event;        /* event currently being processed */
     HWND                  grab_hwnd;            /* window that currently grabs the mouse */
     HWND                  last_focus;           /* last window that had focus */
     //XFontSet font_set;             /* international text drawing font set */
-    guint8                 selection_wnd;        /* window used for selection interactions */
-    guint8                 clip_window;          /* window used for cursor clipping */
+    HWND                 selection_wnd;        /* window used for selection interactions */
+    HWND                 clip_window;          /* window used for cursor clipping */
 };
 typedef struct _BroadwayWindow BroadwayWindow;
 
@@ -173,5 +197,26 @@ union event_data
 int send_event( const union event_data *data ) DECLSPEC_HIDDEN;
 static HWND capture_window;
 extern HWND get_capture_window(void) DECLSPEC_HIDDEN;
+extern void init_recursive_mutex( pthread_mutex_t *mutex ) DECLSPEC_HIDDEN;
+
+#define DEPTH_COUNT 3
+extern const unsigned int *depths DECLSPEC_HIDDEN;
+
+static inline void mirror_rect( const RECT *window_rect, RECT *rect )
+{
+    int width = window_rect->right - window_rect->left;
+    int tmp = rect->left;
+    rect->left = width - rect->right;
+    rect->right = width - tmp;
+}
+
+static inline BOOL is_window_rect_mapped( const RECT *rect )
+{
+    RECT virtual_rect = NtUserGetVirtualScreenRect();
+    return (rect->left < virtual_rect.right &&
+            rect->top < virtual_rect.bottom &&
+            max( rect->right, rect->left + 1 ) > virtual_rect.left &&
+            max( rect->bottom, rect->top + 1 ) > virtual_rect.top);
+}
 
 #endif /* BROADWAYDRV_H */

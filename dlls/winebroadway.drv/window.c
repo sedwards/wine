@@ -1222,6 +1222,9 @@ LRESULT BROADWAYDRV_DesktopWindowProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
     case WM_PARENTNOTIFY:
         //if (LOWORD(wp) == WM_DESTROY) destroy_ioctl_window( (HWND)lp, FALSE );
         break;
+    case WM_DISPLAYCHANGE:
+        //BROADWAYDRV_resize_desktop();
+        break;
     }
     return NtUserMessageCall( hwnd, msg, wp, lp, 0, NtUserDefWindowProc, FALSE );
 }
