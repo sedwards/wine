@@ -44,8 +44,7 @@ WINE_DEFAULT_DEBUG_CHANNEL(broadway);
 // clipboard.c
 void BROADWAYDRV_UpdateClipboard(void);
 
-BOOL BROADWAYDRV_CreateWindow( HWND hwnd );
-LRESULT BROADWAYDRV_DesktopWindowProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp );
+
 BOOL BROADWAYDRV_UpdateDisplayDevices( const struct gdi_device_manager *device_manager, BOOL force, void *param );
 LONG BROADWAYDRV_ChangeDisplaySettings( LPDEVMODEW displays, LPCWSTR primary_name, HWND hwnd, DWORD flags, LPVOID lpvoid );
 BOOL BROADWAYDRV_GetCurrentDisplaySettings( LPCWSTR name, BOOL is_primary, LPDEVMODEW devmode );
@@ -57,6 +56,11 @@ BOOL BROADWAYDRV_DeleteDC(PHYSDEV dev);
 INT BROADWAYDRV_GetDeviceCaps(PHYSDEV dev, INT cap);
 
 // window.c
+BOOL BROADWAYDRV_CreateDesktop( const WCHAR *name, UINT width, UINT height );
+BOOL WINAPI BROADWAYDRV_CreateDesktopWindow(HWND hwnd);
+BOOL BROADWAYDRV_CreateWindow( HWND hwnd );
+LRESULT BROADWAYDRV_DesktopWindowProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp );
+
 void BROADWAYDRV_DestroyWindow( HWND hwnd );
 BOOL BROADWAYDRV_ProcessEvents( DWORD mask );
 void BROADWAYDRV_SetParent( HWND hwnd, HWND parent, HWND old_parent );
@@ -77,8 +81,8 @@ void BROADWAYDRV_WindowPosChanged( HWND hwnd, HWND insert_after, UINT swp_flags,
                                const RECT *visible_rect, const RECT *valid_rects,
                                struct window_surface *surface );
 
-unsigned int screen_width = 1024;
-unsigned int screen_height = 768;
+//unsigned int screen_width = 1024;
+//unsigned int screen_height = 768;
 static const unsigned int screen_bpp = 32;  /* we don't support other modes */
 static RECT monitor_rc_work;
 RECT virtual_screen_rect = { 0, 0, 0, 0 };
@@ -101,8 +105,6 @@ static const struct user_driver_funcs broadwaydrv_funcs =
 #if 0
     .dc_funcs.pArc = X11DRV_Arc,
     .dc_funcs.pChord = X11DRV_Chord,
-    .dc_funcs.pCreateCompatibleDC = X11DRV_CreateCompatibleDC,
-    .dc_funcs.pCreateDC = X11DRV_CreateDC,
     .dc_funcs.pDeleteDC = X11DRV_DeleteDC,
     .dc_funcs.pEllipse = X11DRV_Ellipse,
     .dc_funcs.pExtEscape = X11DRV_ExtEscape,
@@ -159,9 +161,6 @@ static const struct user_driver_funcs broadwaydrv_funcs =
     .pClipCursor = X11DRV_ClipCursor,
     .pGetCurrentDisplaySettings = X11DRV_GetCurrentDisplaySettings,
     .pGetDisplayDepth = X11DRV_GetDisplayDepth,
-    .pCreateDesktop = X11DRV_CreateDesktop,
-    .pDesktopWindowProc = X11DRV_DesktopWindowProc,
-    .pDestroyWindow = X11DRV_DestroyWindow,
     .pFlashWindowEx = X11DRV_FlashWindowEx,
     .pGetDC = X11DRV_GetDC,
     .pProcessEvents = X11DRV_ProcessEvents,
@@ -172,9 +171,9 @@ static const struct user_driver_funcs broadwaydrv_funcs =
     .pSetWindowIcon = X11DRV_SetWindowIcon,
     .pSetWindowText = X11DRV_SetWindowText,
     .pSysCommand = X11DRV_SysCommand,
+    .pThreadDetach = X11DRV_ThreadDetach,
     .pClipboardWindowProc = X11DRV_ClipboardWindowProc,
     .pwine_get_wgl_driver = X11DRV_wine_get_wgl_driver,
-    .pThreadDetach = X11DRV_ThreadDetach,
 #endif
     .dc_funcs.pCreateCompatibleDC = BROADWAYDRV_CreateCompatibleDC,
     .dc_funcs.pCreateDC = BROADWAYDRV_CreateDC,
@@ -183,6 +182,7 @@ static const struct user_driver_funcs broadwaydrv_funcs =
     .dc_funcs.priority = GDI_PRIORITY_GRAPHICS_DRV,
 
     .pChangeDisplaySettings = BROADWAYDRV_ChangeDisplaySettings,
+    .pCreateDesktop = BROADWAYDRV_CreateDesktop,
     .pCreateWindow = BROADWAYDRV_CreateWindow,
     .pDesktopWindowProc = BROADWAYDRV_DesktopWindowProc,
     .pDestroyWindow = BROADWAYDRV_DestroyWindow,

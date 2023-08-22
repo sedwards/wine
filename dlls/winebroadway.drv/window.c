@@ -1244,6 +1244,54 @@ BOOL BROADWAYDRV_ProcessEvents( DWORD mask )
     return FALSE;
 }
 
+
+/* Return TRUE if Wine is currently in virtual desktop mode */
+BOOL is_virtual_desktop(void)
+{
+    return TRUE;
+}
+
+/***********************************************************************
+ *           BROADWAYDRV_CreateDesktop
+ *
+ * Create the X11 desktop window for the desktop mode.
+ */
+BOOL BROADWAYDRV_CreateDesktop( const WCHAR *name, UINT width, UINT height )
+{
+    Display *display = thread_init_display();
+
+    FIXME( "BROADWAYDRV_CreateDesktop - %s %ux%u\n", debugstr_w(name), width, height );
+
+    //BROADWAYDRV_init_desktop( win, width, height );
+    return TRUE;
+}
+
+/***********************************************************************
+ *              BROADWAYDRV_resize_desktop
+ */
+void BROADWAYDRV_resize_desktop(void)
+{
+    static RECT old_virtual_rect;
+
+    RECT primary_rect, virtual_rect;
+    HWND hwnd = NtUserGetDesktopWindow();
+    INT width, height;
+
+    virtual_rect = NtUserGetVirtualScreenRect();
+    primary_rect = NtUserGetPrimaryMonitorRect();
+    width = primary_rect.right;
+    height = primary_rect.bottom;
+
+    FIXME( "BROADWAYDRV_resize_desktop - desktop %p change to (%dx%d)\n", hwnd, width, height );
+
+    NtUserSetWindowPos( hwnd, 0, virtual_rect.left, virtual_rect.top,
+                        virtual_rect.right - virtual_rect.left, virtual_rect.bottom - virtual_rect.top,
+                        SWP_NOZORDER | SWP_NOACTIVATE | SWP_DEFERERASE );
+
+    old_virtual_rect = virtual_rect;
+}
+
+
 /**********************************************************************
  *           BROADWAYDRV_CreateWindow
  */
@@ -1253,7 +1301,7 @@ BOOL BROADWAYDRV_CreateWindow( HWND hwnd )
 
     if (hwnd == NtUserGetDesktopWindow())
     {
-        struct broadway_win_data *data;
+        struct broadway_win_data *data = broadwaydrv_init_thread_data();
 
         //init_event_queue();
         //start_broadway_device();
@@ -1265,6 +1313,54 @@ BOOL BROADWAYDRV_CreateWindow( HWND hwnd )
         release_win_data( data );
     }
     return TRUE;
+}
+
+
+static RECT host_primary_rect;
+
+void initDesktop(HWND hwnd) {
+    unsigned int width, height;
+    host_primary_rect = get_host_primary_monitor_rect();
+
+    TRACE("%p\n", hwnd);
+
+    /* retrieve the real size of the desktop */
+    SERVER_START_REQ(get_window_rectangles)
+    {
+        req->handle = wine_server_user_handle(hwnd);
+        req->relative = COORDS_CLIENT;
+        wine_server_call(req);
+        width  = reply->window.right;
+        height = reply->window.bottom;
+    }
+    SERVER_END_REQ;
+
+    if (!width && !height)  /* not initialized yet */
+    {
+        width = NtGdiGetDeviceCaps(NULL, DESKTOPHORZRES);
+        height = NtGdiGetDeviceCaps(NULL, DESKTOPVERTRES);
+
+        SERVER_START_REQ(set_window_pos)
+        {
+            req->handle        = wine_server_user_handle(hwnd);
+            req->previous      = 0;
+            req->swp_flags     = SWP_NOZORDER;
+            req->window.left   = 0;
+            req->window.top    = 0;
+            req->window.right  = width;
+            req->window.bottom = height;
+            req->client        = req->window;
+            wine_server_call(req);
+        }
+        SERVER_END_REQ;
+    }
+}
+
+BOOL WINAPI BROADWAYDRV_CreateDesktopWindow(HWND hwnd) {
+    int result;
+    FIXME("BROADWAYDRV_CreateDesktopWindow - hwnd=%p\n", hwnd);
+    initDesktop(hwnd);
+    return (BOOL)result;
 }
 
 
@@ -1699,25 +1795,6 @@ LRESULT BROADWAYDRV_WindowMessage( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
   //      FIXME( "got window msg %x hwnd %p wp %lx lp %lx\n", msg, hwnd, (long)wp, lp );
     //    return 0;
     }
-}
-
-
-/***********************************************************************
- *           BROADWAYDRV_CreateDesktop
- */
-BOOL BROADWAYDRV_CreateDesktop( const WCHAR *name, UINT width, UINT height )
-{
-    /* wait until we receive the surface changed event */
-    while (!screen_width)
-    {
-        if (wait_events( 2000 ) != 1)
-        {
-            ERR( "wait timed out\n" );
-            break;
-        }
-        process_events( QS_ALLINPUT );
-    }
-    return 0;
 }
 
 /* get the capture window stored in the desktop process */

@@ -1,4 +1,124 @@
 #if 0
+#pragma makedep unix
+#endif
+
+#include "config.h"
+
+#include <fcntl.h>
+#include <poll.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/time.h>
+#include <unistd.h>
+#include <assert.h>
+#include <dlfcn.h>
+
+#include "ntstatus.h"
+#define WIN32_NO_STATUS
+
+#include "basetsd.h"
+#include "windef.h"
+#include "winbase.h"
+#include "winreg.h"
+#include "wingdi.h"
+#include "ntgdi.h"
+
+#include "wine/server.h"
+#include "wine/debug.h"
+#include "wine/list.h"
+
+#include "unixlib.h"
+#include "broadway-server.h"
+#include "broadwaydrv.h"
+
+WINE_DEFAULT_DEBUG_CHANNEL(broadway);
+#if 0
+static struct x11drv_display_device_handler host_handler;
+static struct x11drv_settings_handler settings_handler;
+
+const unsigned int *depths;
+
+static pthread_mutex_t settings_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+void X11DRV_Settings_SetHandler(const struct x11drv_settings_handler *new_handler)
+{
+    if (new_handler->priority > settings_handler.priority)
+    {
+        settings_handler = *new_handler;
+        TRACE("Display settings are now handled by: %s.\n", settings_handler.name);
+    }
+}
+
+/***********************************************************************
+ * Default handlers if resolution switching is not enabled
+ *
+ */
+static BOOL nores_get_id(const WCHAR *device_name, BOOL is_primary, x11drv_settings_id *id)
+{
+    id->id = is_primary ? 1 : 0;
+    return TRUE;
+}
+
+static BOOL nores_get_modes(x11drv_settings_id id, DWORD flags, DEVMODEW **new_modes, UINT *mode_count)
+{
+    RECT primary = get_host_primary_monitor_rect();
+    DEVMODEW *modes;
+
+    modes = calloc(1, sizeof(*modes));
+    if (!modes)
+    {
+        RtlSetLastWin32Error( ERROR_NOT_ENOUGH_MEMORY );
+        return FALSE;
+    }
+
+    modes[0].dmSize = sizeof(*modes);
+    modes[0].dmDriverExtra = 0;
+    modes[0].dmFields = DM_DISPLAYORIENTATION | DM_BITSPERPEL | DM_PELSWIDTH | DM_PELSHEIGHT |
+                        DM_DISPLAYFLAGS | DM_DISPLAYFREQUENCY;
+    modes[0].dmDisplayOrientation = DMDO_DEFAULT;
+    modes[0].dmBitsPerPel = screen_bpp;
+    modes[0].dmPelsWidth = primary.right;
+    modes[0].dmPelsHeight = primary.bottom;
+    modes[0].dmDisplayFlags = 0;
+    modes[0].dmDisplayFrequency = 60;
+
+    *new_modes = modes;
+    *mode_count = 1;
+    return TRUE;
+}
+#endif
+POINT virtual_screen_to_root(INT x, INT y)
+{
+    RECT virtual = NtUserGetVirtualScreenRect();
+    POINT pt;
+
+    pt.x = x - virtual.left;
+    pt.y = y - virtual.top;
+    return pt;
+}
+
+POINT root_to_virtual_screen(INT x, INT y)
+{
+    RECT virtual = NtUserGetVirtualScreenRect();
+    POINT pt;
+
+    pt.x = x + virtual.left;
+    pt.y = y + virtual.top;
+    return pt;
+}
+
+/* Get the primary monitor rect from the host system */
+RECT get_host_primary_monitor_rect(void)
+{
+    RECT rect = {0};
+
+    return rect;
+}
+
+
+#if 0
 
 
 void BOXEDDRV_DisplayDevices_Init(BOOL force)

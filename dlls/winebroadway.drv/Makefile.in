@@ -14,5 +14,6 @@ C_SRCS = \
 	surface.c \
 	window.c \
 	clipboard.c \
+	display.c \
 	systray.c
 

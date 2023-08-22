@@ -43,7 +43,9 @@ extern const char *display;
 typedef struct _Display {
     int fd;                          /* network socket */
     char *display_name;              /* "host:display" string used on this connect*/
-} Display;
+};
+
+typedef struct _Display Display;
 
 /* a few dynamic device caps */
 //int bits_per_pixel;      /* pixel depth of screen */
@@ -198,6 +200,7 @@ int send_event( const union event_data *data ) DECLSPEC_HIDDEN;
 static HWND capture_window;
 extern HWND get_capture_window(void) DECLSPEC_HIDDEN;
 extern void init_recursive_mutex( pthread_mutex_t *mutex ) DECLSPEC_HIDDEN;
+RECT get_host_primary_monitor_rect(void);
 
 #define DEPTH_COUNT 3
 extern const unsigned int *depths DECLSPEC_HIDDEN;

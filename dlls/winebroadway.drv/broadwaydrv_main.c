@@ -40,6 +40,42 @@ void init_user_driver(void);
 
 WINE_DEFAULT_DEBUG_CHANNEL(broadwaydrv);
 
+/***********************************************************************
+ *           X11DRV thread initialisation routine
+ */
+struct broadwaydrv_thread_data *broadwaydrv_init_thread_data(void)
+{
+    struct broadwaydrv_thread_data *data = broadwaydrv_thread_data();
+
+    if (data) return data;
+
+    if (!(data = calloc( 1, sizeof(*data) )))
+    {
+        ERR( "x11drv_thread_data *x11drv_init_thread_data - could not create data for unknown reason\n" );
+        NtTerminateProcess( 0, 1 );
+    }
+#if 0
+    if (!(data->display = XOpenDisplay(NULL)))
+    {
+        ERR_(winediag)( "x11drv: Can't open display: %s. Please ensure that your X server is running and that $DISPLAY is set correctly.\n", XDisplayName(NULL));
+        NtTerminateProcess( 0, 1 );
+    }
+
+    fcntl( ConnectionNumber(data->display), F_SETFD, 1 ); /* set close on exec flag */
+
+    XkbUseExtension( data->display, NULL, NULL );
+    XkbSetDetectableAutoRepeat( data->display, True, NULL );
+    if (TRACE_ON(synchronous)) XSynchronize( data->display, True );
+
+    set_queue_display_fd( data->display );
+    NtUserGetThreadInfo()->driver_data = (UINT_PTR)data;
+
+    if (use_xim) xim_thread_attach( data );
+#endif
+    return data;
+}
+
+
 void init_broadway_connection(void)
 {
     GError *error;
