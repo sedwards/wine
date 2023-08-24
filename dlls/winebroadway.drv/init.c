@@ -105,7 +105,6 @@ static const struct user_driver_funcs broadwaydrv_funcs =
 #if 0
     .dc_funcs.pArc = X11DRV_Arc,
     .dc_funcs.pChord = X11DRV_Chord,
-    .dc_funcs.pDeleteDC = X11DRV_DeleteDC,
     .dc_funcs.pEllipse = X11DRV_Ellipse,
     .dc_funcs.pExtEscape = X11DRV_ExtEscape,
     .dc_funcs.pExtFloodFill = X11DRV_ExtFloodFill,
