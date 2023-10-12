@@ -94,7 +94,11 @@ typedef struct
 
 typedef struct
 {
-    BOOLEAN ReplaceIfExists;
+    union
+    {
+        BOOLEAN ReplaceIfExists;
+        ULONG Flags;
+    };
     ULONG   RootDirectory;
     ULONG   FileNameLength;
     WCHAR   FileName[1];
@@ -371,6 +375,11 @@ typedef struct
 {
     ULONG Owner;
 } TOKEN_OWNER32;
+
+typedef struct
+{
+    ULONG PrimaryGroup;
+} TOKEN_PRIMARY_GROUP32;
 
 typedef struct
 {

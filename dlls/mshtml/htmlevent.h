@@ -76,9 +76,6 @@ typedef struct DOMEvent {
     DispatchEx dispex;
     IDOMEvent IDOMEvent_iface;
 
-    LONG ref;
-    void *(*query_interface)(struct DOMEvent*,REFIID);
-
     nsIDOMEvent *nsevent;
 
     eventid_t event_id;
@@ -100,6 +97,7 @@ typedef struct DOMEvent {
 
 const WCHAR *get_event_name(eventid_t);
 void check_event_attr(HTMLDocumentNode*,nsIDOMElement*);
+void traverse_event_target(EventTarget*,nsCycleCollectionTraversalCallback*);
 void release_event_target(EventTarget*);
 HRESULT set_event_handler(EventTarget*,eventid_t,VARIANT*);
 HRESULT get_event_handler(EventTarget*,eventid_t,VARIANT*);
@@ -129,16 +127,33 @@ void detach_nsevent(HTMLDocumentNode*,const WCHAR*);
 /* We extend dispex vtbl for EventTarget functions to avoid separated vtbl. */
 typedef struct {
     dispex_static_data_vtbl_t dispex_vtbl;
+    IDispatch *(*get_dispatch_this)(DispatchEx*);
     nsISupports *(*get_gecko_target)(DispatchEx*);
     void (*bind_event)(DispatchEx*,eventid_t);
     EventTarget *(*get_parent_event_target)(DispatchEx*);
-    HRESULT (*handle_event_default)(DispatchEx*,eventid_t,nsIDOMEvent*,BOOL*);
+    HRESULT (*handle_event)(DispatchEx*,eventid_t,nsIDOMEvent*,BOOL*);
     ConnectionPointContainer *(*get_cp_container)(DispatchEx*);
     IHTMLEventObj *(*set_current_event)(DispatchEx*,IHTMLEventObj*);
 } event_target_vtbl_t;
 
-extern const event_target_vtbl_t HTMLElement_event_target_vtbl;
 IHTMLEventObj *default_set_current_event(HTMLInnerWindow*,IHTMLEventObj*);
+
+nsISupports *HTMLElement_get_gecko_target(DispatchEx*);
+void HTMLElement_bind_event(DispatchEx*,eventid_t);
+EventTarget *HTMLElement_get_parent_event_target(DispatchEx*);
+HRESULT HTMLElement_handle_event(DispatchEx*,eventid_t,nsIDOMEvent*,BOOL*);
+ConnectionPointContainer *HTMLElement_get_cp_container(DispatchEx*);
+IHTMLEventObj *HTMLElement_set_current_event(DispatchEx*,IHTMLEventObj*);
+
+#define HTMLELEMENT_DISPEX_VTBL_ENTRIES                 \
+    .populate_props      = HTMLElement_populate_props
+
+#define HTMLELEMENT_EVENT_TARGET_VTBL_ENTRIES                       \
+    .get_gecko_target        = HTMLElement_get_gecko_target,        \
+    .bind_event              = HTMLElement_bind_event,              \
+    .get_parent_event_target = HTMLElement_get_parent_event_target, \
+    .get_cp_container        = HTMLElement_get_cp_container,        \
+    .set_current_event       = HTMLElement_set_current_event
 
 static inline EventTarget *get_node_event_prop_target(HTMLDOMNode *node, eventid_t eid)
 {

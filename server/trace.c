@@ -960,10 +960,11 @@ static void dump_varargs_startup_info( const char *prefix, data_size_t size )
 
     fprintf( stderr,
              "%s{debug_flags=%x,console_flags=%x,console=%04x,hstdin=%04x,hstdout=%04x,hstderr=%04x,"
-             "x=%u,y=%u,xsize=%u,ysize=%u,xchars=%u,ychars=%u,attribute=%02x,flags=%x,show=%u",
+             "x=%u,y=%u,xsize=%u,ysize=%u,xchars=%u,ychars=%u,attribute=%02x,flags=%x,show=%u,"
+             "process_group_id=%u",
              prefix, info.debug_flags, info.console_flags, info.console,
              info.hstdin, info.hstdout, info.hstderr, info.x, info.y, info.xsize, info.ysize,
-             info.xchars, info.ychars, info.attribute, info.flags, info.show );
+             info.xchars, info.ychars, info.attribute, info.flags, info.show, info.process_group_id );
     pos = dump_inline_unicode_string( ",curdir=L\"", pos, info.curdir_len, size );
     pos = dump_inline_unicode_string( "\",dllpath=L\"", pos, info.dllpath_len, size );
     pos = dump_inline_unicode_string( "\",imagepath=L\"", pos, info.imagepath_len, size );
@@ -2196,6 +2197,16 @@ static void dump_get_mapping_info_reply( const struct get_mapping_info_reply *re
     fprintf( stderr, ", total=%u", req->total );
     dump_varargs_pe_image_info( ", image=", cur_size );
     dump_varargs_unicode_str( ", name=", cur_size );
+}
+
+static void dump_get_image_map_address_request( const struct get_image_map_address_request *req )
+{
+    fprintf( stderr, " handle=%04x", req->handle );
+}
+
+static void dump_get_image_map_address_reply( const struct get_image_map_address_reply *req )
+{
+    dump_uint64( " addr=", &req->addr );
 }
 
 static void dump_map_view_request( const struct map_view_request *req )
@@ -3840,6 +3851,23 @@ static void dump_remove_clipboard_listener_request( const struct remove_clipboar
     fprintf( stderr, " window=%08x", req->window );
 }
 
+static void dump_create_token_request( const struct create_token_request *req )
+{
+    dump_luid( " token_id=", &req->token_id );
+    fprintf( stderr, ", access=%08x", req->access );
+    fprintf( stderr, ", primary=%d", req->primary );
+    fprintf( stderr, ", impersonation_level=%d", req->impersonation_level );
+    dump_abstime( ", expire=", &req->expire );
+    fprintf( stderr, ", group_count=%d", req->group_count );
+    fprintf( stderr, ", primary_group=%d", req->primary_group );
+    fprintf( stderr, ", priv_count=%d", req->priv_count );
+}
+
+static void dump_create_token_reply( const struct create_token_reply *req )
+{
+    fprintf( stderr, " token=%04x", req->token );
+}
+
 static void dump_open_token_request( const struct open_token_request *req )
 {
     fprintf( stderr, " handle=%04x", req->handle );
@@ -4393,7 +4421,7 @@ static void dump_set_fd_name_info_request( const struct set_fd_name_info_request
     fprintf( stderr, ", rootdir=%04x", req->rootdir );
     fprintf( stderr, ", namelen=%u", req->namelen );
     fprintf( stderr, ", link=%d", req->link );
-    fprintf( stderr, ", replace=%d", req->replace );
+    fprintf( stderr, ", flags=%08x", req->flags );
     dump_varargs_unicode_str( ", name=", min(cur_size,req->namelen) );
     dump_varargs_string( ", filename=", cur_size );
 }
@@ -4644,6 +4672,7 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_create_mapping_request,
     (dump_func)dump_open_mapping_request,
     (dump_func)dump_get_mapping_info_request,
+    (dump_func)dump_get_image_map_address_request,
     (dump_func)dump_map_view_request,
     (dump_func)dump_map_image_view_request,
     (dump_func)dump_map_builtin_view_request,
@@ -4791,6 +4820,7 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_set_clipboard_viewer_request,
     (dump_func)dump_add_clipboard_listener_request,
     (dump_func)dump_remove_clipboard_listener_request,
+    (dump_func)dump_create_token_request,
     (dump_func)dump_open_token_request,
     (dump_func)dump_set_global_windows_request,
     (dump_func)dump_adjust_token_privileges_request,
@@ -4929,6 +4959,7 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_create_mapping_reply,
     (dump_func)dump_open_mapping_reply,
     (dump_func)dump_get_mapping_info_reply,
+    (dump_func)dump_get_image_map_address_reply,
     NULL,
     NULL,
     NULL,
@@ -5076,6 +5107,7 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_set_clipboard_viewer_reply,
     NULL,
     NULL,
+    (dump_func)dump_create_token_reply,
     (dump_func)dump_open_token_reply,
     (dump_func)dump_set_global_windows_reply,
     (dump_func)dump_adjust_token_privileges_reply,
@@ -5214,6 +5246,7 @@ static const char * const req_names[REQ_NB_REQUESTS] = {
     "create_mapping",
     "open_mapping",
     "get_mapping_info",
+    "get_image_map_address",
     "map_view",
     "map_image_view",
     "map_builtin_view",
@@ -5361,6 +5394,7 @@ static const char * const req_names[REQ_NB_REQUESTS] = {
     "set_clipboard_viewer",
     "add_clipboard_listener",
     "remove_clipboard_listener",
+    "create_token",
     "open_token",
     "set_global_windows",
     "adjust_token_privileges",

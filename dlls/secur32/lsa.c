@@ -32,6 +32,7 @@
 #include "ntsecapi.h"
 #include "ntsecpkg.h"
 #include "winternl.h"
+#include "ddk/ntddk.h"
 #include "rpc.h"
 
 #include "wine/debug.h"
@@ -906,10 +907,12 @@ static BOOL initialize_package(struct lsa_package *package,
             {
                 status = pSpUserModeInitialize(SECPKG_INTERFACE_VERSION, &package->user_api_version, &package->user_api, &package->user_table_count);
                 if (status == STATUS_SUCCESS)
+                {
                     package->user_api->InstanceInit(SECPKG_INTERFACE_VERSION, &lsa_dll_dispatch, NULL);
+                    return TRUE;
+                }
             }
         }
-        return TRUE;
     }
 
     return FALSE;
@@ -967,10 +970,9 @@ void load_auth_packages(void)
         if (err != ERROR_SUCCESS)
             continue;
 
-        if (!load_package(name, &package, i + 1))
-            continue;
+        if (load_package(name, &package, i + 1))
+            add_package(&package);
 
-        add_package(&package);
         i++;
     }
 

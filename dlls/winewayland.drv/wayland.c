@@ -34,6 +34,8 @@ WINE_DEFAULT_DEBUG_CHANNEL(waylanddrv);
 
 struct wayland process_wayland =
 {
+    .seat.mutex = PTHREAD_MUTEX_INITIALIZER,
+    .pointer.mutex = PTHREAD_MUTEX_INITIALIZER,
     .output_list = {&process_wayland.output_list, &process_wayland.output_list},
     .output_mutex = PTHREAD_MUTEX_INITIALIZER
 };
@@ -51,6 +53,29 @@ static void xdg_wm_base_handle_ping(void *data, struct xdg_wm_base *shell,
 static const struct xdg_wm_base_listener xdg_wm_base_listener =
 {
     xdg_wm_base_handle_ping
+};
+
+/**********************************************************************
+ *          wl_seat handling
+ */
+
+static void wl_seat_handle_capabilities(void *data, struct wl_seat *seat,
+                                        enum wl_seat_capability caps)
+{
+    if ((caps & WL_SEAT_CAPABILITY_POINTER) && !process_wayland.pointer.wl_pointer)
+        wayland_pointer_init(wl_seat_get_pointer(seat));
+    else if (!(caps & WL_SEAT_CAPABILITY_POINTER) && process_wayland.pointer.wl_pointer)
+        wayland_pointer_deinit();
+}
+
+static void wl_seat_handle_name(void *data, struct wl_seat *seat, const char *name)
+{
+}
+
+static const struct wl_seat_listener seat_listener =
+{
+    wl_seat_handle_capabilities,
+    wl_seat_handle_name
 };
 
 /**********************************************************************
@@ -98,12 +123,28 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
     {
         process_wayland.wl_shm = wl_registry_bind(registry, id, &wl_shm_interface, 1);
     }
+    else if (strcmp(interface, "wl_seat") == 0)
+    {
+        struct wayland_seat *seat = &process_wayland.seat;
+        if (seat->wl_seat)
+        {
+            WARN("Only a single seat is currently supported, ignoring additional seats.\n");
+            return;
+        }
+        pthread_mutex_lock(&seat->mutex);
+        seat->wl_seat = wl_registry_bind(registry, id, &wl_seat_interface,
+                                         version < 5 ? version : 5);
+        seat->global_id = id;
+        wl_seat_add_listener(seat->wl_seat, &seat_listener, NULL);
+        pthread_mutex_unlock(&seat->mutex);
+    }
 }
 
 static void registry_handle_global_remove(void *data, struct wl_registry *registry,
                                           uint32_t id)
 {
     struct wayland_output *output, *tmp;
+    struct wayland_seat *seat;
 
     TRACE("id=%u\n", id);
 
@@ -115,6 +156,18 @@ static void registry_handle_global_remove(void *data, struct wl_registry *regist
             wayland_output_destroy(output);
             return;
         }
+    }
+
+    seat = &process_wayland.seat;
+    if (seat->wl_seat && seat->global_id == id)
+    {
+        TRACE("removing seat\n");
+        if (process_wayland.pointer.wl_pointer) wayland_pointer_deinit();
+        pthread_mutex_lock(&seat->mutex);
+        wl_seat_release(seat->wl_seat);
+        seat->wl_seat = NULL;
+        seat->global_id = 0;
+        pthread_mutex_unlock(&seat->mutex);
     }
 }
 

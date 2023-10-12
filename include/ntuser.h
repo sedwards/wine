@@ -135,6 +135,7 @@ enum wm_char_mapping
     WMCHAR_MAP_RECVMESSAGE,
     WMCHAR_MAP_DISPATCHMESSAGE,
     WMCHAR_MAP_CALLWINDOWPROC,
+    WMCHAR_MAP_ISDIALOGMESSAGE,
     WMCHAR_MAP_COUNT,
     WMCHAR_MAP_NOMAPPING = WMCHAR_MAP_COUNT
 };
@@ -1070,8 +1071,8 @@ enum
     NtUserCallHwnd_SetTaskmanWindow,
     /* temporary exports */
     NtUserGetFullWindowHandle,
-    NtUserIsCurrehtProcessWindow,
-    NtUserIsCurrehtThreadWindow,
+    NtUserIsCurrentProcessWindow,
+    NtUserIsCurrentThreadWindow,
 };
 
 static inline void NtUserActivateOtherWindow( HWND hwnd )

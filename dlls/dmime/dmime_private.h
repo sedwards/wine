@@ -42,10 +42,11 @@
 #include "dmusics.h"
 #include "dmusicc.h"
 
+#include "dmobject.h"
+
 /*****************************************************************************
  * Interfaces
  */
-typedef struct IDirectMusicGraphImpl IDirectMusicGraphImpl;
 typedef struct IDirectMusicAudioPathImpl IDirectMusicAudioPathImpl;
 
 /*****************************************************************************
@@ -71,37 +72,27 @@ extern void set_audiopath_perf_pointer(IDirectMusicAudioPath*,IDirectMusicPerfor
 extern void set_audiopath_dsound_buffer(IDirectMusicAudioPath*,IDirectSoundBuffer*);
 extern void set_audiopath_primary_dsound_buffer(IDirectMusicAudioPath*,IDirectSoundBuffer*);
 
+extern HRESULT segment_state_create(IDirectMusicSegment *segment, MUSIC_TIME start_time,
+        IDirectMusicPerformance *performance, IDirectMusicSegmentState **ret_iface);
+extern HRESULT segment_state_play(IDirectMusicSegmentState *iface, IDirectMusicPerformance *performance);
+extern HRESULT segment_state_end_play(IDirectMusicSegmentState *iface);
+
+extern HRESULT wave_track_create_from_chunk(IStream *stream, struct chunk_entry *parent,
+        IDirectMusicTrack8 **ret_iface);
+
+extern HRESULT performance_get_dsound(IDirectMusicPerformance8 *iface, IDirectSound **dsound);
+
 /*****************************************************************************
  * Auxiliary definitions
  */
-typedef struct _DMUS_PRIVATE_SEGMENT_TRACK {
-  struct list entry; /* for listing elements */
-  DWORD dwGroupBits;
-  DWORD flags;
-  IDirectMusicTrack* pTrack;
-} DMUS_PRIVATE_SEGMENT_TRACK, *LPDMUS_PRIVATE_SEGMENT_TRACK;
-
 typedef struct _DMUS_PRIVATE_TEMPO_ITEM {
   struct list entry; /* for listing elements */
   DMUS_IO_TEMPO_ITEM item;
 } DMUS_PRIVATE_TEMPO_ITEM, *LPDMUS_PRIVATE_TEMPO_ITEM;
 
-typedef struct _DMUS_PRIVATE_GRAPH_TOOL {
-  struct list entry; /* for listing elements */
-  DWORD dwIndex;
-  IDirectMusicTool* pTool;
-} DMUS_PRIVATE_GRAPH_TOOL, *LPDMUS_PRIVATE_GRAPH_TOOL;
-
 typedef struct _DMUS_PRIVATE_TEMPO_PLAY_STATE {
   DWORD dummy;
 } DMUS_PRIVATE_TEMPO_PLAY_STATE, *LPDMUS_PRIVATE_TEMPO_PLAY_STATE;
-
-/**********************************************************************
- * Dll lifetime tracking declaration for dmime.dll
- */
-extern LONG DMIME_refCount;
-static inline void DMIME_LockModule(void) { InterlockedIncrement( &DMIME_refCount ); }
-static inline void DMIME_UnlockModule(void) { InterlockedDecrement( &DMIME_refCount ); }
 
 /*****************************************************************************
  * Misc.

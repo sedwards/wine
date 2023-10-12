@@ -2841,13 +2841,16 @@ int evaluate_if_condition(WCHAR *p, WCHAR **command, int *test, int *negate)
     WCHAR *param = WCMD_parameter(p, 1+(*negate), NULL, FALSE, FALSE);
     int    len = lstrlenW(param);
 
-    if (!len) goto syntax_err;
-    /* FindFirstFile does not like a directory path ending in '\' or '/', append a '.' */
-    if (param[len-1] == '\\' || param[len-1] == '/') lstrcatW(param, L".");
+    if (!len) {
+        *test = FALSE;
+    } else {
+        /* FindFirstFile does not like a directory path ending in '\' or '/', so append a '.' */
+        if (param[len-1] == '\\' || param[len-1] == '/') wcscat(param, L".");
 
-    hff = FindFirstFileW(param, &fd);
-    *test = (hff != INVALID_HANDLE_VALUE );
-    if (*test) FindClose(hff);
+        hff = FindFirstFileW(param, &fd);
+        *test = (hff != INVALID_HANDLE_VALUE);
+        if (*test) FindClose(hff);
+    }
 
     WCMD_parameter(p, 2+(*negate), command, FALSE, FALSE);
   }
@@ -3496,7 +3499,7 @@ void WCMD_setshow_default (const WCHAR *args) {
       /* Restore old directory if drive letter would change, and
            CD x:\directory /D (or pushd c:\directory) not supplied */
       if ((wcsstr(quals, L"/D") == NULL) &&
-          (param1[1] == ':') && (toupper(param1[0]) != toupper(cwd[0]))) {
+          (param1[1] == ':') && (towupper(param1[0]) != towupper(cwd[0]))) {
         SetCurrentDirectoryW(cwd);
       }
     }
