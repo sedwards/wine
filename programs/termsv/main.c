@@ -18,11 +18,20 @@
 
 #define WIN32_LEAN_AND_MEAN
 
+#define WIN32_LEAN_AND_MEAN
+#include <ntstatus.h>
+#define WIN32_NO_STATUS
 #include <windows.h>
+#include <winternl.h>
 #include <winsvc.h>
+
 #include "wine/debug.h"
 
+#include "rds.h"
+
 WINE_DEFAULT_DEBUG_CHANNEL(termsv);
+
+//NTSTATUS initialize_service(void);
 
 static WCHAR termserviceW[] = L"TermService";
 
@@ -61,8 +70,15 @@ static DWORD WINAPI service_handler( DWORD ctrl, DWORD event_type, LPVOID event_
 static void WINAPI ServiceMain( DWORD argc, LPWSTR *argv )
 {
     SERVICE_STATUS status;
+    LONG ret;
 
     WINE_TRACE( "starting service\n" );
+
+//    if ((ret = initialize_service()))
+  //  {
+    //    WARN("Failed to initialize Remote Desktop Services, status %ld.\n", ret);
+    //    return;
+    //}
 
     stop_event = CreateEventW( NULL, TRUE, FALSE, NULL );
 
@@ -87,8 +103,11 @@ static void WINAPI ServiceMain( DWORD argc, LPWSTR *argv )
     WINE_TRACE( "service stopped\n" );
 }
 
+BOOL initialize_service(void);
+
 int __cdecl wmain( int argc, WCHAR *argv[] )
 {
+/*
     static const SERVICE_TABLE_ENTRYW service_table[] =
     {
         { termserviceW, ServiceMain },
@@ -96,5 +115,15 @@ int __cdecl wmain( int argc, WCHAR *argv[] )
     };
 
     StartServiceCtrlDispatcherW( service_table );
+    */
+
+    /* Initialize the service */
+    if (!initialize_service())
+    {
+        WINE_ERR("Failed to initialize RDS service\n");
+        return 1;
+    }
+
     return 0;
 }
+

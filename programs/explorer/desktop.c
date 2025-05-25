@@ -40,7 +40,7 @@ WINE_DEFAULT_DEBUG_CHANNEL(explorer);
 #define DESKTOP_CLASS_ATOM ((LPCWSTR)MAKEINTATOM(32769))
 #define DESKTOP_ALL_ACCESS 0x01ff
 
-static const WCHAR default_driver[] = L"mac,x11,wayland";
+static const WCHAR default_driver[] = L"rds,mac,x11,wayland";
 
 static BOOL using_root = TRUE;
 
@@ -1011,6 +1011,7 @@ static void load_graphics_driver( const WCHAR *driver, GUID *guid )
         /* @@ Wine registry key: HKCU\Software\Wine\Drivers */
         if (!RegOpenKeyW( HKEY_CURRENT_USER, L"Software\\Wine\\Drivers", &hkey ))
         {
+		FIXME("Its trying to open the registry key and check\n");
             DWORD count = sizeof(buffer);
             RegQueryValueExW( hkey, L"Graphics", 0, NULL, (LPBYTE)buffer, &count );
             RegCloseKey( hkey );
@@ -1039,9 +1040,11 @@ static void load_graphics_driver( const WCHAR *driver, GUID *guid )
         {
         case ERROR_MOD_NOT_FOUND:
             strcpy( error, "The graphics driver is missing. Check your build!" );
+            ERR("The graphics driver is missing. Check your build!" );
             break;
         case ERROR_DLL_INIT_FAILED:
             strcpy( error, "Make sure that your display server is running and that its variables are set." );
+            ERR("Make sure that your display server is running and that its variables are set." );
             break;
         default:
             sprintf( error, "Unknown error (%lu).", GetLastError() );

@@ -114,6 +114,8 @@ static BOOL can_enable_desktop(void)
     {
         if(wcscmp(value, L"winemac.drv"))
             ret = TRUE;
+	if(wcscmp(value, L"winerds.drv"))
+	    ret = TRUE;
         free(value);
     }
     return ret;
