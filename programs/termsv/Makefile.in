@@ -4,7 +4,4 @@ IMPORTS   = advapi32 user32
 EXTRADLLFLAGS = -mconsole -municode
 
 SOURCES = \
-	gdi.c \
-	main.c \
-	rds.c \
-
+	main.c
