@@ -53,14 +53,70 @@ BOOL initialize_service(void)
 
     // Create a default surface (example dimensions)
     // In a real system, surface creation might be more dynamic or based on client requests.
-    rds_service.default_surface = create_surface_ex(800, 600, 32);
+    // Replace:
+    // rds_service.default_surface = create_surface_ex(800, 600, 32);
+    // With:
+    rds_service.default_surface = (RDS_SURFACE*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(RDS_SURFACE));
     if (!rds_service.default_surface) {
-        printf("ERR: Failed to create default surface\n");
+        printf("Failed to allocate memory for default_surface\n");
+        gdi_shutdown(); // Assuming these are still relevant or will be adapted
+        surface_shutdown();
+        return FALSE;
+    }
+
+    rds_service.default_surface->id = 1; // Default display surface ID
+    rds_service.default_surface->width = 800;
+    rds_service.default_surface->height = 600;
+    rds_service.default_surface->bpp = 32;
+
+    BITMAPINFO bmi;
+    memset(&bmi, 0, sizeof(BITMAPINFO));
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = rds_service.default_surface->width;
+    bmi.bmiHeader.biHeight = -rds_service.default_surface->height; // Top-down DIB
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = rds_service.default_surface->bpp;
+    bmi.bmiHeader.biCompression = BI_RGB;
+
+    rds_service.default_surface->hBitmap = CreateDIBSection(
+        NULL, // hdc (optional, NULL for memory DIB)
+        &bmi,
+        DIB_RGB_COLORS,
+        &rds_service.default_surface->pBitmapBits,
+        NULL, // hSection (for file mapping objects, not needed here)
+        0     // dwOffset
+    );
+
+    if (!rds_service.default_surface->hBitmap) {
+        printf("CreateDIBSection failed, GLE=%lu\n", GetLastError());
+        HeapFree(GetProcessHeap(), 0, rds_service.default_surface);
+        rds_service.default_surface = NULL;
         gdi_shutdown();
         surface_shutdown();
         return FALSE;
     }
-    printf("Default surface created, ID: %lu\n", (unsigned long)rds_service.default_surface->id);
+
+    rds_service.default_surface->hdc = CreateCompatibleDC(NULL); // DC compatible with screen
+    if (!rds_service.default_surface->hdc) {
+        printf("CreateCompatibleDC failed, GLE=%lu\n", GetLastError());
+        DeleteObject(rds_service.default_surface->hBitmap);
+        HeapFree(GetProcessHeap(), 0, rds_service.default_surface);
+        rds_service.default_surface = NULL;
+        gdi_shutdown();
+        surface_shutdown();
+        return FALSE;
+    }
+
+    // Select the DIB section into the memory DC
+    SelectObject(rds_service.default_surface->hdc, rds_service.default_surface->hBitmap);
+    
+    // Initialize dirty rect (e.g., to full surface)
+    SetRect(&rds_service.default_surface->dirty_rect, 0, 0, rds_service.default_surface->width, rds_service.default_surface->height);
+    rds_service.default_surface->dirty = TRUE;
+
+
+    printf("Default surface created with DIB section and memory HDC.\n");
+    // ... (rest of initialize_service, including gdi_draw_test_pattern and StartRDSPipeServer)
 
     // Draw a test pattern on the default surface
     gdi_draw_test_pattern(rds_service.default_surface);
@@ -94,8 +150,20 @@ static void shutdown_service(void)
 
     if (rds_service.default_surface)
     {
-        printf("Destroying default surface, ID: %lu\n", (unsigned long)rds_service.default_surface->id);
-        destroy_surface(rds_service.default_surface->id);
+        printf("Cleaning up default surface: HDC=%p, HBITMAP=%p\n", 
+               rds_service.default_surface->hdc, rds_service.default_surface->hBitmap);
+        if (rds_service.default_surface->hdc)
+        {
+            // Optionally select out the bitmap if you stored the old one,
+            // though for a DC created with CreateCompatibleDC(NULL) and only ever having this bitmap,
+            // it's not strictly necessary before DeleteDC.
+            DeleteDC(rds_service.default_surface->hdc);
+        }
+        if (rds_service.default_surface->hBitmap)
+        {
+            DeleteObject(rds_service.default_surface->hBitmap);
+        }
+        HeapFree(GetProcessHeap(), 0, rds_service.default_surface);
         rds_service.default_surface = NULL;
     }
 
