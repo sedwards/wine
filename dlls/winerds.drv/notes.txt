@@ -1,0 +1,25 @@
+is implementation provides:
+
+A virtual physical device (PDEV) structure that represents your remote desktop display
+A virtual surface (SURF) structure for drawing operations
+Methods to create, manage, and clean up these virtual objects
+Basic framebuffer allocation and management
+Integration points with Wine's GDI system
+
+The key components that make this work:
+
+DrvEnablePDEV: Creates the virtual device with a memory buffer to serve as the framebuffer
+DrvEnableSurface: Creates a surface associated with the framebuffer that GDI can draw to
+DrvCreateDC: Creates a device context for drawing operations
+DrvCreateDeviceBitmap: Creates compatible bitmaps for offscreen rendering
+RdsCaptureSurface: Helper function to get the current framebuffer content for RDP transmission
+
+You'll need to expand this to:
+
+Integrate with your RDP server to transmit screen updates
+Handle input events from remote clients
+Implement other GDI drawing operations (StretchBlt, TextOut, etc.)
+
+This is a starting point for the virtual display part. Your termsrv.exe.so process would use the framebuffer data from RdsCaptureSurface to send to connected clients. The dirty flag mechanism helps optimize by only sending updates when content has changed.
+Would you like me to explain any specific part of this implementation in more detail?
+
