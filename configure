@@ -1748,7 +1748,6 @@ enable_systeminfo
 enable_taskkill
 enable_tasklist
 enable_taskmgr
-enable_termsrv
 enable_termsv
 enable_timeout
 enable_uninstaller
@@ -9931,7 +9930,6 @@ esac
 enable_winecoreaudio_drv=${enable_winecoreaudio_drv:-no}
 enable_wineandroid_drv=${enable_wineandroid_drv:-no}
 enable_winemac_drv=${enable_winemac_drv:-no}
-enable_winerds_drv=${enable_winemac_drv:-no}
 
 PE_ARCHS=""
 
@@ -22225,7 +22223,6 @@ wine_fn_config_makefile programs/taskkill enable_taskkill
 wine_fn_config_makefile programs/tasklist enable_tasklist
 wine_fn_config_makefile programs/tasklist/tests enable_tests
 wine_fn_config_makefile programs/taskmgr enable_taskmgr
-wine_fn_config_makefile programs/termsrv enable_termsrv
 wine_fn_config_makefile programs/termsv enable_termsv
 wine_fn_config_makefile programs/timeout enable_timeout
 wine_fn_config_makefile programs/timeout/tests enable_tests

@@ -1,9 +1,3 @@
-#ifndef RDS_MESSAGES
-#define RDS_MESSAGES
-
-#include <basetsd.h>
-#include <windows.h>
-
 // Shared between termsrv.exe.so and winerds.drv
 typedef enum _RDS_MESSAGE_TYPE
 {
@@ -81,7 +75,9 @@ typedef struct _RDS_MESSAGE
             DWORD_PTR surfaceId;
             DWORD x;
             DWORD y;
-            COLORREF color;
+            COLORREF color;      // Pen color, effectively logpen.lopnColor
+            UINT  lopnStyle;     // Pen style (e.g., PS_SOLID)
+            INT   lopnWidth_x;   // Pen width in logical units for x 
         } lineTo;
 
         struct
@@ -91,8 +87,18 @@ typedef struct _RDS_MESSAGE
             DWORD top;
             DWORD right;
             DWORD bottom;
-            COLORREF color;
-            BOOL filled;
+            COLORREF color;      // Pen color for border, effectively pen_lopnColor
+            BOOL filled;         // Whether the rectangle is filled
+
+            // Pen properties for border
+            UINT     pen_lopnStyle;
+            INT      pen_lopnWidth_x;
+            // COLORREF pen_lopnColor is 'color' above
+
+            // Brush properties for fill (if filled is TRUE)
+            UINT     brush_lbStyle;    // Brush style (e.g., BS_SOLID, BS_HATCHED)
+            COLORREF brush_lbColor;    // Brush color
+            ULONG_PTR brush_lbHatch;   // Hatch style if BS_HATCHED (e.g., HS_DIAGCROSS)
         } rectangle;
 
         struct
@@ -100,9 +106,24 @@ typedef struct _RDS_MESSAGE
             DWORD_PTR surfaceId;
             DWORD x;
             DWORD y;
-            COLORREF color;
-            DWORD count;      // Number of WCHARs
-            DWORD data_size;  // Size in bytes of the text data that follows the RDS_MESSAGE struct
+            COLORREF color;      // Text foreground color, effectively text_fg_color
+            DWORD count;         // Number of WCHARs
+            DWORD data_size;     // Size in bytes of the text data that follows
+
+            // Text state
+            // COLORREF text_fg_color is 'color' above
+            COLORREF text_bk_color;
+            INT      bk_mode;    // OPAQUE or TRANSPARENT from SetBkMode
+
+            // Font properties (subset of LOGFONTW)
+            LONG     font_lfHeight;
+            LONG     font_lfWidth;
+            LONG     font_lfWeight;
+            BYTE     font_lfItalic;
+            BYTE     font_lfUnderline;
+            BYTE     font_lfStrikeOut;
+            BYTE     font_lfCharSet;
+            WCHAR    font_lfFaceName[LF_FACESIZE]; // LF_FACESIZE is usually 32
             // WCHAR text[...] will follow RDS_MESSAGE in the stream
         } textOut;
 
@@ -122,5 +143,3 @@ typedef struct _RDS_MESSAGE
         } bitBlt;
     } params;
 } RDS_MESSAGE;
-
-#endif

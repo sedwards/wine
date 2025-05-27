@@ -45,33 +45,47 @@ BOOL rds_MoveTo(PHYSDEV dev, INT x, INT y)
 BOOL rds_LineTo(PHYSDEV dev, INT x, INT y)
 {
     RDS_MESSAGE msg;
-    COLORREF color = 0; // Default to black
+    LOGPENW logPen; // Use LOGPENW for Unicode compatibility if lfFaceName uses WCHAR
 
-    WINE_TRACE("dev=%p, x=%d, y=%d\n", dev, x, y);
+    // WINE_TRACE("dev=%p, x=%d, y=%d\n", dev, x, y); // Already present
 
-    // Attempt to get current DC color if dev and dev->hdc are valid
-    // This relies on PHYSDEV having an hdc member that is valid.
-    // Also assumes that PHYSDEV is a pointer type, which is typical.
-    if (dev && dev->hdc) { // dev is typically DRIVER_PDEVICE dev
-        color = GetTextColor(dev->hdc); // Or GetDCPenColor, depending on what's appropriate for lines
+    if (dev && dev->hdc) {
+        HPEN hCurrentPen = GetCurrentObject(dev->hdc, OBJ_PEN);
+        if (hCurrentPen) {
+            GetObjectW(hCurrentPen, sizeof(LOGPENW), &logPen);
+        } else {
+            // Default LOGPEN if no pen or GetCurrentObject fails
+            memset(&logPen, 0, sizeof(LOGPENW));
+            logPen.lopnStyle = PS_SOLID;
+            logPen.lopnWidth.x = 1;
+            logPen.lopnColor = RGB(0,0,0); // Default black
+            // WINE_WARN("Could not get current pen, using default for LineTo.\n");
+            printf("WARN: winerds.drv: Could not get current pen, using default for LineTo.\n");
+        }
     } else {
-        WINE_WARN("dev (%p) or dev->hdc is NULL, using default color for LineTo.\n", dev);
+        memset(&logPen, 0, sizeof(LOGPENW));
+        logPen.lopnStyle = PS_SOLID;
+        logPen.lopnWidth.x = 1;
+        logPen.lopnColor = RGB(0,0,0);
+        // WINE_WARN("dev or dev->hdc is NULL, using default pen for LineTo.\n");
+        printf("WARN: winerds.drv: dev or dev->hdc is NULL, using default pen for LineTo.\n");
     }
 
     msg.msgType = RDS_MSG_LINE_TO;
-    // TODO: Replace placeholder '1' with actual surface ID logic later
-    // The actual surface ID should be derived from PHYSDEV dev
     msg.params.lineTo.surfaceId = 1; // Placeholder Surface ID
     msg.params.lineTo.x = x;
     msg.params.lineTo.y = y;
-    msg.params.lineTo.color = color;
+    msg.params.lineTo.color = logPen.lopnColor; // This is pen_lopnColor
+    msg.params.lineTo.lopnStyle = logPen.lopnStyle;
+    msg.params.lineTo.lopnWidth_x = logPen.lopnWidth.x;
 
     if (!SendRDSMessage(&msg, NULL, 0))
     {
-        WINE_ERR("Failed to send RDS_MSG_LINE_TO\n");
-        return FALSE; // Indicate failure
+        // WINE_ERR("Failed to send RDS_MSG_LINE_TO\n");
+        printf("ERR: winerds.drv: Failed to send RDS_MSG_LINE_TO\n");
+        return FALSE;
     }
-    return TRUE; // Indicate success
+    return TRUE;
 }
 
 // Other GDI functions like rds_Rectangle, rds_TextOut would follow a similar pattern.
@@ -79,39 +93,61 @@ BOOL rds_LineTo(PHYSDEV dev, INT x, INT y)
 BOOL rds_Rectangle(PHYSDEV dev, INT left, INT top, INT right, INT bottom)
 {
     RDS_MESSAGE msg;
-    COLORREF pen_color = 0; // Default to black
-    BOOL is_filled = FALSE; // Default to not filled
+    LOGPENW logPen;
+    LOGBRUSH logBrush;
+    BOOL is_filled = FALSE;
 
-    WINE_TRACE("dev=%p, left=%d, top=%d, right=%d, bottom=%d\n", dev, left, top, right, bottom);
+    // WINE_TRACE("dev=%p, left=%d, top=%d, right=%d, bottom=%d\n", dev, left, top, right, bottom); // Already present
 
     if (dev && dev->hdc) {
-        pen_color = GetDCPenColor(dev->hdc); // Or GetTextColor if pen color not directly available this way
-        
-        // Check if brush is not NULL to determine if filled
-        HBRUSH hBrush = GetCurrentObject(dev->hdc, OBJ_BRUSH);
-        if (hBrush != NULL && hBrush != GetStockObject(NULL_BRUSH) && hBrush != GetStockObject(HOLLOW_BRUSH)) {
-             // A more complex check might be needed for pattern brushes etc.
-             // For now, any non-null/hollow brush implies filled for simplicity.
-             // The actual fill color would be from the brush, but RDS_MSG_RECTANGLE only has one 'color' field.
-             // We'll send the pen_color for now and assume server handles fill with a default or this color.
-             is_filled = TRUE; 
+        HPEN hCurrentPen = GetCurrentObject(dev->hdc, OBJ_PEN);
+        HBRUSH hCurrentBrush = GetCurrentObject(dev->hdc, OBJ_BRUSH);
+
+        if (hCurrentPen) {
+            GetObjectW(hCurrentPen, sizeof(LOGPENW), &logPen);
+        } else {
+            memset(&logPen, 0, sizeof(LOGPENW));
+            logPen.lopnStyle = PS_SOLID; logPen.lopnWidth.x = 1; logPen.lopnColor = RGB(0,0,0);
+            printf("WARN: winerds.drv: Could not get current pen, using default for Rectangle.\n");
+        }
+
+        if (hCurrentBrush) {
+            GetObjectW(hCurrentBrush, sizeof(LOGBRUSH), &logBrush);
+            if (logBrush.lbStyle != BS_NULL && logBrush.lbStyle != BS_HOLLOW) { // BS_NULL is from GetStockObject(NULL_BRUSH)
+                is_filled = TRUE;
+            }
+        } else {
+            memset(&logBrush, 0, sizeof(LOGBRUSH));
+            logBrush.lbStyle = BS_NULL; // No fill
+            printf("WARN: winerds.drv: Could not get current brush, assuming no fill for Rectangle.\n");
         }
     } else {
-        WINE_WARN("dev or dev->hdc is NULL, using default color/fill for Rectangle.\n");
+        memset(&logPen, 0, sizeof(LOGPENW));
+        logPen.lopnStyle = PS_SOLID; logPen.lopnWidth.x = 1; logPen.lopnColor = RGB(0,0,0);
+        memset(&logBrush, 0, sizeof(LOGBRUSH));
+        logBrush.lbStyle = BS_NULL;
+        printf("WARN: winerds.drv: dev or dev->hdc is NULL, using default pen/brush for Rectangle.\n");
     }
 
     msg.msgType = RDS_MSG_RECTANGLE;
-    msg.params.rectangle.surfaceId = 1; // Placeholder Surface ID
+    msg.params.rectangle.surfaceId = 1; // Placeholder
     msg.params.rectangle.left = left;
     msg.params.rectangle.top = top;
     msg.params.rectangle.right = right;
     msg.params.rectangle.bottom = bottom;
-    msg.params.rectangle.color = pen_color; // Sending pen color
+    
+    msg.params.rectangle.color = logPen.lopnColor; // Pen color
     msg.params.rectangle.filled = is_filled;
+    msg.params.rectangle.pen_lopnStyle = logPen.lopnStyle;
+    msg.params.rectangle.pen_lopnWidth_x = logPen.lopnWidth.x;
+    
+    msg.params.rectangle.brush_lbStyle = logBrush.lbStyle;
+    msg.params.rectangle.brush_lbColor = logBrush.lbColor;
+    msg.params.rectangle.brush_lbHatch = logBrush.lbHatch;
 
     if (!SendRDSMessage(&msg, NULL, 0))
     {
-        WINE_ERR("Failed to send RDS_MSG_RECTANGLE\n");
+        printf("ERR: winerds.drv: Failed to send RDS_MSG_RECTANGLE\n");
         return FALSE;
     }
     return TRUE;
@@ -120,33 +156,65 @@ BOOL rds_Rectangle(PHYSDEV dev, INT left, INT top, INT right, INT bottom)
 BOOL rds_TextOut(PHYSDEV dev, INT x, INT y, LPCWSTR str, INT count)
 {
     RDS_MESSAGE msg;
-    COLORREF color = 0; // Default to black
+    LOGFONTW logFont;
+    COLORREF text_fg_color = RGB(0,0,0);
+    COLORREF text_bk_color = RGB(255,255,255);
+    INT bk_mode = OPAQUE;
     DWORD data_size = 0;
 
-    WINE_TRACE("dev=%p, x=%d, y=%d, str=%p, count=%d\n", dev, x, y, str, count);
+    // WINE_TRACE("dev=%p, x=%d, y=%d, str=%p, count=%d\n", dev, x, y, str, count); // Already present
 
-    if (count <= 0 || !str) return TRUE; // Nothing to draw
+    if (count <= 0 || !str) return TRUE;
 
     if (dev && dev->hdc) {
-        color = GetTextColor(dev->hdc);
+        HFONT hCurrentFont = GetCurrentObject(dev->hdc, OBJ_FONT);
+        if (hCurrentFont) {
+            GetObjectW(hCurrentFont, sizeof(LOGFONTW), &logFont);
+        } else {
+            memset(&logFont, 0, sizeof(LOGFONTW));
+            // Initialize with some system default perhaps, or leave empty if server handles defaults
+            wcsncpy(logFont.lfFaceName, L"System", LF_FACESIZE); 
+            logFont.lfHeight = -12; // Default size
+            printf("WARN: winerds.drv: Could not get current font, using default for TextOut.\n");
+        }
+        text_fg_color = GetTextColor(dev->hdc);
+        text_bk_color = GetBkColor(dev->hdc);
+        bk_mode = GetBkMode(dev->hdc);
     } else {
-        WINE_WARN("dev or dev->hdc is NULL, using default color for TextOut.\n");
+        memset(&logFont, 0, sizeof(LOGFONTW));
+        wcsncpy(logFont.lfFaceName, L"System", LF_FACESIZE);
+        logFont.lfHeight = -12;
+        printf("WARN: winerds.drv: dev or dev->hdc is NULL, using defaults for TextOut.\n");
     }
 
     data_size = count * sizeof(WCHAR);
 
     msg.msgType = RDS_MSG_TEXT_OUT;
-    msg.params.textOut.surfaceId = 1; // Placeholder Surface ID
+    msg.params.textOut.surfaceId = 1; // Placeholder
     msg.params.textOut.x = x;
     msg.params.textOut.y = y;
-    msg.params.textOut.color = color;
+    
+    msg.params.textOut.color = text_fg_color; // This is text_fg_color
+    msg.params.textOut.text_bk_color = text_bk_color;
+    msg.params.textOut.bk_mode = bk_mode;
+    
     msg.params.textOut.count = count;
     msg.params.textOut.data_size = data_size;
-    // The actual string 'str' will be passed as 'variable_data' to SendRDSMessage
+
+    msg.params.textOut.font_lfHeight = logFont.lfHeight;
+    msg.params.textOut.font_lfWidth = logFont.lfWidth;
+    msg.params.textOut.font_lfWeight = logFont.lfWeight;
+    msg.params.textOut.font_lfItalic = logFont.lfItalic;
+    msg.params.textOut.font_lfUnderline = logFont.lfUnderline;
+    msg.params.textOut.font_lfStrikeOut = logFont.lfStrikeOut;
+    msg.params.textOut.font_lfCharSet = logFont.lfCharSet;
+    wcsncpy(msg.params.textOut.font_lfFaceName, logFont.lfFaceName, LF_FACESIZE);
+    msg.params.textOut.font_lfFaceName[LF_FACESIZE-1] = L'\0'; // Ensure null termination
+
 
     if (!SendRDSMessage(&msg, str, data_size))
     {
-        WINE_ERR("Failed to send RDS_MSG_TEXT_OUT\n");
+        printf("ERR: winerds.drv: Failed to send RDS_MSG_TEXT_OUT\n");
         return FALSE;
     }
     return TRUE;
