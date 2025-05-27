@@ -1,0 +1,10 @@
+MODULE    = termsrv.exe
+IMPORTS   = advapi32 user32
+
+EXTRADLLFLAGS = -mconsole -municode
+
+SOURCES = \
+	pipe_server.c \
+	rds.c \
+	rds_gdi_handlers.c \
+	rds_surface_drawing.c

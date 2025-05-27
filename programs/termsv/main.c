@@ -27,8 +27,6 @@
 
 #include "wine/debug.h"
 
-#include "rds.h"
-
 WINE_DEFAULT_DEBUG_CHANNEL(termsv);
 
 //NTSTATUS initialize_service(void);

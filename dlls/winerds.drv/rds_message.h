@@ -1,3 +1,9 @@
+#ifndef RDS_MESSAGES
+#define RDS_MESSAGES
+
+#include <basetsd.h>
+#include <windows.h>
+
 // Shared between termsrv.exe.so and winerds.drv
 typedef enum _RDS_MESSAGE_TYPE
 {
@@ -116,3 +122,5 @@ typedef struct _RDS_MESSAGE
         } bitBlt;
     } params;
 } RDS_MESSAGE;
+
+#endif
