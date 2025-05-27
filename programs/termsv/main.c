@@ -116,11 +116,11 @@ int __cdecl wmain( int argc, WCHAR *argv[] )
     */
 
     /* Initialize the service */
-    if (!initialize_service())
-    {
-        WINE_ERR("Failed to initialize RDS service\n");
-        return 1;
-    }
+    //if (!initialize_service())
+    //{
+    //    WINE_ERR("Failed to initialize RDS service\n");
+    //    return 1;
+    //}
 
     return 0;
 }
