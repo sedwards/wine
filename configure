@@ -1696,6 +1696,7 @@ enable_fc
 enable_find
 enable_findstr
 enable_fsutil
+enable_gditest
 enable_hh
 enable_hostname
 enable_icacls
@@ -9930,6 +9931,7 @@ esac
 enable_winecoreaudio_drv=${enable_winecoreaudio_drv:-no}
 enable_wineandroid_drv=${enable_wineandroid_drv:-no}
 enable_winemac_drv=${enable_winemac_drv:-no}
+enable_winerds_drv=${enable_winemac_drv:-no}
 
 PE_ARCHS=""
 
@@ -22163,6 +22165,7 @@ wine_fn_config_makefile programs/findstr enable_findstr
 wine_fn_config_makefile programs/findstr/tests enable_tests
 wine_fn_config_makefile programs/fsutil enable_fsutil
 wine_fn_config_makefile programs/fsutil/tests enable_tests
+wine_fn_config_makefile programs/gditest enable_gditest
 wine_fn_config_makefile programs/hh enable_hh
 wine_fn_config_makefile programs/hostname enable_hostname
 wine_fn_config_makefile programs/icacls enable_icacls
