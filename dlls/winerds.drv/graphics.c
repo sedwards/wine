@@ -201,7 +201,7 @@ BOOL rds_TextOut(PHYSDEV dev, INT x, INT y, LPCWSTR str, INT count)
         } else {
             memset(&logFont, 0, sizeof(LOGFONTW));
             // Initialize with some system default perhaps, or leave empty if server handles defaults
-            wcsncpy(logFont.lfFaceName, L"System", LF_FACESIZE); 
+            lstrcpynW(logFont.lfFaceName, (LPCWSTR)L"System", LF_FACESIZE); 
             logFont.lfHeight = -12; // Default size
             printf("WARN: winerds.drv: Could not get current font, using default for TextOut.\n");
         }
@@ -210,7 +210,7 @@ BOOL rds_TextOut(PHYSDEV dev, INT x, INT y, LPCWSTR str, INT count)
         bk_mode = GetBkMode(dev->hdc);
     } else {
         memset(&logFont, 0, sizeof(LOGFONTW));
-        wcsncpy(logFont.lfFaceName, L"System", LF_FACESIZE);
+        lstrcpynW(logFont.lfFaceName, (LPCWSTR)L"System", LF_FACESIZE);
         logFont.lfHeight = -12;
         printf("WARN: winerds.drv: dev or dev->hdc is NULL, using defaults for TextOut.\n");
     }
@@ -236,7 +236,7 @@ BOOL rds_TextOut(PHYSDEV dev, INT x, INT y, LPCWSTR str, INT count)
     msg.params.textOut.font_lfUnderline = logFont.lfUnderline;
     msg.params.textOut.font_lfStrikeOut = logFont.lfStrikeOut;
     msg.params.textOut.font_lfCharSet = logFont.lfCharSet;
-    wcsncpy(msg.params.textOut.font_lfFaceName, logFont.lfFaceName, LF_FACESIZE);
+    lstrcpynW(msg.params.textOut.font_lfFaceName, logFont.lfFaceName, LF_FACESIZE);
     msg.params.textOut.font_lfFaceName[LF_FACESIZE-1] = L'\0'; // Ensure null termination
 
 
@@ -247,3 +247,4 @@ BOOL rds_TextOut(PHYSDEV dev, INT x, INT y, LPCWSTR str, INT count)
     }
     return TRUE;
 }
+

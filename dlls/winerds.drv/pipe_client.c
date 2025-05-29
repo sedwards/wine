@@ -1,4 +1,26 @@
-#include <windows.h>
+#include <stdarg.h>
+#include <math.h>
+#include <float.h>
+#include <stdlib.h>
+#ifndef PI
+#define PI M_PI
+#endif
+#include <string.h>
+#include <limits.h>
+
+#include "windef.h"
+#include "winbase.h"
+#include "winnt.h"
+#include "wingdi.h"
+#include "winreg.h"
+
+#include "rdsdrv.h"
+#include "wine/debug.h"
+
+#include "rds.h"          // Should include rds_message.h, PHYSDEV definition
+
+#include "wine/gdi_driver.h"
+
 #include <stdio.h> // For logging/tracing
 #include "pipe_client.h"
 #include "rds_message.h" // Assumed to be in the same directory

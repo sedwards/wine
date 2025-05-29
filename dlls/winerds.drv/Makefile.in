@@ -1,11 +1,11 @@
 MODULE    = winerds.drv
 UNIXLIB   = winerds.so
 IMPORTS   = uuid user32 gdi32 win32u
+#DELAYIMPORTS = gdi32 kernel32 user32
 UNIX_CFLAGS  = 
 UNIX_LIBS    = -lwin32u -lm
 
 SOURCES = \
 	gdi_funcs.c \
-	graphics.c \
-	pipe_client.c
-
+	pipe_client.c \
+	graphics.c

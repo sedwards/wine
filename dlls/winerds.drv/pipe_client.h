@@ -1,7 +1,6 @@
 #ifndef PIPE_CLIENT_H
 #define PIPE_CLIENT_H
 
-#include <windows.h>
 #include "rds_message.h" // Assuming rds_message.h is in the same directory or accessible
 
 BOOL StartRDSClientPipe(void);
