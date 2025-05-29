@@ -1,3 +1,10 @@
+
+#if 0
+#pragma makedep unix
+#endif
+
+#include "config.h"
+
 #include <stdarg.h>
 #include <math.h>
 #include <float.h>
@@ -17,13 +24,15 @@
 #include "rdsdrv.h"
 #include "wine/debug.h"
 
+
+//#include <windows.h>
+
 #include "rds.h"          // Should include rds_message.h, PHYSDEV definition
+#include "pipe_client.h"  // For SendRDSMessage
 
 #include "wine/gdi_driver.h"
 
-#include <stdio.h> // For logging/tracing
-#include "pipe_client.h"
-#include "rds_message.h" // Assumed to be in the same directory
+WINE_DEFAULT_DEBUG_CHANNEL(winerds);
 
 static HANDLE hPipe = INVALID_HANDLE_VALUE;
 static HANDLE hClientThread = NULL;

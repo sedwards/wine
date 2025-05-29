@@ -1,7 +1,39 @@
-#include <windows.h>
-#include <stdio.h> // For printf
-#include "pipe_client.h" // For RDS pipe client functions
-// #include "rds.h" // Assuming rds.h would contain register_rds_driver declaration and g_rds_device_cs if not here
+
+#if 0
+#pragma makedep unix
+#endif
+
+#include "config.h"
+
+#include <stdarg.h>
+#include <math.h>
+#include <float.h>
+#include <stdlib.h>
+#ifndef PI
+#define PI M_PI
+#endif
+#include <string.h>
+#include <limits.h>
+
+#include "windef.h"
+#include "winbase.h"
+#include "winnt.h"
+#include "wingdi.h"
+#include "winreg.h"
+
+#include "rdsdrv.h"
+#include "wine/debug.h"
+
+
+//#include <windows.h>
+
+#include "rds.h"          // Should include rds_message.h, PHYSDEV definition
+#include "pipe_client.h"  // For SendRDSMessage
+
+#include "wine/gdi_driver.h"
+
+WINE_DEFAULT_DEBUG_CHANNEL(winerds);
+
 
 // Placeholder for global critical section, assuming it's defined in this file or a shared header
 static CRITICAL_SECTION g_rds_device_cs;

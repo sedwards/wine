@@ -1,7 +1,6 @@
 MODULE    = winerds.drv
 UNIXLIB   = winerds.so
-IMPORTS   = uuid user32 gdi32 win32u
-#DELAYIMPORTS = gdi32 kernel32 user32
+IMPORTS  = uuid user32 gdi32 win32u kernel32 ntdll
 UNIX_CFLAGS  = 
 UNIX_LIBS    = -lwin32u -lm
 
