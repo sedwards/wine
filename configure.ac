@@ -779,7 +779,6 @@ esac
 enable_winecoreaudio_drv=${enable_winecoreaudio_drv:-no}
 enable_wineandroid_drv=${enable_wineandroid_drv:-no}
 enable_winemac_drv=${enable_winemac_drv:-no}
-enable_winerds_drv=${enable_winemac_drv:-no}
 
 dnl Check for cross compiler(s)
 AC_SUBST(PE_ARCHS,"")
