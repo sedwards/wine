@@ -35,7 +35,7 @@ typedef enum _RDS_MESSAGE_TYPE
     RDS_MSG_GDIOBJ_CREATED          // Response from termsrv after creating a GDI object (e.g., pen) requested by winerds.drv
 } RDS_MESSAGE_TYPE;
 
-typedef struct _RDS_MESSAGE
+typedef struct _RDS_MESSAGE_STRUCT
 {
     RDS_MESSAGE_TYPE msgType;
 
@@ -163,7 +163,52 @@ typedef struct _RDS_MESSAGE
                                                 // For the "send effective state" model, this response might not be immediately used.
         } gdiObjCreated;
     } params;
-} RDS_MESSAGE;
+//} RDS_MESSAGE;
+
+};
+
+// Now typedef it
+typedef struct _RDS_MESSAGE_STRUCT RDS_MESSAGE;
+
+#if 0
+// Define the structure with a tag first
+struct _RDS_MESSAGE_STRUCT { // Using a distinct tag name
+    RDS_MESSAGE_TYPE msgType;
+    union {
+        // All your param structs here, for example:
+        struct { DWORD width; DWORD height; DWORD bpp; } createSurface;
+        struct { DWORD_PTR surfaceId; } surfaceCreated;
+        struct { DWORD_PTR surfaceId; RECT updateRect; } paintSurface;
+        struct { HWND windowId; DWORD_PTR surfaceId; } surfaceUpdated;
+        struct { DWORD_PTR surfaceId; } getSurfaceData;
+        struct { DWORD_PTR surfaceId; DWORD x; DWORD y; } moveTo;
+        struct {
+            DWORD_PTR surfaceId; DWORD x; DWORD y;
+            COLORREF color; UINT lopnStyle; INT lopnWidth_x;
+        } lineTo;
+        struct {
+            DWORD_PTR surfaceId; DWORD left; DWORD top; DWORD right; DWORD bottom;
+            COLORREF color; BOOL filled;
+            UINT pen_lopnStyle; INT pen_lopnWidth_x;
+            UINT brush_lbStyle; COLORREF brush_lbColor; ULONG_PTR brush_lbHatch;
+        } rectangle;
+        struct {
+            DWORD_PTR surfaceId; DWORD x; DWORD y;
+            COLORREF color; DWORD count; DWORD data_size;
+            COLORREF text_bk_color; INT bk_mode;
+            LONG font_lfHeight; LONG font_lfWidth; LONG font_lfWeight;
+            BYTE font_lfItalic; BYTE font_lfUnderline; BYTE font_lfStrikeOut;
+            BYTE font_lfCharSet; WCHAR font_lfFaceName[LF_FACESIZE];
+        } textOut;
+        struct { // Assuming structure for BitBlt
+            DWORD_PTR surfaceId_dest; DWORD x_dest; DWORD y_dest; DWORD width; DWORD height;
+            DWORD_PTR surfaceId_src; DWORD x_src; DWORD y_src; DWORD rop; DWORD data_size;
+        } bitBlt;
+        struct { DWORD_PTR surfaceId; } enablePrimarySurface;
+        struct { DWORD_PTR temp_driver_hobject_id; DWORD_PTR actual_termsrv_hobject_id; } gdiObjCreated;
+    } params;
+};
+#endif
 
 #endif /* RDS_MESSAGE */
 

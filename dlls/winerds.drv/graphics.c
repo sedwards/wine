@@ -1,16 +1,18 @@
-#include "rdsdrv_dll.h"
 
+#include "rdsdrv_dll.h"
+ 
 #include "ntuser.h"
 #include "winuser.h"
-
+ 
 #include "gdi_driver.h"
-
+#include "rds.h"          // Should include rds_message.h, PHYSDEV definition
+ 
 #include "pipe_client.h"
 
 #include "wine/debug.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(winerds);
-
+ 
 /*
  * PHYSDEV is an opaque structure used by Wine's GDI internals.
  * We assume it has a member 'hdc' (HDC hdc;) based on the provided
@@ -49,17 +51,17 @@ BOOL rds_MoveTo(PHYSDEV dev, INT x, INT y)
 BOOL rds_LineTo(PHYSDEV dev, INT x, INT y)
 {
     RDS_MESSAGE msg;
-    LOGPEN logPen; // Use LOGPEN for Unicode compatibility if lfFaceName uses WCHAR
+    LOGPENW logPen; // Use LOGPENW for Unicode compatibility if lfFaceName uses WCHAR
 
     // WINE_TRACE("dev=%p, x=%d, y=%d\n", dev, x, y); // Already present
 
     if (dev && dev->hdc) {
         HPEN hCurrentPen = GetCurrentObject(dev->hdc, OBJ_PEN);
         if (hCurrentPen) {
-            GetObjectW(hCurrentPen, sizeof(LOGPEN), &logPen);
+            GetObjectW(hCurrentPen, sizeof(LOGPENW), &logPen);
         } else {
             // Default LOGPEN if no pen or GetCurrentObject fails
-            memset(&logPen, 0, sizeof(LOGPEN));
+            memset(&logPen, 0, sizeof(LOGPENW));
             logPen.lopnStyle = PS_SOLID;
             logPen.lopnWidth.x = 1;
             logPen.lopnColor = RGB(0,0,0); // Default black
@@ -67,7 +69,7 @@ BOOL rds_LineTo(PHYSDEV dev, INT x, INT y)
             printf("WARN: winerds.drv: Could not get current pen, using default for LineTo.\n");
         }
     } else {
-        memset(&logPen, 0, sizeof(LOGPEN));
+        memset(&logPen, 0, sizeof(LOGPENW));
         logPen.lopnStyle = PS_SOLID;
         logPen.lopnWidth.x = 1;
         logPen.lopnColor = RGB(0,0,0);
@@ -97,7 +99,7 @@ BOOL rds_LineTo(PHYSDEV dev, INT x, INT y)
 BOOL rds_Rectangle(PHYSDEV dev, INT left, INT top, INT right, INT bottom)
 {
     RDS_MESSAGE msg;
-    LOGPEN logPen;
+    LOGPENW logPen;
     LOGBRUSH logBrush;
     BOOL is_filled = FALSE;
 
@@ -108,9 +110,9 @@ BOOL rds_Rectangle(PHYSDEV dev, INT left, INT top, INT right, INT bottom)
         HBRUSH hCurrentBrush = GetCurrentObject(dev->hdc, OBJ_BRUSH);
 
         if (hCurrentPen) {
-            GetObjectW(hCurrentPen, sizeof(LOGPEN), &logPen);
+            GetObjectW(hCurrentPen, sizeof(LOGPENW), &logPen);
         } else {
-            memset(&logPen, 0, sizeof(LOGPEN));
+            memset(&logPen, 0, sizeof(LOGPENW));
             logPen.lopnStyle = PS_SOLID; logPen.lopnWidth.x = 1; logPen.lopnColor = RGB(0,0,0);
             printf("WARN: winerds.drv: Could not get current pen, using default for Rectangle.\n");
         }
@@ -126,7 +128,7 @@ BOOL rds_Rectangle(PHYSDEV dev, INT left, INT top, INT right, INT bottom)
             printf("WARN: winerds.drv: Could not get current brush, assuming no fill for Rectangle.\n");
         }
     } else {
-        memset(&logPen, 0, sizeof(LOGPEN));
+        memset(&logPen, 0, sizeof(LOGPENW));
         logPen.lopnStyle = PS_SOLID; logPen.lopnWidth.x = 1; logPen.lopnColor = RGB(0,0,0);
         memset(&logBrush, 0, sizeof(LOGBRUSH));
         logBrush.lbStyle = BS_NULL;
@@ -139,12 +141,12 @@ BOOL rds_Rectangle(PHYSDEV dev, INT left, INT top, INT right, INT bottom)
     msg.params.rectangle.top = top;
     msg.params.rectangle.right = right;
     msg.params.rectangle.bottom = bottom;
-    
+
     msg.params.rectangle.color = logPen.lopnColor; // Pen color
     msg.params.rectangle.filled = is_filled;
     msg.params.rectangle.pen_lopnStyle = logPen.lopnStyle;
     msg.params.rectangle.pen_lopnWidth_x = logPen.lopnWidth.x;
-    
+
     msg.params.rectangle.brush_lbStyle = logBrush.lbStyle;
     msg.params.rectangle.brush_lbColor = logBrush.lbColor;
     msg.params.rectangle.brush_lbHatch = logBrush.lbHatch;
@@ -177,7 +179,7 @@ BOOL rds_TextOut(PHYSDEV dev, INT x, INT y, LPCWSTR str, INT count)
         } else {
             memset(&logFont, 0, sizeof(LOGFONTW));
             // Initialize with some system default perhaps, or leave empty if server handles defaults
-            lstrcpynW(logFont.lfFaceName, (LPCWSTR)L"System", LF_FACESIZE); 
+            wcsncpy(logFont.lfFaceName, L"System", LF_FACESIZE);
             logFont.lfHeight = -12; // Default size
             printf("WARN: winerds.drv: Could not get current font, using default for TextOut.\n");
         }
@@ -186,7 +188,7 @@ BOOL rds_TextOut(PHYSDEV dev, INT x, INT y, LPCWSTR str, INT count)
         bk_mode = GetBkMode(dev->hdc);
     } else {
         memset(&logFont, 0, sizeof(LOGFONTW));
-        lstrcpynW(logFont.lfFaceName, (LPCWSTR)L"System", LF_FACESIZE);
+        wcsncpy(logFont.lfFaceName, L"System", LF_FACESIZE);
         logFont.lfHeight = -12;
         printf("WARN: winerds.drv: dev or dev->hdc is NULL, using defaults for TextOut.\n");
     }
@@ -197,11 +199,11 @@ BOOL rds_TextOut(PHYSDEV dev, INT x, INT y, LPCWSTR str, INT count)
     msg.params.textOut.surfaceId = 1; // Placeholder
     msg.params.textOut.x = x;
     msg.params.textOut.y = y;
-    
+
     msg.params.textOut.color = text_fg_color; // This is text_fg_color
     msg.params.textOut.text_bk_color = text_bk_color;
     msg.params.textOut.bk_mode = bk_mode;
-    
+
     msg.params.textOut.count = count;
     msg.params.textOut.data_size = data_size;
 
@@ -212,7 +214,7 @@ BOOL rds_TextOut(PHYSDEV dev, INT x, INT y, LPCWSTR str, INT count)
     msg.params.textOut.font_lfUnderline = logFont.lfUnderline;
     msg.params.textOut.font_lfStrikeOut = logFont.lfStrikeOut;
     msg.params.textOut.font_lfCharSet = logFont.lfCharSet;
-    lstrcpynW(msg.params.textOut.font_lfFaceName, logFont.lfFaceName, LF_FACESIZE);
+    wcsncpy(msg.params.textOut.font_lfFaceName, logFont.lfFaceName, LF_FACESIZE);
     msg.params.textOut.font_lfFaceName[LF_FACESIZE-1] = L'\0'; // Ensure null termination
 
 
@@ -223,4 +225,3 @@ BOOL rds_TextOut(PHYSDEV dev, INT x, INT y, LPCWSTR str, INT count)
     }
     return TRUE;
 }
-

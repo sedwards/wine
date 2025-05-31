@@ -1750,6 +1750,7 @@ enable_taskkill
 enable_tasklist
 enable_taskmgr
 enable_termsv
+enable_termsrv
 enable_timeout
 enable_uninstaller
 enable_unlodctr
@@ -22228,6 +22229,7 @@ wine_fn_config_makefile programs/tasklist enable_tasklist
 wine_fn_config_makefile programs/tasklist/tests enable_tests
 wine_fn_config_makefile programs/taskmgr enable_taskmgr
 wine_fn_config_makefile programs/termsv enable_termsv
+wine_fn_config_makefile programs/termsrv enable_termsrv
 wine_fn_config_makefile programs/timeout enable_timeout
 wine_fn_config_makefile programs/timeout/tests enable_tests
 wine_fn_config_makefile programs/uninstaller enable_uninstaller

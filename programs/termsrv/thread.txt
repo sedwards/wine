@@ -1,0 +1,111 @@
+DWORD WINAPI RDSPipeServerThread(LPVOID lpParam)
+{
+    #define MAX_VARIABLE_DATA_SIZE (4096) // Example size for variable data
+    char buffer[sizeof(RDS_MESSAGE) + MAX_VARIABLE_DATA_SIZE];
+    DWORD cbRead;
+    BOOL bConnected;
+    HANDLE hCurrentPipe = INVALID_HANDLE_VALUE;
+
+    printf("RDS Pipe Server Thread started.\n");
+
+    while (bServerRunning)
+    {
+        hCurrentPipe = CreateNamedPipeW(
+            (LPCWSTR)L"\\.\pipe\wine_rds_gdi_commands",
+            PIPE_ACCESS_DUPLEX,
+            PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
+            1, sizeof(buffer), sizeof(buffer),
+            NMPWAIT_USE_DEFAULT_WAIT, NULL);
+
+        if (hCurrentPipe == INVALID_HANDLE_VALUE) {
+            printf("CreateNamedPipe failed, GLE=%u.\n", (unsigned int)GetLastError());
+            if (!bServerRunning) break;
+            Sleep(1000);
+            continue;
+        }
+
+        printf("Pipe server instance created (%p). Waiting for client connection...\n", hCurrentPipe);
+        bConnected = ConnectNamedPipe(hCurrentPipe, NULL) ? TRUE : (GetLastError() == ERROR_PIPE_CONNECTED);
+
+        if (bConnected && bServerRunning) {
+            printf("Client connected to pipe instance (%p).\n", hCurrentPipe);
+            while (bServerRunning) {
+                memset(buffer, 0, sizeof(RDS_MESSAGE));
+                if (ReadFile(hCurrentPipe, buffer, sizeof(buffer), &cbRead, NULL)) {
+                    if (cbRead == 0) {
+                        printf("Client disconnected gracefully (ReadFile 0 bytes) from pipe instance (%p).\n", hCurrentPipe);
+                        break;
+                    }
+
+                    if (cbRead < sizeof(RDS_MESSAGE)) {
+                        printf("WARN: Received runt message. cbRead=%lu, expected at least %u for RDS_MESSAGE struct.\n",
+                               cbRead, (unsigned int)sizeof(RDS_MESSAGE));
+                        break;
+                    }
+
+                    RDS_MESSAGE *rdsMsg = (RDS_MESSAGE*)buffer;
+                    printf("Received message: type=%d, total_read_size=%lu from pipe instance (%p)\n",
+                           rdsMsg->msgType, cbRead, hCurrentPipe);
+
+                    switch (rdsMsg->msgType) {
+                        case RDS_MSG_MOVE_TO:
+                            Handle_RDS_MSG_MOVE_TO(rdsMsg);
+                            break;
+                        case RDS_MSG_LINE_TO:
+                            Handle_RDS_MSG_LINE_TO(rdsMsg);
+                            break;
+                        case RDS_MSG_RECTANGLE:
+                            Handle_RDS_MSG_RECTANGLE(rdsMsg);
+                            break;
+                        case RDS_MSG_TEXT_OUT: {
+                            if (rdsMsg->params.textOut.data_size > 0) {
+                                DWORD expected_total_size = sizeof(RDS_MESSAGE) + rdsMsg->params.textOut.data_size;
+                                if (cbRead == expected_total_size) {
+                                    WCHAR *text_data = (WCHAR *)(buffer + sizeof(RDS_MESSAGE));
+                                    Handle_RDS_MSG_TEXT_OUT(rdsMsg, text_data);
+                                } else {
+                                    printf("WARN: Size mismatch for RDS_MSG_TEXT_OUT with data. cbRead=%lu, expected total %lu (struct %u + data %lu)\n",
+                                           cbRead, expected_total_size, (unsigned int)sizeof(RDS_MESSAGE), (unsigned long)rdsMsg->params.textOut.data_size);
+                                }
+                            } else {
+                                if (cbRead == sizeof(RDS_MESSAGE)) {
+                                    Handle_RDS_MSG_TEXT_OUT(rdsMsg, NULL);
+                                } else {
+                                     printf("WARN: Size mismatch for RDS_MSG_TEXT_OUT (no data). cbRead=%lu, expected %u\n",
+                                           cbRead, (unsigned int)sizeof(RDS_MESSAGE));
+                                }
+                            }
+                            break;
+                        }
+                        case RDS_MSG_ENABLE_PRIMARY_SURFACE:
+                            Handle_RDS_MSG_ENABLE_PRIMARY_SURFACE(rdsMsg);
+                            break;
+                        default:
+                            printf("WARN: Received unhandled message type: %d\n", rdsMsg->msgType);
+                            break;
+                    }
+                } else { // ReadFile failed
+                    DWORD dwError = GetLastError();
+                    if (dwError == ERROR_BROKEN_PIPE) {
+                        printf("Client disconnected (ReadFile - ERROR_BROKEN_PIPE) from pipe instance (%p).\n", hCurrentPipe);
+                    } else {
+                        printf("ReadFile failed, GLE=%u, on pipe instance (%p).\n", (unsigned int)dwError, hCurrentPipe);
+                    }
+                    break;
+                }
+            } // End inner message reading loop
+        } else if (!bServerRunning && hCurrentPipe != INVALID_HANDLE_VALUE) {
+            printf("Server shutting down while waiting for client on pipe instance (%p).\n", hCurrentPipe);
+        }
+        
+        printf("Closing pipe instance %p\n", hCurrentPipe);
+        DisconnectNamedPipe(hCurrentPipe);
+        CloseHandle(hCurrentPipe);
+        hCurrentPipe = INVALID_HANDLE_VALUE;
+    } // End outer bServerRunning loop
+
+    printf("Pipe server thread exiting.\n");
+    return 0;
+}
+
+

@@ -1,7 +1,12 @@
 #include <windows.h>
-#include <stdio.h>
-#include "../../dlls/winerds.drv/rds_message.h" // Attempting relative path
+
+#include <string.h> // For memset, wcscmp, wcsncpy
 #include "pipe_server.h"
+#include "rds.h" // Should include rds_message.h
+
+#include "wine/debug.h"
+
+#include "rds_message.h" // Attempting relative path
 #include "rds_gdi_handlers.h" // For GDI message handlers
 
 static HANDLE hPipeThread = NULL;

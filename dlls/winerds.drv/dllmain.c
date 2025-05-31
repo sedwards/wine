@@ -25,7 +25,7 @@
 
 #include "wine/debug.h"
 
-WINE_DEFAULT_DEBUG_CHANNEL(waylanddrv);
+WINE_DEFAULT_DEBUG_CHANNEL(rdsdrv);
 
 static DWORD WINAPI wayland_read_events_thread(void *arg)
 {
@@ -33,7 +33,7 @@ static DWORD WINAPI wayland_read_events_thread(void *arg)
     /* This thread terminates only if an unrecoverable error occurred
      * during event reading (e.g., the connection to the Wayland
      * compositor is broken). */
-    ERR("Failed to read events from the compositor, terminating process\n");
+    ERR("STUB_RDS_WAYLAND - Failed to read events from the compositor, terminating process\n");
     TerminateProcess(GetCurrentProcess(), 1);
     return 0;
 }
@@ -68,7 +68,7 @@ static DWORD WINAPI clipboard_thread(void *arg)
 
     if (!(atom = RegisterClassW(&class)) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
     {
-        ERR("could not register clipboard window class err %lu\n", GetLastError());
+        ERR("RDS - Wayland port could not register clipboard window class err %lu\n", GetLastError());
         return 0;
     }
     /* The HWND_MESSAGE parent window may not have been created yet. It will be
