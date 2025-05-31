@@ -1,36 +1,11 @@
+#include "rdsdrv_dll.h"
 
-#if 0
-#pragma makedep unix
-#endif
+#include "ntuser.h"
+#include "winuser.h"
 
-#include "config.h"
+#include "rds_message.h"
 
-#include <stdarg.h>
-#include <math.h>
-#include <float.h>
-#include <stdlib.h>
-#ifndef PI
-#define PI M_PI
-#endif
-#include <string.h>
-#include <limits.h>
-
-#include "windef.h"
-#include "winbase.h"
-#include "winnt.h"
-#include "wingdi.h"
-#include "winreg.h"
-
-#include "rdsdrv.h"
 #include "wine/debug.h"
-
-
-//#include <windows.h>
-
-#include "rds.h"          // Should include rds_message.h, PHYSDEV definition
-#include "pipe_client.h"  // For SendRDSMessage
-
-#include "wine/gdi_driver.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(winerds);
 
@@ -107,7 +82,7 @@ BOOL StartRDSClientPipe(void)
     hClientThread = CreateThread(NULL, 0, RDSClientPipeThread, NULL, 0, NULL);
     if (hClientThread == NULL)
     {
-        printf("Failed to create pipe client thread, GLE=%d.\n", GetLastError());
+        printf("Failed to create pipe client thread, GLE=%ld.\n", GetLastError());
         DeleteCriticalSection(&pipe_cs);
         bClientRunning = FALSE;
         return FALSE;
@@ -150,7 +125,7 @@ BOOL SendRDSMessage(const RDS_MESSAGE *msg, const void *variable_data, DWORD var
     if (!msg) return FALSE;
     if (!bClientRunning || hPipe == INVALID_HANDLE_VALUE)
     {
-        // printf("Pipe not connected, cannot send message type %d\n", msg->msgType);
+        printf("Pipe not connected, cannot send message type %d\n", msg->msgType);
         return FALSE;
     }
 
@@ -184,13 +159,13 @@ BOOL SendRDSMessage(const RDS_MESSAGE *msg, const void *variable_data, DWORD var
                 }
                 else 
                 {
-                    printf("WriteFile for variable data failed, GLE=%d.\n", GetLastError());
+                    printf("WriteFile for variable data failed, GLE=%ld.\n", GetLastError());
                     bSuccess = FALSE;
                 }
             }
-            // else { // No variable data or zero size
-            //    printf("Successfully sent message type %d.\n", msg->msgType);
-            // }
+             else { // No variable data or zero size
+                printf("Successfully sent message type %d.\n", msg->msgType);
+             }
         }
         else 
         {
@@ -199,7 +174,7 @@ BOOL SendRDSMessage(const RDS_MESSAGE *msg, const void *variable_data, DWORD var
     }
     else 
     {
-        printf("WriteFile for RDS_MESSAGE failed, GLE=%d.\n", GetLastError());
+        printf("WriteFile for RDS_MESSAGE failed, GLE=%ld.\n", GetLastError());
         CloseHandle(hPipe);
         hPipe = INVALID_HANDLE_VALUE;
         printf("Pipe handle closed due to WriteFile failure.\n");

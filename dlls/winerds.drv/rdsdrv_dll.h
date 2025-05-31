@@ -1,5 +1,7 @@
 /*
- * Copyright 2022 Jacek Caban for CodeWeavers
+ * Wayland driver DLL definitions
+ *
+ * Copyright 2022 Alexandros Frantzis for Collabora Ltd
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -16,17 +18,15 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#include "ntuser.h"
-#include "shlobj.h"
-#include "wine/unixlib.h"
+#ifndef __WINE_RDSDRV_DLL_H
+#define __WINE_RDSDRV_DLL_H
 
-enum rdsdrv_unix_funcs
-{
-    rdsdrv_unix_func_init,
-    rdsdrv_unix_func_read_events,
-    rdsdrv_unix_func_init_clipboard,
-    rdsdrv_unix_func_count,
-};
+#include <stdarg.h>
+#include "windef.h"
+#include "winbase.h"
 
-#define RDSDRV_CALL(func, params) WINE_UNIX_CALL( unix_ ## func, params )
+#include "unixlib.h"
 
+#define RDSDRV_UNIX_CALL(func, params) WINE_UNIX_CALL(rdsdrv_unix_func_ ## func, params)
+
+#endif /* __WINE_RDSDRV_DLL_H */
