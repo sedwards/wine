@@ -3,7 +3,7 @@
 #include "ntuser.h"
 #include "winuser.h"
 
-#include "rds_message.h"
+#include "pipe_client.h"
 
 #include "wine/debug.h"
 

@@ -3,6 +3,8 @@
 #include "ntuser.h"
 #include "winuser.h"
 
+#include "pipe_client.h"
+
 #include "wine/debug.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(winerds);
@@ -16,13 +18,13 @@ void register_rds_driver(void)
 {
     // This function would typically interact with Wine's display driver management
     // to register this DLL as a graphics driver.
-    printf("winerds.drv: register_rds_driver() called (placeholder).\n");
+    FIXME("winerds.drv: register_rds_driver() called (placeholder).\n");
 }
 
 // Placeholder for the driver unregistration function (optional, called on detach)
 void unregister_rds_driver(void)
 {
-    printf("winerds.drv: unregister_rds_driver() called (placeholder).\n");
+    FIXME("winerds.drv: unregister_rds_driver() called (placeholder).\n");
 }
 
 BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, void *reserved)
@@ -36,14 +38,14 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, void *reserved)
         // For now, assuming it's not needed or handled by pipe_client.c's threads themselves.
 
         InitializeCriticalSection(&g_rds_device_cs);
-        printf("winerds.drv: Initialized g_rds_device_cs.\n");
+        FIXME("winerds.drv: Initialized g_rds_device_cs.\n");
 
         register_rds_driver(); // Register the RDS driver functions
 
         if (!StartRDSClientPipe())
         {
-            // Using printf for logging as WINE_ERR might not be set up or appropriate here.
-            printf("winerds.drv: CRITICAL ERROR: Failed to start RDS client pipe. GDI calls will not be forwarded.\n");
+            // Using FIXME for logging as WINE_ERR might not be set up or appropriate here.
+            FIXME("winerds.drv: CRITICAL ERROR: Failed to start RDS client pipe. GDI calls will not be forwarded.\n");
             // Depending on the design, returning FALSE here might be an option,
             // but it could prevent the DLL from loading entirely, which might also
             // prevent any fallback GDI functionality if this driver is primary.
@@ -51,15 +53,15 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, void *reserved)
         }
         else
         {
-            printf("winerds.drv: RDS client pipe started successfully.\n");
+            FIXME("winerds.drv: RDS client pipe started successfully.\n");
         }
         break;
 
     case DLL_PROCESS_DETACH:
-        printf("winerds.drv: DllMain called with DLL_PROCESS_DETACH.\n");
+        FIXME("winerds.drv: DllMain called with DLL_PROCESS_DETACH.\n");
 
         StopRDSClientPipe(); // Stop pipe client first
-        printf("winerds.drv: RDS client pipe stopped.\n");
+        FIXME("winerds.drv: RDS client pipe stopped.\n");
 
         // The 'reserved' parameter indicates if the process is terminating (non-NULL)
         // or if the DLL is being unloaded via FreeLibrary (NULL).
@@ -67,16 +69,16 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, void *reserved)
         // unloaded gracefully and no threads are still using them.
         if (reserved == NULL) // DLL is being unloaded via FreeLibrary
         {
-            printf("winerds.drv: DLL_PROCESS_DETACH due to FreeLibrary (reserved is NULL). Cleaning up resources.\n");
+            FIXME("winerds.drv: DLL_PROCESS_DETACH due to FreeLibrary (reserved is NULL). Cleaning up resources.\n");
             DeleteCriticalSection(&g_rds_device_cs);
-            printf("winerds.drv: Deleted g_rds_device_cs.\n");
+            FIXME("winerds.drv: Deleted g_rds_device_cs.\n");
             
             // Optional: unregister_rds_driver();
             // unregister_rds_driver();
         }
         else // Process is terminating
         {
-            printf("winerds.drv: DLL_PROCESS_DETACH due to process termination (reserved is non-NULL). OS will reclaim resources.\n");
+            FIXME("winerds.drv: DLL_PROCESS_DETACH due to process termination (reserved is non-NULL). OS will reclaim resources.\n");
             // Generally, no need to explicitly delete CS or unregister during process termination,
             // as the OS reclaims resources. Trying to do so might lead to issues if other parts
             // of the process are already torn down.
