@@ -21034,6 +21034,8 @@ else
     enable_compiler_rt=${enable_compiler_rt:-no}
 fi
 
+enable_winerds_drv=${enable_winerds_drv:-yes}
+
 enable_conhost=${enable_conhost:-$HOST_ARCH}
 enable_plugplay=${enable_plugplay:-$HOST_ARCH}
 enable_rpcss=${enable_rpcss:-$HOST_ARCH}

@@ -2367,6 +2367,9 @@ else
     enable_compiler_rt=${enable_compiler_rt:-no}
 fi
 
+dnl For now, always enable remote desktop services
+enable_winerds_drv=${enable_winerds_drv:-yes}
+
 dnl Disable some programs for other PE archs
 enable_conhost=${enable_conhost:-$HOST_ARCH}
 enable_plugplay=${enable_plugplay:-$HOST_ARCH}
