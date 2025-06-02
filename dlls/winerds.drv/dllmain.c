@@ -25,7 +25,7 @@
 
 #include "wine/debug.h"
 
-WINE_DEFAULT_DEBUG_CHANNEL(waylanddrv);
+WINE_DEFAULT_DEBUG_CHANNEL(rdsdrv);
 
 static DWORD WINAPI wayland_read_events_thread(void *arg)
 {

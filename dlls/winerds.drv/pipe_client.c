@@ -16,34 +16,43 @@ static CRITICAL_SECTION pipe_cs; // For thread-safe access to hPipe by SendRDSMe
 
 DWORD WINAPI RDSClientPipeThread(LPVOID lpParam)
 {
-    printf("RDS Pipe Client Thread started.\n");
+    FIXME("RDS Pipe Client Thread started.\n");
+
+    LPCWSTR pipe_name_log = (LPCWSTR)L"\\\\.\\pipe\\wine_rds_gdi_commands"; // For logging
+    FIXME("winerds.drv: RDSClientPipeThread: Running (bClientRunning=%d).\n", bClientRunning); // Check if thread runs
+
+
     while (bClientRunning)
     {
         if (hPipe == INVALID_HANDLE_VALUE) // Attempt to connect only if not already connected
         {
-            printf("Attempting to connect to named pipe %S...\n", L"\\\\.\\pipe\\wine_rds_gdi_commands");
+            FIXME("winerds.drv: RDSClientPipeThread: Attempting to connect to pipe: %S\n", pipe_name_log);
             hPipe = CreateFileW(
-                L"\\\\.\\pipe\\wine_rds_gdi_commands", // Pipe name
+                pipe_name_log, // Use the variable for clarity
                 GENERIC_READ | GENERIC_WRITE,
-                0,                            // No sharing
-                NULL,                         // Default security attributes
-                OPEN_EXISTING,                // Opens existing pipe
-                0,                            // Default attributes
-                NULL);                        // No template file
+                0,
+                NULL,
+                OPEN_EXISTING,
+                0,
+                NULL);
 
             if (hPipe != INVALID_HANDLE_VALUE)
             {
-                printf("Connected to named pipe.\n");
-                // Optional: Could set to message mode if server is also message mode
+		FIXME("winerds.drv: RDSClientPipeThread: Successfully connected to pipe %S. Handle: %p\n", pipe_name_log, hPipe);
+
+		// Optional: Set to message mode (though server sets this, client can too)
                 // DWORD dwMode = PIPE_READMODE_MESSAGE;
-                // SetNamedPipeHandleState(hPipe, &dwMode, NULL, NULL);
+                // if (!SetNamedPipeHandleState(hPipe, &dwMode, NULL, NULL)) {
+                //    FIXME("winerds.drv: RDSClientPipeThread: SetNamedPipeHandleState failed. GLE=%u\n", (unsigned int)GetLastError());
+                // }
             }
             else
             {
+                FIXME("winerds.drv: RDSClientPipeThread: Failed to connect to pipe %S. GLE=%u\n", pipe_name_log, (unsigned int)GetLastError());
                 DWORD dwError = GetLastError();
                 // Don't spam logs if server is just not there yet
                 if (dwError != ERROR_FILE_NOT_FOUND) {
-                   printf("Error connecting to named pipe: %lu\n", dwError);
+                   FIXME("Error connecting to named pipe: %lu\n", dwError);
                 }
             }
         }
@@ -53,11 +62,25 @@ DWORD WINAPI RDSClientPipeThread(LPVOID lpParam)
             Sleep(2000); // Wait before retrying connection
             continue;
         }
-        
-        // If connected, this thread could optionally handle server-initiated messages (responses)
-        // For now, it just maintains the connection. SendRDSMessage will do the writing.
-        // If the pipe breaks, hPipe will be closed by SendRDSMessage or here.
-        if(bClientRunning) Sleep(100); // Keep thread alive, periodically check bClientRunning
+
+    	if (!bClientRunning) break; // Exit if server is stopping
+
+    	// If connected, this thread could optionally handle server-initiated messages (responses)
+    	// For now, it just maintains the connection. SendRDSMessage will do the writing.
+    	// Add a check to see if the pipe is still valid, otherwise try to reconnect.
+    	DWORD pipe_state = 0;
+    	if (!GetNamedPipeHandleStateA(hPipe, &pipe_state, NULL, NULL, NULL, NULL, 0))
+    	{
+        	FIXME("winerds.drv: RDSClientPipeThread: Pipe %p no longer valid (e.g. server closed it). GLE=%u. Attempting to reconnect.\n", hPipe, (unsigned int)GetLastError());
+        	EnterCriticalSection(&pipe_cs);
+        	CloseHandle(hPipe);
+        	hPipe = INVALID_HANDLE_VALUE;
+        	LeaveCriticalSection(&pipe_cs);
+        	// The loop will then attempt to reconnect via CreateFileW
+    	} else {
+        	Sleep(100); // Pipe still seems valid, sleep before checking bClientRunning again
+    	}
+
     }
 
     // Cleanup if thread is exiting and pipe is still open
@@ -66,10 +89,10 @@ DWORD WINAPI RDSClientPipeThread(LPVOID lpParam)
     {
         CloseHandle(hPipe);
         hPipe = INVALID_HANDLE_VALUE;
-        printf("Pipe handle closed in thread exit.\n");
+        FIXME("Pipe handle closed in thread exit.\n");
     }
     LeaveCriticalSection(&pipe_cs);
-    printf("RDS Pipe Client Thread exiting.\n");
+    FIXME("RDS Pipe Client Thread exiting.\n");
     return 0;
 }
 
@@ -82,12 +105,12 @@ BOOL StartRDSClientPipe(void)
     hClientThread = CreateThread(NULL, 0, RDSClientPipeThread, NULL, 0, NULL);
     if (hClientThread == NULL)
     {
-        printf("Failed to create pipe client thread, GLE=%ld.\n", GetLastError());
+        FIXME("Failed to create pipe client thread, GLE=%ld.\n", GetLastError());
         DeleteCriticalSection(&pipe_cs);
         bClientRunning = FALSE;
         return FALSE;
     }
-    printf("Pipe client thread successfully started.\n");
+    FIXME("Pipe client thread successfully started.\n");
     return TRUE;
 }
 
@@ -95,7 +118,7 @@ void StopRDSClientPipe(void)
 {
     if (!bClientRunning) return;
 
-    printf("Stopping pipe client thread...\n");
+    FIXME("Stopping pipe client thread...\n");
     bClientRunning = FALSE;
 
     EnterCriticalSection(&pipe_cs);
@@ -103,7 +126,7 @@ void StopRDSClientPipe(void)
     {
         CloseHandle(hPipe); 
         hPipe = INVALID_HANDLE_VALUE;
-        printf("Pipe handle closed in StopRDSClientPipe.\n");
+        FIXME("Pipe handle closed in StopRDSClientPipe.\n");
     }
     LeaveCriticalSection(&pipe_cs);
 
@@ -114,7 +137,7 @@ void StopRDSClientPipe(void)
         hClientThread = NULL;
     }
     DeleteCriticalSection(&pipe_cs);
-    printf("Pipe client thread stopped.\n");
+    FIXME("Pipe client thread stopped.\n");
 }
 
 BOOL SendRDSMessage(const RDS_MESSAGE *msg, const void *variable_data, DWORD variable_data_size)
@@ -125,7 +148,7 @@ BOOL SendRDSMessage(const RDS_MESSAGE *msg, const void *variable_data, DWORD var
     if (!msg) return FALSE;
     if (!bClientRunning || hPipe == INVALID_HANDLE_VALUE)
     {
-        printf("Pipe not connected, cannot send message type %d\n", msg->msgType);
+        FIXME("Pipe not connected, cannot send message type %d\n", msg->msgType);
         return FALSE;
     }
 
@@ -149,37 +172,38 @@ BOOL SendRDSMessage(const RDS_MESSAGE *msg, const void *variable_data, DWORD var
                 {
                     if (cbWritten == variable_data_size)
                     {
-                        // printf("Successfully sent message type %d with %lu bytes of variable data.\n", msg->msgType, variable_data_size);
+                        // FIXME("Successfully sent message type %d with %lu bytes of variable data.\n", msg->msgType, variable_data_size);
                     }
                     else 
                     {
-                        printf("WriteFile for variable data wrote %lu of %lu bytes.\n", cbWritten, variable_data_size);
+                        FIXME("WriteFile for variable data wrote %lu of %lu bytes.\n", cbWritten, variable_data_size);
                         bSuccess = FALSE; 
                     }
                 }
                 else 
                 {
-                    printf("WriteFile for variable data failed, GLE=%ld.\n", GetLastError());
+                    FIXME("WriteFile for variable data failed, GLE=%ld.\n", GetLastError());
                     bSuccess = FALSE;
                 }
             }
              else { // No variable data or zero size
-                printf("Successfully sent message type %d.\n", msg->msgType);
+                FIXME("Successfully sent message type %d.\n", msg->msgType);
              }
         }
         else 
         {
-            printf("WriteFile for RDS_MESSAGE wrote %lu of %u bytes.\n", cbWritten, (unsigned int)sizeof(RDS_MESSAGE));
+            FIXME("WriteFile for RDS_MESSAGE wrote %lu of %u bytes.\n", cbWritten, (unsigned int)sizeof(RDS_MESSAGE));
         }
     }
     else 
     {
-        printf("WriteFile for RDS_MESSAGE failed, GLE=%ld.\n", GetLastError());
+        FIXME("WriteFile for RDS_MESSAGE failed, GLE=%ld.\n", GetLastError());
         CloseHandle(hPipe);
         hPipe = INVALID_HANDLE_VALUE;
-        printf("Pipe handle closed due to WriteFile failure.\n");
+        FIXME("Pipe handle closed due to WriteFile failure.\n");
     }
     
     LeaveCriticalSection(&pipe_cs);
     return bSuccess;
 }
+
