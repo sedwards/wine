@@ -1,10 +1,10 @@
-#include "rds_gdi_handlers.h"
 #include <stdio.h> // For printf
 #include <windows.h> // For Win32 GDI functions like MoveToEx, LineTo, Rectangle, TextOutW
-#include "../../dlls/winerds.drv/rds.h" // For RDS_SURFACE, find_surface
+#include "rds_gdi_handlers.h"
+#include "rds.h" // For RDS_SURFACE, find_surface
 
 // If WINE_DEFAULT_DEBUG_CHANNEL is used for termsrv, define it.
-// WINE_DEFAULT_DEBUG_CHANNEL(termsrv_gdi); 
+WINE_DEFAULT_DEBUG_CHANNEL(termsrv_gdi); 
 
 void Handle_RDS_MSG_MOVE_TO(const RDS_MESSAGE *msg)
 {

@@ -1,3 +1,6 @@
+#ifndef WINE_RDS_MESSAGE
+#define WINE_RDS_MESSAGE
+
 // Shared between termsrv.exe.so and winerds.drv
 typedef enum _RDS_MESSAGE_TYPE
 {
@@ -143,3 +146,5 @@ typedef struct _RDS_MESSAGE
         } bitBlt;
     } params;
 } RDS_MESSAGE;
+
+#endif /* WINE_RDS_MESSSAGE */

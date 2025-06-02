@@ -1,6 +1,7 @@
-#include "../../dlls/winerds.drv/rds.h" // Or "rds.h" if copied locally. Adjust path as needed.
 #include <stdio.h> // For printf or WINE_TRACE/ERR if configured
 #include <string.h> // For memset
+
+#include "rds.h"
 
 // Assuming rds_service and its default_surface are accessible, e.g., via an extern or getter.
 // For this subtask, we might need a simplified way if rds_service is not directly global.
@@ -124,3 +125,54 @@ void gdi_draw_test_pattern(RDS_SURFACE *surface)
     // For this test pattern, it's assumed the whole surface is modified.
     SetRect(&surface->dirty_rect, 0, 0, surface->width, surface->height);
 }
+
+// In programs/termsrv/rds_surface_drawing.c
+
+// Assuming RDS_SERVICE rds_service; is a global in rds.c
+// and you might declare it as 'extern RDS_SERVICE rds_service;' here if needed.
+// Or, you need a proper way to manage a list of surfaces if not just a single default.
+
+BOOL destroy_surface(DWORD surface_id) {
+    extern RDS_SERVICE rds_service; // If accessing a global from rds.c
+
+    printf("termsrv: Attempting to destroy surface ID: %lu\n", (unsigned long)surface_id);
+
+    // This logic assumes you are primarily dealing with rds_service.default_surface
+    // and its ID was set correctly during creation.
+    if (rds_service.default_surface && rds_service.default_surface->id == surface_id) {
+        if (rds_service.default_surface->data) {
+            HeapFree(GetProcessHeap(), 0, rds_service.default_surface->data);
+            rds_service.default_surface->data = NULL;
+        }
+        HeapFree(GetProcessHeap(), 0, rds_service.default_surface);
+        rds_service.default_surface = NULL; // Very important!
+        printf("termsrv: Surface ID %lu destroyed.\n", (unsigned long)surface_id);
+        return TRUE;
+    }
+
+    // If you have a list of multiple surfaces, you'd search here.
+    // For now, this handles the default_surface case.
+
+    printf("termsrv: ERR - destroy_surface: Surface ID %lu not found or default_surface mismatch.\n", (unsigned long)surface_id);
+    return FALSE;
+}
+
+// Example sketch in programs/termsrv/rds_surface_drawing.c
+RDS_SURFACE *create_surface_ex(DWORD width, DWORD height, DWORD bpp) {
+    RDS_SURFACE *surface = (RDS_SURFACE *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(RDS_SURFACE));
+    if (!surface) return NULL;
+
+    surface->width = width;
+    surface->height = height;
+    surface->bpp = bpp; // Assume 24 or 32
+    surface->stride = (width * (bpp / 8) + 3) & ~3; // DWORD align
+    surface->data = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, surface->stride * surface->height);
+
+    if (!surface->data) {
+        HeapFree(GetProcessHeap(), 0, surface);
+        return NULL;
+    }
+    // The caller (initialize_service in rds.c) should set surface->id for the default_surface
+    return surface;
+}
+

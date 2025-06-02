@@ -200,8 +200,8 @@ void process_events(void) {
 // --- Main function (example, if this were a standalone executable) ---
 // In Wine, this might be part of a service's ServiceMain or a DLL's DllMain.
 // For this test structure, a simple main is fine.
-/*
-int main(void) {
+
+int wmain(void) {
     printf("Starting RDS Terminal Service (mock)\n");
     if (initialize_service()) {
         // Simulate running the service and processing events
@@ -218,4 +218,4 @@ int main(void) {
     printf("RDS Terminal Service (mock) finished.\n");
     return 0;
 }
-*/
+
