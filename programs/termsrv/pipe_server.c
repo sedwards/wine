@@ -10,6 +10,7 @@ static volatile BOOL bServerRunning = FALSE;
 DWORD WINAPI RDSPipeServerThread(LPVOID lpParam)
 {
     char buffer[sizeof(RDS_MESSAGE) + 4096]; // Buffer for RDS_MESSAGE + potential variable data
+    LPCWSTR pipe_name_literal = (LPCWSTR)L"\\\\.\\pipe\\wine_rds_gdi_commands";
     DWORD cbRead;
     BOOL bConnected;
     HANDLE hCurrentPipe = INVALID_HANDLE_VALUE;
@@ -19,7 +20,7 @@ DWORD WINAPI RDSPipeServerThread(LPVOID lpParam)
     while (bServerRunning)
     {
         hCurrentPipe = CreateNamedPipeW(
-            L"\\\\.\\pipe\\wine_rds_gdi_commands", // Pipe name
+            pipe_name_literal, // Pipe name
             PIPE_ACCESS_DUPLEX,         // Read/write access
             PIPE_TYPE_MESSAGE |         // Message type pipe
             PIPE_READMODE_MESSAGE |     // Message-read mode
@@ -32,7 +33,7 @@ DWORD WINAPI RDSPipeServerThread(LPVOID lpParam)
 
         if (hCurrentPipe == INVALID_HANDLE_VALUE)
         {
-            printf("CreateNamedPipe failed, GLE=%d.\n", GetLastError());
+            printf("CreateNamedPipe failed, GLE=%ld.\n", GetLastError());
             if (!bServerRunning) break;
             Sleep(1000); // Wait a bit before retrying
             continue;
@@ -153,7 +154,7 @@ DWORD WINAPI RDSPipeServerThread(LPVOID lpParam)
                     }
                     else
                     {
-                        printf("ReadFile failed, GLE=%d, on pipe instance (%p).\n", dwError, hCurrentPipe);
+                        printf("ReadFile failed, GLE=%ld, on pipe instance (%p).\n", dwError, hCurrentPipe);
                     }
                     break; // Break from inner message reading loop (client disconnected or error)
                 }
@@ -181,7 +182,7 @@ BOOL StartRDSPipeServer(void)
     hPipeThread = CreateThread(NULL, 0, RDSPipeServerThread, NULL, 0, NULL);
     if (hPipeThread == NULL)
     {
-        printf("Failed to create pipe server thread, GLE=%d.\n", GetLastError());
+        printf("Failed to create pipe server thread, GLE=%ld.\n", GetLastError());
         bServerRunning = FALSE;
         return FALSE;
     }
@@ -214,7 +215,7 @@ void StopRDSPipeServer(void)
     } else {
         // This might happen if the server was not actually blocked on ConnectNamedPipe,
         // or if the pipe was already being closed.
-        printf("Dummy client connection failed GLE=%d. Server thread might take longer to stop if blocked on ConnectNamedPipe.\n", GetLastError());
+        printf("Dummy client connection failed GLE=%ld. Server thread might take longer to stop if blocked on ConnectNamedPipe.\n", GetLastError());
     }
 
     if (hPipeThread)
