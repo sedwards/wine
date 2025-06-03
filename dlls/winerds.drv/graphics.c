@@ -3,7 +3,7 @@
 #include "ntuser.h"
 #include "winuser.h"
 
-#include "gdi_driver.h"
+#include "rdsgdi_driver.h"
 
 #include "pipe_client.h"
 

@@ -18,12 +18,8 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#ifndef __WINE_WINE_GDI_DRIVER_H
-#define __WINE_WINE_GDI_DRIVER_H
-
-//#ifndef WINE_UNIX_LIB
-//#error The GDI driver can only be used on the Unix side
-//#endif
+#ifndef __WINE_RDS_GDI_DRIVER_H
+#define __WINE_RDS_GDI_DRIVER_H
 
 #include <stdarg.h>
 #include <stddef.h>
@@ -39,7 +35,7 @@
 #include "ddk/d3dkmthk.h"
 #include "kbd.h"
 #include "wine/list.h"
-#include "wine/debug.h"
+//#include "wine/debug.h"
 
 struct gdi_dc_funcs;
 struct opengl_funcs;
@@ -52,11 +48,12 @@ struct window_rects
     RECT visible;   /* area currently visible on the host screen, backed with a surface */
 };
 
-static inline const char *debugstr_window_rects( const struct window_rects *rects )
-{
-    return wine_dbg_sprintf( "{ window %s, client %s, visible %s }", wine_dbgstr_rect( &rects->window ),
-                             wine_dbgstr_rect( &rects->client ), wine_dbgstr_rect( &rects->visible ) );
-}
+//
+//static inline const char *debugstr_window_rects( const struct window_rects *rects )
+//{
+//    return wine_dbg_sprintf( "{ window %s, client %s, visible %s }", wine_dbgstr_rect( &rects->window ),
+//                             wine_dbgstr_rect( &rects->client ), wine_dbgstr_rect( &rects->visible ) );
+//}
 
 /* convert a visible rect to the corresponding window rect, using the window_rects offsets */
 static inline RECT window_rect_from_visible( const struct window_rects *rects, RECT visible_rect )

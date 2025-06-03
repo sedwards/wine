@@ -6,11 +6,13 @@
 
 static HANDLE hPipeThread = NULL;
 static volatile BOOL bServerRunning = FALSE;
+#define RDS_PIPE_NAME L"\\\\.\\pipe\\WineRDS"
+
+
 
 DWORD WINAPI RDSPipeServerThread(LPVOID lpParam)
 {
     char buffer[sizeof(RDS_MESSAGE) + 4096]; // Buffer for RDS_MESSAGE + potential variable data
-    LPCWSTR pipe_name_literal = (LPCWSTR)L"\\\\.\\pipe\\wine_rds_gdi_commands";
     DWORD cbRead;
     BOOL bConnected;
     HANDLE hCurrentPipe = INVALID_HANDLE_VALUE;
@@ -20,7 +22,7 @@ DWORD WINAPI RDSPipeServerThread(LPVOID lpParam)
     while (bServerRunning)
     {
         hCurrentPipe = CreateNamedPipeW(
-            pipe_name_literal, // Pipe name
+            RDS_PIPE_NAME, // Pipe name
             PIPE_ACCESS_DUPLEX,         // Read/write access
             PIPE_TYPE_MESSAGE |         // Message type pipe
             PIPE_READMODE_MESSAGE |     // Message-read mode
@@ -200,7 +202,7 @@ void StopRDSPipeServer(void)
     // Create a dummy client to connect to the pipe and unblock the server thread
     // if it's waiting in ConnectNamedPipe.
     HANDLE hDummyClient = CreateFileW(
-        L"\\\\.\\pipe\\wine_rds_gdi_commands",
+        RDS_PIPE_NAME,
         GENERIC_WRITE, 
         0,             
         NULL,          

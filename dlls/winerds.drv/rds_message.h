@@ -5,6 +5,7 @@
 typedef enum _RDS_MESSAGE_TYPE
 {
     // Driver messages
+    RDS_MSG_ENABLE_PRIMARY_SURFACE,
     RDS_MSG_CREATE_SURFACE,
     RDS_MSG_SURFACE_CREATED,
     RDS_MSG_DESTROY_SURFACE,
@@ -43,6 +44,11 @@ typedef struct _RDS_MESSAGE
             DWORD height;
             DWORD bpp;
         } createSurface;
+
+        struct
+	{
+            DWORD_PTR surfaceId;
+	} enablePrimarySurface;
 
         struct
         {
