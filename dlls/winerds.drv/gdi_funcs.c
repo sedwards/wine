@@ -337,7 +337,7 @@ BOOL WINAPI DrvEnableDriver( ULONG iEngineVersion, ULONG cj, DRVENABLEDATA *pded
 }
 
 // --- DC Functions ---
-static HDC WINAPI RdsCreateDCW(PHYSDEV dev, LPCWSTR driver, LPCWSTR device, LPCWSTR output, const DEVMODEW *devmode)
+static HDC WINAPI RDS_CreateDCW(PHYSDEV dev, LPCWSTR driver, LPCWSTR device, LPCWSTR output, const DEVMODEW *devmode)
 {
     RDSDRV_PDEVICE *pdev;
     FIXME("winerds.drv: RdsCreateDCW called for driver='%S', device='%S', output='%S'\n", 
@@ -390,7 +390,7 @@ static HDC WINAPI RdsCreateDCW(PHYSDEV dev, LPCWSTR driver, LPCWSTR device, LPCW
     return hdc;
 }
 
-static BOOL WINAPI RdsDeleteDCW(PHYSDEV dev, HDC hdc)
+static BOOL WINAPI RDS_DeleteDCW(PHYSDEV dev, HDC hdc)
 {
     RDSDRV_PDEVICE *pdev, *prev_pdev;
     FIXME("winerds.drv: RdsDeleteDCW called for hdc=%p\n", hdc);
@@ -414,7 +414,7 @@ static BOOL WINAPI RdsDeleteDCW(PHYSDEV dev, HDC hdc)
     return TRUE;
 }
 
-int WINAPI RdsGetDeviceCaps(PHYSDEV dev, int index)
+int WINAPI RDS_GetDeviceCaps(PHYSDEV dev, int index)
 {
     RDSDRV_PDEVICE* rds_pdev = NULL;
     

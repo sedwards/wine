@@ -30,6 +30,7 @@ RDS_SURFACE *find_surface(DWORD surface_id)
     return NULL; 
 }
 
+#if 0
 // Implementation for gdi_move_to (OBSOLETE - Handlers use MoveToEx directly)
 BOOL gdi_move_to(RDS_SURFACE *surface, int x, int y)
 {
@@ -72,6 +73,7 @@ BOOL gdi_text_out(RDS_SURFACE *surface, int x, int y, const WCHAR *text, int cou
     // printf("OBSOLETE: gdi_text_out called for surfaceId=%lu. Should use HDC directly.\n", (unsigned long)surface->id);
     return TRUE;
 }
+#endif
 
 // Placeholder for gdi_draw_test_pattern - already called in rds.c, ensure it's implemented.
 // This is a good place for it.
