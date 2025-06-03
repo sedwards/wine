@@ -1,11 +1,10 @@
-#ifndef WINE_RDS_MESSAGE
-#define WINE_RDS_MESSAGE
+#ifndef RDS_MESSAGE_H
+#define RDS_MESSAGE_H
 
 // Shared between termsrv.exe.so and winerds.drv
 typedef enum _RDS_MESSAGE_TYPE
 {
     // Driver messages
-    RDS_MSG_ENABLE_PRIMARY_SURFACE,
     RDS_MSG_CREATE_SURFACE,
     RDS_MSG_SURFACE_CREATED,
     RDS_MSG_DESTROY_SURFACE,
@@ -29,7 +28,11 @@ typedef enum _RDS_MESSAGE_TYPE
     RDS_MSG_LINE_TO,
     RDS_MSG_RECTANGLE,
     RDS_MSG_TEXT_OUT,
-    RDS_MSG_BIT_BLT
+    RDS_MSG_BIT_BLT,
+
+    // New messages
+    RDS_MSG_ENABLE_PRIMARY_SURFACE, // Sent by winerds.drv when DrvEnableSurface is called for the primary display
+    RDS_MSG_GDIOBJ_CREATED          // Response from termsrv after creating a GDI object (e.g., pen) requested by winerds.drv
 } RDS_MESSAGE_TYPE;
 
 typedef struct _RDS_MESSAGE
@@ -44,11 +47,6 @@ typedef struct _RDS_MESSAGE
             DWORD height;
             DWORD bpp;
         } createSurface;
-
-        struct
-	{
-            DWORD_PTR surfaceId;
-	} enablePrimarySurface;
 
         struct
         {
@@ -150,7 +148,21 @@ typedef struct _RDS_MESSAGE
             DWORD data_size; // Size in bytes of the bitmap data that follows, if surfaceId_src is 0
             // BYTE data[...] will follow RDS_MESSAGE in the stream if surfaceId_src is 0
         } bitBlt;
+
+        struct
+        {
+            DWORD_PTR surfaceId; // The ID the driver will use for this primary surface (e.g., 1)
+                                 // Could also include desired width, height, bpp if winerds.drv dictates these to termsrv
+        } enablePrimarySurface;
+
+        struct 
+        {
+            DWORD_PTR temp_driver_hobject_id;   // ID used by winerds.drv when requesting object creation
+            DWORD_PTR actual_termsrv_hobject_id; // Handle or ID assigned by termsrv (opaque to winerds.drv)
+                                                // This is for a potential future model where termsrv manages GDI object handles.
+                                                // For the "send effective state" model, this response might not be immediately used.
+        } gdiObjCreated;
     } params;
 } RDS_MESSAGE;
 
-#endif /* WINE_RDS_MESSSAGE */
+#endif
