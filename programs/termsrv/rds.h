@@ -37,6 +37,7 @@ typedef struct _RDS_SURFACE {
 // For this task, only RDS_SURFACE is directly modified.
 typedef struct _RDS_SERVICE {
     RDS_SURFACE *default_surface;
+    BOOL should_exit;
     // Other service-wide data
     // For example, a list of all active surfaces:
     // RDS_SURFACE *surfaces[MAX_SURFACES];

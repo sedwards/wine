@@ -41,6 +41,8 @@ BOOL initialize_service(void)
 {
     memset(&rds_service, 0, sizeof(rds_service));
 
+    rds_service.should_exit = FALSE; // Initialize here
+
     if (!surface_initialize()) { 
         printf("ERR: surface_initialize failed\n");
         return FALSE; 
@@ -174,11 +176,16 @@ static void shutdown_service(void)
 
 // Example main loop or event processing function (conceptual)
 void process_events(void) {
-    // In a real service, this would handle events, client requests, etc.
-    // For now, it's a placeholder.
     printf("process_events: STUB - waiting for shutdown signal (e.g., Ctrl+C or service stop)\n");
-    // Simulate some work or waiting
-    Sleep(5000); // Sleep for 5 seconds
+
+        printf("termsrv: Service loop running. Pipe server is active.");
+    while (!rds_service.should_exit) {
+        // This loop keeps termsrv alive.
+        // Later, you can add periodic tasks here (like your screenshot dump)
+        // or handling for other events if termsrv becomes more complex.
+        Sleep(100); // Sleep briefly to prevent high CPU usage
+    }
+    printf("termsrv: Service loop exiting.");
 }
 
 
@@ -218,4 +225,62 @@ int wmain(void) {
     printf("RDS Terminal Service (mock) finished.\n");
     return 0;
 }
+
+// Add a console control handler to catch Ctrl+C for graceful shutdown
+static BOOL WINAPI console_ctrl_handler(DWORD ctrl_type) {
+    switch (ctrl_type) {
+        case CTRL_C_EVENT:
+        case CTRL_BREAK_EVENT:
+        case CTRL_CLOSE_EVENT:
+            printf("termsrv: Shutdown signal (Ctrl+C or Close) received.");
+            rds_service.should_exit = TRUE; // Signal the main loop to terminate
+            return TRUE; // Indicate we've handled the signal
+    }
+    return FALSE;
+}
+
+#if 0
+// Modify your initialize_service to set should_exit
+BOOL initialize_service(void) {
+    memset(&rds_service, 0, sizeof(rds_service));
+    rds_service.should_exit = FALSE; // Initialize here
+    // ... rest of your initialization (surfaces, GDI stubs, pipe server) ...
+    // Ensure it returns TRUE on success, FALSE on failure.
+    if (!StartRDSPipeServer()) { /* ... cleanup and return FALSE ... */ }
+    printf("RDS service initialized successfully. Waiting for client or Ctrl+C to exit.");
+    return TRUE;
+}
+
+// A new main processing loop
+void run_service_loop(void) {
+    printf("termsrv: Service loop running. Pipe server is active.");
+    while (!rds_service.should_exit) {
+        // This loop keeps termsrv alive.
+        // Later, you can add periodic tasks here (like your screenshot dump)
+        // or handling for other events if termsrv becomes more complex.
+        Sleep(100); // Sleep briefly to prevent high CPU usage
+    }
+    printf("termsrv: Service loop exiting.");
+}
+
+// Example main function
+int main(void) {
+    printf("Starting RDS Terminal Service (mock)");
+
+    if (!SetConsoleCtrlHandler(console_ctrl_handler, TRUE)) {
+        printf("termsrv: ERR - Could not set console control handler.");
+        // Continue anyway, but Ctrl+C might not be clean.
+    }
+
+    if (initialize_service()) {
+        run_service_loop(); // This will block until should_exit is true
+        shutdown_service();
+    } else {
+        printf("termsrv: ERR - Service initialization failed.");
+        return 1;
+    }
+    printf("RDS Terminal Service (mock) finished.");
+    return 0;
+}
+#endif
 
