@@ -79,18 +79,24 @@ DWORD WINAPI RDSPipeServerThread(LPVOID lpParam)
 
                         switch (rdsMsg->msgType)
                         {
+                            case RDS_MSG_PING:
+				 if (cbRead >= sizeof(RDS_MESSAGE))
+				     Handle_RDS_MSG_PING(rdsMsg, hCurrentPipe);
+				 else  
+                                    printf("WARN: Partial RDS_MSG_PING message received.\n");
+                                break;
                             case RDS_MSG_MOVE_TO:
                                 // Check size for this specific message part.
                                 if (cbRead >= sizeof(rdsMsg->params.moveTo) + sizeof(RDS_MESSAGE_TYPE)) 
                                     Handle_RDS_MSG_MOVE_TO(rdsMsg);
                                 else
-                                    printf("WARN: Partial RDS_MSG_MOVE_TO message received.\n"); // Simplified message for this specific check
+                                    printf("WARN: Partial RDS_MSG_MOVE_TO message received.\n");
                                 break;
                             case RDS_MSG_LINE_TO:
                                 if (cbRead >= sizeof(rdsMsg->params.lineTo) + sizeof(RDS_MESSAGE_TYPE))
                                     Handle_RDS_MSG_LINE_TO(rdsMsg);
                                 else
-                                    printf("WARN: Partial RDS_MSG_LINE_TO message received.\n"); // Simplified message
+                                    printf("WARN: Partial RDS_MSG_LINE_TO message received.\n");
                                 break;
                             case RDS_MSG_RECTANGLE:
                                 // Ensure enough data for rectangle params (msgType + params.rectangle)

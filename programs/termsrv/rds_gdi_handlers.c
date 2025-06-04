@@ -144,3 +144,17 @@ void Handle_RDS_MSG_TEXT_OUT(const RDS_MESSAGE *msg, const WCHAR *text_data)
         printf("ERR: Handle_RDS_MSG_TEXT_OUT: Surface %lu or its HDC not found.\n", (unsigned long)msg->params.textOut.surfaceId);
     }
 }
+
+void Handle_RDS_MSG_PING(const RDS_MESSAGE *msg, HANDLE hPipe)
+{
+    printf("termsrv: Received RDS_MSG_PING.\n");
+    RDS_MESSAGE pong_msg;
+    pong_msg.msgType = RDS_MSG_PONG;
+    DWORD cbWritten = 0;
+
+    if (WriteFile(hPipe, &pong_msg, sizeof(RDS_MESSAGE), &cbWritten, NULL) && cbWritten == sizeof(RDS_MESSAGE)) { 
+	printf("termsrv: Sent RDS_MSG_PONG successfully.\n"); 
+    } else { 
+	printf("termsrv: ERR - WriteFile failed for RDS_MSG_PONG. GLE=%u\n", (unsigned int)GetLastError()); }
+}
+

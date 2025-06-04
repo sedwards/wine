@@ -166,4 +166,3 @@ BOOL SendRDSMessage(const RDS_MESSAGE *msg, const void *variable_data, DWORD var
     return bSuccess;
 }
 
-    
