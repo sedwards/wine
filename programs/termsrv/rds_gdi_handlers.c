@@ -41,7 +41,15 @@ void Handle_RDS_MSG_LINE_TO(const RDS_MESSAGE *msg)
     surface = find_surface(msg->params.lineTo.surfaceId);
     if (surface && surface->hdc)
     {
-        HPEN hNewPen = CreatePen(PS_SOLID, 1, msg->params.lineTo.color);
+        LOGPEN logPen;
+        HPEN hNewPen;
+
+        logPen.lopnStyle = msg->params.lineTo.lopnStyle;
+        logPen.lopnWidth.x = msg->params.lineTo.lopnWidth_x;
+        logPen.lopnWidth.y = 0; // According to MSDN, y is not used for pens.
+        logPen.lopnColor = msg->params.lineTo.color;
+
+        hNewPen = CreatePenIndirect(&logPen);
         if (hNewPen)
         {
             HPEN hOldPen = (HPEN)SelectObject(surface->hdc, hNewPen);
@@ -49,9 +57,10 @@ void Handle_RDS_MSG_LINE_TO(const RDS_MESSAGE *msg)
             SelectObject(surface->hdc, hOldPen);
             DeleteObject(hNewPen);
         }
-        else // Fallback if pen creation failed
+        else
         {
-            printf("WARN: CreatePen failed for LineTo, using HDC current pen.\n");
+            printf("WARN: CreatePenIndirect failed for LineTo (Style: %u, Width: %u, Color: %lx). Using HDC current pen.\n",
+                   logPen.lopnStyle, logPen.lopnWidth.x, logPen.lopnColor);
             LineTo(surface->hdc, msg->params.lineTo.x, msg->params.lineTo.y);
         }
     }
@@ -81,12 +90,30 @@ void Handle_RDS_MSG_RECTANGLE(const RDS_MESSAGE *msg)
         rc.right = msg->params.rectangle.right;
         rc.bottom = msg->params.rectangle.bottom;
 
-        HPEN hNewPen = CreatePen(PS_SOLID, 1, msg->params.rectangle.color);
+        LOGPEN logPen;
+        HPEN hNewPen;
+        LOGBRUSH logBrush;
         HBRUSH hNewBrush;
+        BOOL brush_created = FALSE;
 
-        if (msg->params.rectangle.filled) {
-            hNewBrush = CreateSolidBrush(msg->params.rectangle.color);
-        } else {
+        // Setup Pen
+        logPen.lopnStyle = msg->params.rectangle.pen_lopnStyle;
+        logPen.lopnWidth.x = msg->params.rectangle.pen_lopnWidth_x;
+        logPen.lopnWidth.y = 0;
+        logPen.lopnColor = msg->params.rectangle.color; // This is pen_color
+        hNewPen = CreatePenIndirect(&logPen);
+
+        // Setup Brush
+        if (msg->params.rectangle.filled)
+        {
+            logBrush.lbStyle = msg->params.rectangle.brush_lbStyle;
+            logBrush.lbColor = msg->params.rectangle.brush_lbColor;
+            logBrush.lbHatch = msg->params.rectangle.brush_lbHatch;
+            hNewBrush = CreateBrushIndirect(&logBrush);
+            brush_created = TRUE;
+        }
+        else
+        {
             hNewBrush = (HBRUSH)GetStockObject(NULL_BRUSH);
         }
 
@@ -99,17 +126,20 @@ void Handle_RDS_MSG_RECTANGLE(const RDS_MESSAGE *msg)
 
             SelectObject(surface->hdc, hOldPen);
             SelectObject(surface->hdc, hOldBrush);
+            
             DeleteObject(hNewPen);
-            if (msg->params.rectangle.filled && hNewBrush) // Only delete if we created it
+            if (brush_created && hNewBrush)
             {
                 DeleteObject(hNewBrush);
             }
         }
-        else // Fallback or error
+        else
         {
             if(hNewPen) DeleteObject(hNewPen);
-            if(msg->params.rectangle.filled && hNewBrush) DeleteObject(hNewBrush); // Check if created before deleting
-            printf("WARN: CreatePen or CreateSolidBrush failed for Rectangle, using HDC current objects.\n");
+            if(brush_created && hNewBrush) DeleteObject(hNewBrush);
+            printf("WARN: CreatePenIndirect or CreateBrushIndirect failed for Rectangle. Pen(S:%u,W:%u,C:%lx), Brush(S:%u,C:%lx,H:%p). Using HDC current objects.\n",
+                   logPen.lopnStyle, logPen.lopnWidth.x, logPen.lopnColor,
+                   logBrush.lbStyle, logBrush.lbColor, logBrush.lbHatch);
             Rectangle(surface->hdc, rc.left, rc.top, rc.right, rc.bottom);
         }
     }
@@ -132,12 +162,58 @@ void Handle_RDS_MSG_TEXT_OUT(const RDS_MESSAGE *msg, const WCHAR *text_data)
     surface = find_surface(msg->params.textOut.surfaceId);
     if (surface && surface->hdc)
     {
-        COLORREF oldColor = SetTextColor(surface->hdc, msg->params.textOut.color);
+        LOGFONTW logFont;
+        HFONT hNewFont, hOldFont;
+        COLORREF oldTextColor, oldBkColor;
+        int oldBkMode;
+
+        // Populate LOGFONTW from message parameters
+        logFont.lfHeight = msg->params.textOut.font_lfHeight;
+        logFont.lfWidth = msg->params.textOut.font_lfWidth;
+        logFont.lfEscapement = 0; // Default
+        logFont.lfOrientation = 0; // Default
+        logFont.lfWeight = msg->params.textOut.font_lfWeight;
+        logFont.lfItalic = msg->params.textOut.font_lfItalic;
+        logFont.lfUnderline = msg->params.textOut.font_lfUnderline;
+        logFont.lfStrikeOut = msg->params.textOut.font_lfStrikeOut;
+        logFont.lfCharSet = msg->params.textOut.font_lfCharSet;
+        logFont.lfOutPrecision = OUT_DEFAULT_PRECIS; // Default
+        logFont.lfClipPrecision = CLIP_DEFAULT_PRECIS; // Default
+        logFont.lfQuality = DEFAULT_QUALITY; // Default
+        logFont.lfPitchAndFamily = DEFAULT_PITCH | FF_DONTCARE; // Default
+        lstrcpynW(logFont.lfFaceName, msg->params.textOut.font_lfFaceName, LF_FACESIZE);
+        logFont.lfFaceName[LF_FACESIZE -1] = L'\0'; // Ensure null termination
+
+        hNewFont = CreateFontIndirectW(&logFont);
+
+        if (hNewFont)
+        {
+            hOldFont = (HFONT)SelectObject(surface->hdc, hNewFont);
+        }
+        else
+        {
+            printf("WARN: CreateFontIndirectW failed for TextOut. Using HDC current font.\n");
+            hOldFont = NULL; // No font to restore if creation failed
+        }
+
+        // Set text properties
+        oldTextColor = SetTextColor(surface->hdc, msg->params.textOut.color);
+        oldBkColor = SetBkColor(surface->hdc, msg->params.textOut.text_bk_color);
+        oldBkMode = SetBkMode(surface->hdc, msg->params.textOut.bk_mode);
         
         TextOutW(surface->hdc, msg->params.textOut.x, msg->params.textOut.y,
                  text_data, msg->params.textOut.count);
         
-        SetTextColor(surface->hdc, oldColor); // Restore old color
+        // Restore text properties
+        SetTextColor(surface->hdc, oldTextColor);
+        SetBkColor(surface->hdc, oldBkColor);
+        SetBkMode(surface->hdc, oldBkMode);
+
+        if (hNewFont)
+        {
+            SelectObject(surface->hdc, hOldFont);
+            DeleteObject(hNewFont);
+        }
     }
     else
     {
@@ -157,4 +233,5 @@ void Handle_RDS_MSG_PING(const RDS_MESSAGE *msg, HANDLE hPipe)
     } else { 
 	printf("termsrv: ERR - WriteFile failed for RDS_MSG_PONG. GLE=%u\n", (unsigned int)GetLastError()); }
 }
+
 
