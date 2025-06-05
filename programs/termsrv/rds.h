@@ -16,7 +16,7 @@ typedef struct _RDS_SURFACE {
     int width;
     int height;
     int bpp;          /* Bits per pixel */
-    void *data;       // <<-- This is for the raw pixel buffer
+    void *data;       // <<-- This is for the raw pixel buffer (legacy, use pBitmapBits)
     HDC hdc;          /* Memory HDC for this surface */
     HBITMAP hBitmap;      /* DIB section HBITMAP selected into hdc */
     void *pBitmapBits;  /* Pointer to DIB bits (from CreateDIBSection) */
@@ -33,8 +33,7 @@ typedef struct _RDS_SURFACE {
     DWORD current_y;
 } RDS_SURFACE;
 
-// Assuming RDS_SERVICE struct definition might be here or included from here.
-// For this task, only RDS_SURFACE is directly modified.
+// Service structure
 typedef struct _RDS_SERVICE {
     RDS_SURFACE *default_surface;
     BOOL should_exit;
@@ -44,24 +43,32 @@ typedef struct _RDS_SERVICE {
     // int num_surfaces;
 } RDS_SERVICE;
 
-// Function Prototypes that might be in rds.h (for awareness, not direct modification by worker here for Part 1)
-// These would operate on or return RDS_SURFACE structures.
-// Their internal implementations will change due to the RDS_SURFACE refactor.
+// Function Prototypes
 
 // Surface management
-// RDS_SURFACE *create_surface_ex(DWORD width, DWORD height, DWORD bpp); // Internally uses CreateDIBSection
-// void destroy_surface(DWORD surface_id); // Handles DeleteDC, DeleteObject, HeapFree
-// void *surface_get_data(RDS_SURFACE *surface); // Returns pBitmapBits
+RDS_SURFACE *create_surface_ex(DWORD width, DWORD height, DWORD bpp); // Internally uses CreateDIBSection
+BOOL destroy_surface(DWORD surface_id); // Handles DeleteDC, DeleteObject, HeapFree
+void *surface_get_data(RDS_SURFACE *surface); // Returns pBitmapBits
+
+// Surface lookup
+RDS_SURFACE *find_surface(DWORD surface_id);
 
 // Drawing functions (will be refactored later to use HDC from RDS_SURFACE)
 // These are typically implemented in rds_surface_drawing.c
-// BOOL gdi_move_to(RDS_SURFACE *surface, int x, int y);
-// BOOL gdi_line_to(RDS_SURFACE *surface, int x, int y, COLORREF color);
-// BOOL gdi_rectangle(RDS_SURFACE *surface, int left, int top, int right, int bottom, COLORREF color, BOOL filled);
-// BOOL gdi_text_out(RDS_SURFACE *surface, int x, int y, const WCHAR *text, int count, COLORREF color);
-// void gdi_draw_test_pattern(RDS_SURFACE *surface); // Will use HDC for drawing
+BOOL gdi_move_to(RDS_SURFACE *surface, int x, int y);
+BOOL gdi_line_to(RDS_SURFACE *surface, int x, int y, COLORREF color);
+BOOL gdi_rectangle(RDS_SURFACE *surface, int left, int top, int right, int bottom, COLORREF color, BOOL filled);
+BOOL gdi_text_out(RDS_SURFACE *surface, int x, int y, const WCHAR *text, int count, COLORREF color);
+void gdi_draw_test_pattern(RDS_SURFACE *surface); // Will use HDC for drawing
 
-// Global service object (if defined as such)
-// extern RDS_SERVICE rds_service;
+// Screenshot functionality
+BOOL save_surface_to_bmp(RDS_SURFACE *surface, const WCHAR *filename);
+
+// Service initialization and management
+BOOL initialize_service(void);
+void process_events(void);
+
+// Global service object
+extern RDS_SERVICE rds_service;
 
 #endif // RDS_H
