@@ -178,7 +178,7 @@ RDSDRV_PDEVICE* find_device_by_hdc(HDC hdc)
 }
 
 // REMOVED DllMain - now handled in winerdsdrv_main.c
-
+#if 0
 // Initialize critical section - called from main DllMain
 void RDS_InitializeGDI(void)
 {
@@ -194,7 +194,28 @@ void RDS_InitializeGDI(void)
         TRACE("winerds.drv: RDS client pipe started successfully.\n");
     }
 }
+#endif
 
+// Fix the timing issue in your RDS_InitializeGDI function in gdi_funcs.c
+// Make pipe connection optional during driver init, retry later when needed
+
+void RDS_InitializeGDI(void)
+{
+    InitializeCriticalSection(&rds_pdev_list_lock);
+    TRACE("winerds.drv: Initialized rds_pdev_list_lock.\n");
+    
+    // DON'T fail driver loading if pipe isn't ready yet!
+    // Termsrv might not be running when driver loads
+    if (!StartRDSClientPipe())
+    {
+        WARN("winerds.drv: Pipe not available during init - will retry later\n");
+        // Don't return/fail here - just continue
+    }
+    else
+    {
+        TRACE("winerds.drv: RDS client pipe started successfully.\n");
+    }
+}
 // Cleanup - called from main DllMain
 void RDS_CleanupGDI(void)
 {
