@@ -369,6 +369,11 @@ BOOL initialize_service(void)
     gdi_draw_test_pattern(rds_service.default_surface);
     TRACE("Test pattern drawn on default surface\n");
 
+    test_createdc_functionality();
+    debug_createdc_routing();
+test_black_screen_scenario();
+check_surface_sync();
+
     /* Start screenshot thread */
     screenshot_active = TRUE;
     screenshot_thread = CreateThread(NULL, 0, screenshot_thread_proc, NULL, 0, NULL);
