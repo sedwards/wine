@@ -8,7 +8,7 @@
 
 #include "rds_message.h"
 
-WINE_DEFAULT_DEBUG_CHANNEL(rds);
+WINE_DEFAULT_DEBUG_CHANNEL(winerds);
 
 #define RDS_PIPE_NAME L"\\\\.\\pipe\\WineRDS"
 #define RDS_PIPE_TIMEOUT_MS 5000

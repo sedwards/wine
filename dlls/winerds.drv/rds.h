@@ -63,4 +63,28 @@ typedef struct _RDS_SERVICE {
 // Global service object (if defined as such)
 // extern RDS_SERVICE rds_service;
 
+UINT RDS_UpdateDisplayDevices(const struct gdi_device_manager *device_manager, void *param);
+LONG RDS_ChangeDisplaySettings(LPDEVMODEW devmode, LPCWSTR device_name, HWND hwnd, DWORD flags, LPVOID lpvoid);
+BOOL RDS_CreateDesktop(const WCHAR *name, UINT width, UINT height);
+BOOL RDS_ProcessEvents(DWORD timeout);
+
+LRESULT RDS_DesktopWindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
+void RDS_SetDesktopWindow(HWND hwnd); 
+BOOL RDS_CreateWindow(HWND hwnd); 
+void RDS_DestroyWindow(HWND hwnd); 
+void RDS_GetDC(HDC hdc, HWND hwnd, HWND top_win, const RECT *win_rect, const RECT *top_rect, DWORD flags);
+void RDS_ReleaseDC(HWND hwnd, HDC hdc);
+LRESULT RDS_WindowMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
+BOOL RDS_WindowPosChanging(HWND hwnd, UINT flags, BOOL shaped, const struct window_rects *window_rects);
+void RDS_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner, UINT flags, BOOL shaped, const struct window_rects *window_rects, struct window_surface *surface);
+BOOL RDS_CreateWindowSurface(HWND hwnd, BOOL layered, const RECT *surface_rect, struct window_surface **surface);
+UINT RDS_ShowWindow(HWND hwnd, INT cmd, RECT *rect, UINT swp);
+void RDS_SetWindowStyle(HWND hwnd, INT type, STYLESTRUCT *style);
+void RDS_SetParent(HWND hwnd, HWND parent, HWND old_parent);
+
+/* Forward declarations for GDI functions */
+BOOL RDS_LineTo(PHYSDEV dev, INT x, INT y);
+BOOL RDS_Rectangle(PHYSDEV dev, INT left, INT top, INT right, INT bottom);
+BOOL RDS_ExtTextOut(PHYSDEV dev, INT x, INT y, UINT flags, const RECT *rect, LPCWSTR str, UINT count, const INT *dx);
+
 #endif // RDS_H

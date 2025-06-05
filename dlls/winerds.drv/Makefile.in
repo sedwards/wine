@@ -9,4 +9,8 @@ SOURCES = \
 	gdi_funcs.c \
 	pipe_client.c \
 	graphics.c \
-	winerdsdrv_main.c
+	display.c \
+	desktop.c \
+	winerdsdrv_main.c \
+	version.rc
+

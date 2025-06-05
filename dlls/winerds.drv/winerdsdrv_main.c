@@ -1,163 +1,160 @@
 /*
- * WAYLANDDRV initialization code
+ * RDSDRV initialization code - Registry-based approach
  *
- * Copyright 2020 Alexandre Frantzis for Collabora Ltd
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
+ * Wine drivers are loaded by registry entries, not by calling
+ * __wine_set_user_driver directly. We need to provide the standard
+ * entry points that Wine expects.
  */
 
-#if 0
-#pragma makedep unix
-#endif
+#include "rdsdrv_dll.h"
+#include "rdsgdi_driver.h"
+#include "wine/debug.h"
 
-#include "config.h"
+WINE_DEFAULT_DEBUG_CHANNEL(rdsdrv);
 
-#include <stdlib.h>
+/* Forward declarations for functions from other files */
+UINT RDS_UpdateDisplayDevices(const struct gdi_device_manager *device_manager, void *param);
+LONG RDS_ChangeDisplaySettings(LPDEVMODEW devmode, LPCWSTR device_name, HWND hwnd, DWORD flags, LPVOID lpvoid);
+BOOL RDS_CreateDesktop(const WCHAR *name, UINT width, UINT height);
+BOOL RDS_ProcessEvents(DWORD timeout);
 
-#include "ntstatus.h"
-#define WIN32_NO_STATUS
+LRESULT RDS_DesktopWindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
+void RDS_SetDesktopWindow(HWND hwnd);
+BOOL RDS_CreateWindow(HWND hwnd);
+void RDS_DestroyWindow(HWND hwnd);
+void RDS_GetDC(HDC hdc, HWND hwnd, HWND top_win, const RECT *win_rect, const RECT *top_rect, DWORD flags);
+void RDS_ReleaseDC(HWND hwnd, HDC hdc);
+LRESULT RDS_WindowMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
+BOOL RDS_WindowPosChanging(HWND hwnd, UINT flags, BOOL shaped, const struct window_rects *window_rects);
+void RDS_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner, UINT flags, BOOL shaped, const struct window_rects *window_rects, struct window_surface *surface);
+BOOL RDS_CreateWindowSurface(HWND hwnd, BOOL layered, const RECT *surface_rect, struct window_surface **surface);
+UINT RDS_ShowWindow(HWND hwnd, INT cmd, RECT *rect, UINT swp);
+void RDS_SetWindowStyle(HWND hwnd, INT type, STYLESTRUCT *style);
+void RDS_SetParent(HWND hwnd, HWND parent, HWND old_parent);
 
-#include "rdsdrv.h"
+/* Forward declarations for GDI functions */
+BOOL RDS_MoveTo(PHYSDEV dev, INT x, INT y);
+BOOL RDS_LineTo(PHYSDEV dev, INT x, INT y);
+BOOL RDS_Rectangle(PHYSDEV dev, INT left, INT top, INT right, INT bottom);
+BOOL RDS_ExtTextOut(PHYSDEV dev, INT x, INT y, UINT flags, const RECT *rect, LPCWSTR str, UINT count, const INT *dx);
 
-char *process_name = NULL;
+/* Forward declarations for GDI initialization from gdi_funcs.c */
+void RDS_InitializeGDI(void);
+void RDS_CleanupGDI(void);
 
-BOOL rds_process_init(void);
+/* Stub functions for required but unused functionality */
+static BOOL RDS_GetCursorPos(LPPOINT pos)
+{
+    if (pos) {
+        pos->x = 0;
+        pos->y = 0;
+    }
+    return TRUE;
+}
 
+static BOOL RDS_SetCursorPos(INT x, INT y)
+{
+    return TRUE;
+}
+
+static void RDS_SetCursor(HWND hwnd, HCURSOR cursor)
+{
+}
+
+static BOOL RDS_ClipCursor(const RECT *rect, BOOL reset)
+{
+    return TRUE;
+}
+
+/* GDI function table */
+static const struct gdi_dc_funcs rds_dc_funcs =
+{
+    .pMoveTo = RDS_MoveTo,
+    .pLineTo = RDS_LineTo,
+    .pRectangle = RDS_Rectangle,
+    .pExtTextOut = RDS_ExtTextOut,
+    .priority = GDI_PRIORITY_GRAPHICS_DRV,
+};
+
+/* Main driver function table */
 static const struct user_driver_funcs rdsdrv_funcs =
 {
-/*
-    .pClipboardWindowProc = WAYLAND_ClipboardWindowProc,
-    .pClipCursor = WAYLAND_ClipCursor,
-    .pDesktopWindowProc = WAYLAND_DesktopWindowProc,
-    .pDestroyWindow = WAYLAND_DestroyWindow,
-    .pSetIMECompositionRect = WAYLAND_SetIMECompositionRect,
-    .pKbdLayerDescriptor = WAYLAND_KbdLayerDescriptor,
-    .pReleaseKbdTables = WAYLAND_ReleaseKbdTables,
-    .pSetCursor = WAYLAND_SetCursor,
-    .pSetCursorPos = WAYLAND_SetCursorPos,
-    .pSetWindowIcon = WAYLAND_SetWindowIcon,
-    .pSetWindowText = WAYLAND_SetWindowText,
-    .pSysCommand = WAYLAND_SysCommand,
-    .pUpdateDisplayDevices = WAYLAND_UpdateDisplayDevices,
-    .pWindowMessage = WAYLAND_WindowMessage,
-    .pWindowPosChanged = WAYLAND_WindowPosChanged,
-    .pWindowPosChanging = WAYLAND_WindowPosChanging,
-    .pCreateWindowSurface = WAYLAND_CreateWindowSurface,
-    .pVulkanInit = WAYLAND_VulkanInit,
-    .pOpenGLInit = WAYLAND_OpenGLInit,
- */
+    .dc_funcs = rds_dc_funcs,
+    
+    /* Display management */
+    .pUpdateDisplayDevices = RDS_UpdateDisplayDevices,
+    .pChangeDisplaySettings = RDS_ChangeDisplaySettings,
+    .pCreateDesktop = RDS_CreateDesktop,
+    .pProcessEvents = RDS_ProcessEvents,
+    
+    /* Desktop and window management */
+    .pDesktopWindowProc = RDS_DesktopWindowProc,
+    .pSetDesktopWindow = RDS_SetDesktopWindow,
+    .pCreateWindow = RDS_CreateWindow,
+    .pDestroyWindow = RDS_DestroyWindow,
+    .pGetDC = RDS_GetDC,
+    .pReleaseDC = RDS_ReleaseDC,
+    .pWindowMessage = RDS_WindowMessage,
+    .pWindowPosChanging = RDS_WindowPosChanging,
+    .pWindowPosChanged = RDS_WindowPosChanged,
+    .pCreateWindowSurface = RDS_CreateWindowSurface,
+    .pShowWindow = RDS_ShowWindow,
+    .pSetWindowStyle = RDS_SetWindowStyle,
+    .pSetParent = RDS_SetParent,
+    
+    /* Cursor management (stubs) */
+    .pGetCursorPos = RDS_GetCursorPos,
+    .pSetCursorPos = RDS_SetCursorPos,
+    .pSetCursor = RDS_SetCursor,
+    .pClipCursor = RDS_ClipCursor,
 };
 
-static void rds_init_process_name(void)
+/***********************************************************************
+ *           wine_get_user_driver    (winerds.drv.@)
+ *
+ * This is the standard entry point that Wine calls to get driver functions.
+ * This is how winex11.drv and winewayland.drv work.
+ */
+const struct user_driver_funcs * CDECL wine_get_user_driver( UINT version )
 {
-    WCHAR *p, *appname;
-    WCHAR appname_lower[MAX_PATH];
-    DWORD appname_len;
-    DWORD appnamez_size;
-    DWORD utf8_size;
-    int i;
-
-    appname = NtCurrentTeb()->Peb->ProcessParameters->ImagePathName.Buffer;
-    if ((p = wcsrchr(appname, '/'))) appname = p + 1;
-    if ((p = wcsrchr(appname, '\\'))) appname = p + 1;
-    appname_len = lstrlenW(appname);
-
-    if (appname_len == 0 || appname_len >= MAX_PATH) return;
-
-    for (i = 0; appname[i]; i++) appname_lower[i] = RtlDowncaseUnicodeChar(appname[i]);
-    appname_lower[i] = 0;
-
-    appnamez_size = (appname_len + 1) * sizeof(WCHAR);
-
-    if (!RtlUnicodeToUTF8N(NULL, 0, &utf8_size, appname_lower, appnamez_size) &&
-        (process_name = malloc(utf8_size)))
+    TRACE("wine_get_user_driver called with version %u\n", version);
+    
+    if (version != WINE_GDI_DRIVER_VERSION)
     {
-        RtlUnicodeToUTF8N(process_name, utf8_size, &utf8_size, appname_lower, appnamez_size);
+        ERR("Invalid driver version %u, expected %u\n", version, WINE_GDI_DRIVER_VERSION);
+        return NULL;
     }
+    
+    TRACE("Returning RDS driver function table\n");
+    return &rdsdrv_funcs;
 }
 
-static NTSTATUS rdsdrv_unix_init(void *arg)
-{
-    /* Set the user driver functions now so that they are available during
-     * our initialization. We clear them on error. */
-    __wine_set_user_driver(&rdsdrv_funcs, WINE_GDI_DRIVER_VERSION);
-
-    rds_init_process_name();
-
-    if (!rds_process_init()) goto err;
-
-    return 0;
-
-err:
-    __wine_set_user_driver(NULL, WINE_GDI_DRIVER_VERSION);
-    return STATUS_UNSUCCESSFUL;
-}
-
-static NTSTATUS rdsdrv_unix_read_events(void *arg)
-{
-/*
-    while (wl_display_dispatch_queue(process_rds.wl_display,
-                                     process_rds.wl_event_queue) != -1)
-        continue;
-*/
-    /* This function only returns on a fatal error, e.g., if our connection
-     * to the Wayland server is lost. */
-    //return STATUS_UNSUCCESSFUL;
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS rdsdrv_unix_init_clipboard(void *arg)
-{
-    /* If the compositor supports zwlr_data_control_manager_v1, we don't need
-     * per-process clipboard window and handling, we can use the default clipboard
-     * window from the desktop process. */
-    //if (process_rds.zwlr_data_control_manager_v1) return STATUS_UNSUCCESSFUL;
-    return STATUS_SUCCESS;
-}
-
-const unixlib_entry_t __wine_unix_call_funcs[] =
-{
-    rdsdrv_unix_init,
-    rdsdrv_unix_read_events,
-    rdsdrv_unix_init_clipboard,
-};
-
-C_ASSERT(ARRAYSIZE(__wine_unix_call_funcs) == rdsdrv_unix_func_count);
-
-#ifdef _WIN64
-
-const unixlib_entry_t __wine_unix_call_wow64_funcs[] =
-{
-    rdsdrv_unix_init,
-    rdsdrv_unix_read_events,
-    rdsdrv_unix_init_clipboard,
-};
-
-C_ASSERT(ARRAYSIZE(__wine_unix_call_wow64_funcs) == rdsdrv_unix_func_count);
-
-#endif /* _WIN64 */
-
-
-/**********************************************************************
- *          wayland_process_init
+/***********************************************************************
+ *           DllMain
  *
- *  Initialise the per process wayland objects.
- *
+ * Driver initialization - this runs in Win32 context
  */
-BOOL rds_process_init(void)
+BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, void *reserved)
 {
-   return TRUE;
+    switch (reason)
+    {
+        case DLL_PROCESS_ATTACH:
+            TRACE("RDS driver initializing (registry-based mode)\n");
+            
+            /* Initialize GDI subsystem */
+            RDS_InitializeGDI();
+            
+            TRACE("RDS driver initialized successfully\n");
+            break;
+            
+        case DLL_PROCESS_DETACH:
+            TRACE("RDS driver unloading\n");
+            
+            /* Cleanup GDI subsystem */
+            RDS_CleanupGDI();
+            break;
+    }
+    
+    return TRUE;
 }
 
