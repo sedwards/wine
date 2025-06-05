@@ -373,7 +373,6 @@ void debug_createdc_routing(void)
         RECT fullRect = {0, 0, 1024, 768};
         FillRect(displayDC, &fullRect, testBrush);
         DeleteObject(testBrush);
-
         // Draw something distinctive
         HPEN testPen = CreatePen(PS_SOLID, 10, RGB(0, 255, 255)); // Cyan
         HPEN oldPen = SelectObject(displayDC, testPen);
@@ -508,5 +507,48 @@ void check_surface_sync(void)
     printf("- Drawing might go to offscreen buffer\n");
     printf("- Surface updates might not trigger display refresh\n");
     printf("- Coordinate system mismatch\n");
+}
+
+/*
+ * Surface Routing Fix for CreateDC
+ *
+ * The issue is that CreateDC creates new surfaces instead of using
+ * the existing RDS surface. We need to route all display DCs to
+ * the same RDS surface.
+ */
+
+// Simple test for CreateDC functionality in termsrv
+void test_createdc_simple(void)
+{
+    HDC testDC;
+    HBRUSH testBrush;
+    RECT testRect;
+
+    printf("\n=== Simple CreateDC Test ===\n");
+
+    testDC = CreateDCA("DISPLAY", NULL, NULL, NULL);
+    if (!testDC) {
+        printf("CreateDCA failed: %lu\n", GetLastError());
+        return;
+    }
+
+    printf("CreateDC succeeded: %p\n", testDC);
+    printf("Drawing test pattern...\n");
+
+    // Draw something obvious
+    testBrush = CreateSolidBrush(RGB(0, 255, 255)); // Cyan
+    testRect.left = 50;
+    testRect.top = 50;
+    testRect.right = 200;
+    testRect.bottom = 150;
+
+    FillRect(testDC, &testRect, testBrush);
+    DeleteObject(testBrush);
+
+    SetTextColor(testDC, RGB(255, 0, 0));
+    TextOutA(testDC, 60, 80, "SIMPLE TEST", 11);
+
+    printf("Drawing completed\n");
+    DeleteDC(testDC);
 }
 

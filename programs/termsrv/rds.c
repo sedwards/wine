@@ -363,16 +363,19 @@ BOOL initialize_service(void)
             rds_service.default_surface->width, rds_service.default_surface->height);
     rds_service.default_surface->dirty = TRUE;
 
+   /*
     TRACE("Default surface created with DIB section and memory HDC\n");
 
-    /* Draw a test pattern on the default surface */
     gdi_draw_test_pattern(rds_service.default_surface);
     TRACE("Test pattern drawn on default surface\n");
 
     test_createdc_functionality();
     debug_createdc_routing();
-test_black_screen_scenario();
-check_surface_sync();
+    test_black_screen_scenario();
+    check_surface_sync();
+    test_createdc_simple();
+    */
+
 
     /* Start screenshot thread */
     screenshot_active = TRUE;
@@ -396,9 +399,10 @@ check_surface_sync();
         surface_shutdown();
         return FALSE;
     }
-    TRACE("RDS Pipe Server started successfully\n");
+    FIXME("RDS Pipe Server started successfully\n");
 
-    TRACE("RDS service initialized successfully\n");
+    simple_termsrv_test();
+    FIXME("RDS service initialized successfully\n");
     return TRUE;
 }
 
@@ -483,5 +487,30 @@ int wmain(void) {
     }
     TRACE("RDS Terminal Service finished.\n");
     return 0;
+}
+
+// =============================================================================
+// TEST 1: Add to termsrv/rds.c (or wherever your main() function is)
+// Call this from main() right after you start the pipe server
+// =============================================================================
+
+void simple_termsrv_test(void)
+{
+    printf("=== TERMSRV: Testing basic CreateDC ===\n");
+
+    HDC testDC = CreateDCA("DISPLAY", NULL, NULL, NULL);
+    if (testDC) {
+        printf("TERMSRV: CreateDC succeeded: %p\n", testDC);
+        printf("TERMSRV: Drawing line - should trigger driver...\n");
+
+        MoveToEx(testDC, 0, 0, NULL);
+        LineTo(testDC, 100, 100);
+
+        printf("TERMSRV: Line drawn - check for driver messages\n");
+        DeleteDC(testDC);
+    } else {
+        printf("TERMSRV: CreateDC FAILED: %lu\n", GetLastError());
+    }
+    printf("=== TERMSRV: Test complete ===\n\n");
 }
 

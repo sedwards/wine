@@ -109,6 +109,7 @@ static const struct user_driver_funcs rdsdrv_funcs =
     .pClipCursor = RDS_ClipCursor,
 };
 
+#if 0
 /***********************************************************************
  *           wine_get_user_driver    (winerds.drv.@)
  *
@@ -157,4 +158,62 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, void *reserved)
     
     return TRUE;
 }
+#endif
 
+// Update your EXISTING wine_get_user_driver function in winerdsdrv_main.c:
+// Replace the current one with this version:
+
+const struct user_driver_funcs * CDECL wine_get_user_driver( UINT version )
+{
+    printf("*** WINE_GET_USER_DRIVER CALLED! Version: %u ***\n", version);
+    
+    TRACE("wine_get_user_driver called with version %u\n", version);
+    
+    if (version != WINE_GDI_DRIVER_VERSION)
+    {
+        ERR("Invalid driver version %u, expected %u\n", version, WINE_GDI_DRIVER_VERSION);
+        return NULL;
+    }
+    
+    printf("*** RETURNING RDS DRIVER FUNCTION TABLE ***\n");
+    TRACE("Returning RDS driver function table\n");
+    return &rdsdrv_funcs;
+}
+
+// Update your EXISTING DllMain function in winerdsdrv_main.c:
+// Replace the current one with this version:
+
+BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, void *reserved)
+{
+    switch (reason)
+    {
+        case DLL_PROCESS_ATTACH:
+            printf("*** WINERDS.DRV IS LOADING! ***\n");
+            
+            TRACE("RDS driver initializing\n");
+            RDS_InitializeGDI();
+            TRACE("RDS driver initialized successfully\n");
+            break;
+            
+        case DLL_PROCESS_DETACH:
+            printf("*** WINERDS.DRV IS UNLOADING! ***\n");
+            TRACE("RDS driver unloading\n");
+            RDS_CleanupGDI();
+            break;
+    }
+    
+    return TRUE;
+}
+
+// Now test with:
+// 1. Register driver:
+//    wine reg add "HKEY_CURRENT_USER\\Software\\Wine\\Drivers" /v Graphics /t REG_SZ /d "winerds" /f
+//
+// 2. Run with force loading:
+//    WINEDLLOVERRIDES="winerds=n,b" wine programs/termsrv/x86_64-windows/termsrv.exe
+//
+// You should see:
+//    *** WINERDS.DRV IS LOADING! ***
+//    *** WINE_GET_USER_DRIVER CALLED! Version: 104 ***
+//    *** RETURNING RDS DRIVER FUNCTION TABLE ***
+//
