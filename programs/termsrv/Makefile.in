@@ -1,9 +1,10 @@
 MODULE    = termsrv.exe
-IMPORTS   = advapi32 user32 gdi32
+IMPORTS   = advapi32 user32 gdi32 ws2_32
 
 EXTRADLLFLAGS = -mconsole -municode
 
 SOURCES = \
+	broadway_server.c \
 	pipe_server.c \
 	rds.c \
 	rds_gdi_handlers.c \

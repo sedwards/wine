@@ -13,7 +13,7 @@ WINE_DEFAULT_DEBUG_CHANNEL(winerds);
 #define RDS_PIPE_NAME L"\\\\.\\pipe\\WineRDS"
 #define RDS_PIPE_TIMEOUT_MS 5000
 #define RDS_PIPE_RETRY_INTERVAL_MS 250
-#define KEEPALIVE_INTERVAL_MS 5000
+#define KEEPALIVE_INTERVAL_MS 2000  // Reduced from 5000 for better diagnostics
 
 static HANDLE rds_pipe = INVALID_HANDLE_VALUE;
 static HANDLE hKeepAliveThread = NULL;
@@ -23,6 +23,11 @@ static BOOL connection_attempted = FALSE;  // Track if we've tried to connect
 static unsigned __stdcall KeepAliveThreadProc(void *arg)
 {
     RDS_MESSAGE msg;
+    RDS_MESSAGE response;
+    DWORD cbRead;
+    DWORD ping_count = 0;
+    DWORD failed_pings = 0;
+    
     TRACE("KeepAliveThreadProc started.\n");
 
     while (bKeepAliveRun && rds_pipe != INVALID_HANDLE_VALUE)
@@ -31,12 +36,81 @@ static unsigned __stdcall KeepAliveThreadProc(void *arg)
         ZeroMemory(&msg, sizeof(RDS_MESSAGE));
         msg.msgType = RDS_MSG_PING;
 
-        TRACE("Sending RDS_MSG_PING.\n");
+        ping_count++;
+        TRACE("[PING #%lu] Sending RDS_MSG_PING at %lu ms\n", ping_count, GetTickCount());
+        
         if (!SendRDSMessage(&msg, NULL, 0))
         {
-            ERR("KeepAliveThreadProc: SendRDSMessage failed for PING. Terminating keep-alive.\n");
+            failed_pings++;
+            ERR("[PING #%lu] SendRDSMessage failed for PING. Failed pings: %lu. Terminating keep-alive.\n", 
+                ping_count, failed_pings);
             bKeepAliveRun = FALSE; 
             break; 
+        }
+        
+        // Try to read PONG response with timeout
+        DWORD start_wait = GetTickCount();
+        BOOL got_pong = FALSE;
+        
+        // Set pipe to non-blocking mode temporarily
+        DWORD mode = PIPE_READMODE_MESSAGE | PIPE_NOWAIT;
+        SetNamedPipeHandleState(rds_pipe, &mode, NULL, NULL);
+        
+        // Wait up to 500ms for PONG
+        while (GetTickCount() - start_wait < 500)
+        {
+            if (ReadFile(rds_pipe, &response, sizeof(RDS_MESSAGE), &cbRead, NULL))
+            {
+                if (cbRead >= sizeof(RDS_MESSAGE_TYPE) && response.msgType == RDS_MSG_PONG)
+                {
+                    TRACE("[PING #%lu] Received PONG after %lu ms\n", 
+                          ping_count, GetTickCount() - start_wait);
+                    got_pong = TRUE;
+                    break;
+                }
+                else
+                {
+                    WARN("[PING #%lu] Received unexpected message type %d while waiting for PONG\n",
+                         ping_count, response.msgType);
+                }
+            }
+            else
+            {
+                DWORD err = GetLastError();
+                if (err != ERROR_NO_DATA) // ERROR_NO_DATA is expected when no data available
+                {
+                    if (err == ERROR_BROKEN_PIPE)
+                    {
+                        ERR("[PING #%lu] Pipe broken while waiting for PONG\n", ping_count);
+                        bKeepAliveRun = FALSE;
+                        break;
+                    }
+                }
+            }
+            Sleep(50);
+        }
+        
+        // Restore blocking mode
+        mode = PIPE_READMODE_MESSAGE | PIPE_WAIT;
+        SetNamedPipeHandleState(rds_pipe, &mode, NULL, NULL);
+        
+        if (!got_pong)
+        {
+            failed_pings++;
+            WARN("[PING #%lu] No PONG received within timeout. Failed pings: %lu\n", 
+                 ping_count, failed_pings);
+            
+            // If we fail too many pings, assume connection is dead
+            if (failed_pings >= 3)
+            {
+                ERR("Too many failed pings (%lu). Assuming connection dead.\n", failed_pings);
+                bKeepAliveRun = FALSE;
+                break;
+            }
+        }
+        else
+        {
+            failed_pings = 0; // Reset on successful ping/pong
         }
 
         // Sleep for the defined interval
@@ -46,7 +120,8 @@ static unsigned __stdcall KeepAliveThreadProc(void *arg)
         }
     }
 
-    TRACE("KeepAliveThreadProc exiting.\n");
+    TRACE("KeepAliveThreadProc exiting. Total pings sent: %lu, Failed: %lu\n", 
+          ping_count, failed_pings);
     _endthreadex(0);
     return 0;
 }
@@ -54,7 +129,7 @@ static unsigned __stdcall KeepAliveThreadProc(void *arg)
 // Internal function to attempt connection without timeout
 static BOOL TryConnect(void)
 {
-    TRACE("TryConnect: Attempting to connect to named pipe: %S\n", RDS_PIPE_NAME);
+    TRACE("TryConnect: Attempting to connect to named pipe: %S at %lu ms\n", RDS_PIPE_NAME, GetTickCount());
     
     if (!WaitNamedPipeW(RDS_PIPE_NAME, 100)) // Very short wait
     {
@@ -81,7 +156,7 @@ static BOOL TryConnect(void)
         return FALSE;
     }
 
-    TRACE("Successfully connected to WineRDS pipe.\n");
+    TRACE("Successfully connected to WineRDS pipe at %lu ms\n", GetTickCount());
     
     // Start keep-alive thread
     bKeepAliveRun = TRUE;
@@ -103,25 +178,34 @@ BOOL StartRDSClientPipe(void)
 {
     DWORD start_time = GetTickCount();
     DWORD elapsed;
+    DWORD retry_count = 0;
 
     connection_attempted = TRUE;
     
-    TRACE("Attempting to connect to named pipe: %S\n", RDS_PIPE_NAME);
+    TRACE("StartRDSClientPipe: Beginning connection attempts to %S at %lu ms\n", RDS_PIPE_NAME, start_time);
 
     while (1)
     {
+        retry_count++;
+        TRACE("Connection attempt #%lu at %lu ms (elapsed: %lu ms)\n", 
+              retry_count, GetTickCount(), GetTickCount() - start_time);
+              
         if (TryConnect())
         {
+            TRACE("Connection successful after %lu attempts, %lu ms total\n", 
+                  retry_count, GetTickCount() - start_time);
             return TRUE;
         }
 
         elapsed = GetTickCount() - start_time;
         if (elapsed >= RDS_PIPE_TIMEOUT_MS)
         {
-            WARN("Timed out waiting for RDS pipe to become available.\n");
+            WARN("Timed out after %lu attempts over %lu ms. Pipe not available.\n", 
+                 retry_count, elapsed);
             break;
         }
 
+        TRACE("Retry in %lu ms...\n", (DWORD)RDS_PIPE_RETRY_INTERVAL_MS);
         Sleep(RDS_PIPE_RETRY_INTERVAL_MS);
     }
 
@@ -201,7 +285,13 @@ BOOL SendRDSMessage(const RDS_MESSAGE *msg, const void *variable_data, DWORD var
                 {
                     if (cbWritten == variable_data_size)
                     {
-                        TRACE("Successfully sent message type %d with %lu bytes of variable data.\n", msg->msgType, variable_data_size);
+                        TRACE("[MSG] Sent type %d (%s) with %lu bytes data at %lu ms\n", 
+                              msg->msgType,
+                              msg->msgType == RDS_MSG_PING ? "PING" :
+                              msg->msgType == RDS_MSG_LINE_TO ? "LINE_TO" :
+                              msg->msgType == RDS_MSG_RECTANGLE ? "RECTANGLE" :
+                              msg->msgType == RDS_MSG_TEXT_OUT ? "TEXT_OUT" : "OTHER",
+                              variable_data_size, GetTickCount());
                     }
                     else
                     {
@@ -216,7 +306,13 @@ BOOL SendRDSMessage(const RDS_MESSAGE *msg, const void *variable_data, DWORD var
                 }
             }
              else {
-                TRACE("Successfully sent message type %d.\n", msg->msgType);
+                TRACE("[MSG] Sent type %d (%s) at %lu ms\n", 
+                      msg->msgType,
+                      msg->msgType == RDS_MSG_PING ? "PING" :
+                      msg->msgType == RDS_MSG_LINE_TO ? "LINE_TO" :
+                      msg->msgType == RDS_MSG_RECTANGLE ? "RECTANGLE" :
+                      msg->msgType == RDS_MSG_TEXT_OUT ? "TEXT_OUT" : "OTHER",
+                      GetTickCount());
              }
         }
         else

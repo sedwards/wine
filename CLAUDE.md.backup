@@ -1,0 +1,69 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## IMPORTANT: First Step
+**ALWAYS review all documentation in the WINE_REMOTE_DESKTOP_SERVICES directory before starting any work.** This directory contains critical architectural documentation about the Wine RDS project goals, implementation details, and current status.
+
+## Project Overview
+This is the Wine RDS (Remote Desktop Services) project - a custom implementation that allows Wine to run Windows applications headless and render them remotely through a virtual graphics driver and terminal services server.
+
+## Key Components
+1. **winerds.drv** - Custom Wine graphics driver that intercepts GDI calls
+2. **termsrv** - Terminal services server that receives and renders drawing commands
+3. **Named pipe protocol** - Communication layer using `\\.\pipe\WineRDS`
+
+## Essential Commands
+
+### Build Commands
+```bash
+# Configure Wine with required options
+./configure --disable-win16 --enable-win64
+
+# Build the RDS components
+make dlls/winerds.drv
+make programs/termsrv
+make programs/rds_test
+
+# Full rebuild
+make clean && make
+```
+
+### Testing Commands
+```bash
+# Quick functionality test
+./quick_test_rds.sh
+
+# Comprehensive test suite
+./test_wine_rds.sh
+
+# Manual testing with debug output
+export WINEDEBUG=+winerds,+termsrv,+termsrv_gdi
+./programs/termsrv/termsrv &
+./programs/rds_test/ping_test.exe
+```
+
+### Development Workflow
+1. Start termsrv first (it creates the named pipe server)
+2. Run Windows applications that create display contexts
+3. Check generated screenshots in current directory (`rds_screenshot_*.bmp/png`)
+4. Monitor `termsrv.log` for server-side activity
+
+## Architecture Notes
+- The driver intercepts GDI calls at the Wine driver level
+- All rendering happens in memory on a 800x600x32bpp surface
+- Communication uses a custom RDS_MESSAGE protocol over named pipes
+- The system is designed to be completely headless (no X11/Wayland required)
+
+## Current Status
+- Basic GDI interception working (LineTo, Rectangle, ExtTextOut)
+- Named pipe communication established
+- Server-side rendering to DIB sections functional
+- Some timing/race condition issues being debugged
+- Driver registration may need manual registry configuration
+
+## Key Files to Monitor
+- `dlls/winerds.drv/gdi_funcs.c` - GDI function implementations
+- `programs/termsrv/rds_gdi_handlers.c` - Server-side message processing
+- `include/rds_message.h` - Protocol definitions
+- Test output files and screenshots for debugging

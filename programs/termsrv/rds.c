@@ -5,6 +5,7 @@
 
 #include "rds.h" 
 #include "pipe_server.h"
+#include "broadway_server.h"
 #include "wine/debug.h"
 
 /* Try to include Wine's internal PNG library */
@@ -22,6 +23,10 @@ RDS_SERVICE rds_service; /* Global service struct */
 /* Screenshot functionality */
 static HANDLE screenshot_thread = NULL;
 static BOOL screenshot_active = FALSE;
+
+/* Broadway server configuration */
+static BOOL broadway_enabled = FALSE;
+static DWORD broadway_port = BROADWAY_DEFAULT_PORT;
 
 /* Screenshot thread function */
 static DWORD WINAPI screenshot_thread_proc(LPVOID param)
@@ -63,6 +68,11 @@ static DWORD WINAPI screenshot_thread_proc(LPVOID param)
             TRACE("Saved BMP screenshot: %s\n", debugstr_w(filename));
 #endif
             screenshot_count++;
+            
+            /* Update Broadway framebuffer if enabled */
+            if (broadway_enabled && g_broadway_server.enabled) {
+                broadway_update_framebuffer(&g_broadway_server, rds_service.default_surface);
+            }
         }
         
         /* Wait 60 seconds */
@@ -288,10 +298,12 @@ void gdi_shutdown(void) {
 BOOL initialize_service(void)
 {
     BITMAPINFO bmi;
+    DWORD init_start_time = GetTickCount();
     
     memset(&rds_service, 0, sizeof(rds_service));
     rds_service.should_exit = FALSE;
 
+    printf("[INIT] Initializing RDS service at %lu ms\n", init_start_time);
     TRACE("Initializing RDS service\n");
 
     if (!surface_initialize()) { 
@@ -388,9 +400,11 @@ BOOL initialize_service(void)
     }
 
     /* Start Pipe Server */
+    printf("[INIT] Starting RDS Pipe Server at %lu ms...\n", GetTickCount());
     if (!StartRDSPipeServer())
     {
         ERR("Failed to start RDS pipe server\n");
+        printf("[INIT] ERROR: Failed to start RDS pipe server\n");
         if (rds_service.default_surface) {
             destroy_surface(rds_service.default_surface->id);
             rds_service.default_surface = NULL;
@@ -399,9 +413,40 @@ BOOL initialize_service(void)
         surface_shutdown();
         return FALSE;
     }
+    printf("[INIT] RDS Pipe Server started successfully at %lu ms\n", GetTickCount());
     FIXME("RDS Pipe Server started successfully\n");
 
-    simple_termsrv_test();
+    /* Initialize Broadway server if enabled */
+    if (broadway_enabled) {
+        printf("[INIT] Starting Broadway server on port %lu at %lu ms...\n", broadway_port, GetTickCount());
+        if (broadway_server_init(&g_broadway_server, broadway_port)) {
+            if (broadway_server_start(&g_broadway_server)) {
+                printf("[INIT] Broadway server started successfully at %lu ms\n", GetTickCount());
+                printf("[INIT] Web client available at: http://localhost:%lu\n", broadway_port);
+                TRACE("Broadway server started successfully\n");
+                
+                /* Initial framebuffer update */
+                broadway_update_framebuffer(&g_broadway_server, rds_service.default_surface);
+            } else {
+                ERR("Failed to start Broadway server\n");
+                printf("[INIT] WARNING: Failed to start Broadway server\n");
+                broadway_server_cleanup(&g_broadway_server);
+                broadway_enabled = FALSE;
+            }
+        } else {
+            ERR("Failed to initialize Broadway server\n");
+            printf("[INIT] WARNING: Failed to initialize Broadway server\n");
+            broadway_enabled = FALSE;
+        }
+    }
+
+    /* simple_termsrv_test(); */  /* Test function disabled for now */
+    printf("[INIT] RDS service initialized successfully at %lu ms (took %lu ms)\n", 
+           GetTickCount(), GetTickCount() - init_start_time);
+    printf("[INIT] Ready to receive connections on pipe: \\\\.\\pipe\\WineRDS\n");
+    if (broadway_enabled) {
+        printf("[INIT] Broadway web interface: http://localhost:%lu\n", broadway_port);
+    }
     FIXME("RDS service initialized successfully\n");
     return TRUE;
 }
@@ -421,6 +466,14 @@ static void shutdown_service(void)
 
     StopRDSPipeServer();
     TRACE("RDS Pipe Server stopped\n");
+
+    /* Stop Broadway server if enabled */
+    if (broadway_enabled && g_broadway_server.enabled) {
+        printf("[SHUTDOWN] Stopping Broadway server...\n");
+        broadway_server_cleanup(&g_broadway_server);
+        broadway_enabled = FALSE;
+        TRACE("Broadway server stopped\n");
+    }
 
     if (rds_service.default_surface)
     {
@@ -445,14 +498,31 @@ static void shutdown_service(void)
 }
 
 void process_events(void) {
+    DWORD loop_start_time = GetTickCount();
+    DWORD last_status_time = loop_start_time;
+    DWORD status_count = 0;
+    
+    printf("[LOOP] Service loop started at %lu ms\n", loop_start_time);
     TRACE("process_events: Service loop running. Pipe server is active.\n");
     
     while (!rds_service.should_exit) {
         /* This loop keeps termsrv alive. */
         /* You can add periodic tasks here (like manual screenshot triggers) */
         /* or handling for other events if termsrv becomes more complex. */
+        
+        // Print status every 10 seconds
+        DWORD current_time = GetTickCount();
+        if (current_time - last_status_time >= 10000) {
+            status_count++;
+            printf("[LOOP] Status #%lu: Running for %lu ms, last status %lu ms ago\n", 
+                   status_count, current_time - loop_start_time, current_time - last_status_time);
+            last_status_time = current_time;
+        }
+        
         Sleep(100); /* Sleep briefly to prevent high CPU usage */
     }
+    printf("[LOOP] Service loop exiting at %lu ms (ran for %lu ms)\n", 
+           GetTickCount(), GetTickCount() - loop_start_time);
     TRACE("process_events: Service loop exiting.\n");
 }
 
@@ -469,9 +539,47 @@ static BOOL WINAPI console_ctrl_handler(DWORD ctrl_type) {
     return FALSE;
 }
 
+/* Parse command line arguments */
+static void parse_command_line(int argc, WCHAR *argv[]) {
+    int i;
+    
+    for (i = 1; i < argc; i++) {
+        if (wcscmp(argv[i], L"--broadway") == 0 || wcscmp(argv[i], L"-b") == 0) {
+            broadway_enabled = TRUE;
+            printf("[ARGS] Broadway web interface enabled\n");
+        } else if (wcsncmp(argv[i], L"--broadway-port=", 16) == 0) {
+            broadway_port = _wtoi(argv[i] + 16);
+            if (broadway_port < 1024 || broadway_port > 65535) {
+                printf("[ARGS] Invalid Broadway port %lu, using default %d\n", broadway_port, BROADWAY_DEFAULT_PORT);
+                broadway_port = BROADWAY_DEFAULT_PORT;
+            } else {
+                printf("[ARGS] Broadway port set to %lu\n", broadway_port);
+            }
+            broadway_enabled = TRUE;
+        } else if (wcscmp(argv[i], L"--help") == 0 || wcscmp(argv[i], L"-h") == 0) {
+            printf("Wine RDS Terminal Service\n");
+            printf("Usage: termsrv [options]\n");
+            printf("\nOptions:\n");
+            printf("  --broadway, -b              Enable Broadway web interface\n");
+            printf("  --broadway-port=PORT        Set Broadway port (default: %d)\n", BROADWAY_DEFAULT_PORT);
+            printf("  --help, -h                  Show this help message\n");
+            printf("\nWith Broadway enabled:\n");
+            printf("  - Web interface: http://localhost:PORT\n");
+            printf("  - Real-time framebuffer updates\n");
+            printf("  - WebSocket input support (keyboard/mouse)\n");
+            ExitProcess(0);
+        } else {
+            printf("[ARGS] Unknown argument: %ls\n", argv[i]);
+        }
+    }
+}
+
 /* Main function */
-int wmain(void) {
+int wmain(int argc, WCHAR *argv[]) {
     TRACE("Starting RDS Terminal Service\n");
+    
+    /* Parse command line arguments */
+    parse_command_line(argc, argv);
     
     if (!SetConsoleCtrlHandler(console_ctrl_handler, TRUE)) {
         ERR("Could not set console control handler.\n");
@@ -496,9 +604,11 @@ int wmain(void) {
 
 void simple_termsrv_test(void)
 {
+    HDC testDC;
+    
     printf("=== TERMSRV: Testing basic CreateDC ===\n");
 
-    HDC testDC = CreateDCA("DISPLAY", NULL, NULL, NULL);
+    testDC = CreateDCA("DISPLAY", NULL, NULL, NULL);
     if (testDC) {
         printf("TERMSRV: CreateDC succeeded: %p\n", testDC);
         printf("TERMSRV: Drawing line - should trigger driver...\n");

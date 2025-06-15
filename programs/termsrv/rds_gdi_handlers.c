@@ -2,9 +2,22 @@
 #include <windows.h> // For Win32 GDI functions like MoveToEx, LineTo, Rectangle, TextOutW
 #include "rds_gdi_handlers.h"
 #include "rds.h" // For RDS_SURFACE, find_surface
+#include "broadway_server.h" // For Broadway framebuffer updates
+#include "wine/debug.h"
 
-// If WINE_DEFAULT_DEBUG_CHANNEL is used for termsrv, define it.
-WINE_DEFAULT_DEBUG_CHANNEL(termsrv_gdi); 
+/* External Broadway state */
+extern BOOL broadway_enabled;
+extern BROADWAY_SERVER g_broadway_server;
+
+WINE_DEFAULT_DEBUG_CHANNEL(termsrv_gdi);
+
+/* Helper function to update Broadway framebuffer after drawing operations */
+static void update_broadway_framebuffer_if_enabled(RDS_SURFACE *surface)
+{
+    if (broadway_enabled && g_broadway_server.enabled && surface) {
+        broadway_update_framebuffer(&g_broadway_server, surface);
+    }
+} 
 
 void Handle_RDS_MSG_MOVE_TO(const RDS_MESSAGE *msg)
 {
@@ -59,10 +72,13 @@ void Handle_RDS_MSG_LINE_TO(const RDS_MESSAGE *msg)
         }
         else
         {
-            printf("WARN: CreatePenIndirect failed for LineTo (Style: %u, Width: %u, Color: %lx). Using HDC current pen.\n",
-                   logPen.lopnStyle, logPen.lopnWidth.x, logPen.lopnColor);
+            printf("WARN: CreatePenIndirect failed for LineTo (Style: %u, Width: %ld, Color: %lx). Using HDC current pen.\n",
+                   logPen.lopnStyle, (long)logPen.lopnWidth.x, logPen.lopnColor);
             LineTo(surface->hdc, msg->params.lineTo.x, msg->params.lineTo.y);
         }
+        
+        /* Update Broadway framebuffer after drawing */
+        update_broadway_framebuffer_if_enabled(surface);
     }
     else
     {
@@ -87,14 +103,14 @@ void Handle_RDS_MSG_RECTANGLE(const RDS_MESSAGE *msg)
         RECT rc;
         rc.left = msg->params.rectangle.left;
         rc.top = msg->params.rectangle.top;
-        rc.right = msg->params.rectangle.right;
-        rc.bottom = msg->params.rectangle.bottom;
-
         LOGPEN logPen;
         HPEN hNewPen;
         LOGBRUSH logBrush;
         HBRUSH hNewBrush;
         BOOL brush_created = FALSE;
+        
+        rc.right = msg->params.rectangle.right;
+        rc.bottom = msg->params.rectangle.bottom;
 
         // Setup Pen
         logPen.lopnStyle = msg->params.rectangle.pen_lopnStyle;
@@ -137,11 +153,14 @@ void Handle_RDS_MSG_RECTANGLE(const RDS_MESSAGE *msg)
         {
             if(hNewPen) DeleteObject(hNewPen);
             if(brush_created && hNewBrush) DeleteObject(hNewBrush);
-            printf("WARN: CreatePenIndirect or CreateBrushIndirect failed for Rectangle. Pen(S:%u,W:%u,C:%lx), Brush(S:%u,C:%lx,H:%p). Using HDC current objects.\n",
-                   logPen.lopnStyle, logPen.lopnWidth.x, logPen.lopnColor,
-                   logBrush.lbStyle, logBrush.lbColor, logBrush.lbHatch);
+            printf("WARN: CreatePenIndirect or CreateBrushIndirect failed for Rectangle. Pen(S:%u,W:%ld,C:%lx), Brush(S:%u,C:%lx,H:%llu). Using HDC current objects.\n",
+                   logPen.lopnStyle, (long)logPen.lopnWidth.x, logPen.lopnColor,
+                   logBrush.lbStyle, logBrush.lbColor, (unsigned long long)logBrush.lbHatch);
             Rectangle(surface->hdc, rc.left, rc.top, rc.right, rc.bottom);
         }
+        
+        /* Update Broadway framebuffer after drawing */
+        update_broadway_framebuffer_if_enabled(surface);
     }
     else
     {
@@ -214,6 +233,9 @@ void Handle_RDS_MSG_TEXT_OUT(const RDS_MESSAGE *msg, const WCHAR *text_data)
             SelectObject(surface->hdc, hOldFont);
             DeleteObject(hNewFont);
         }
+        
+        /* Update Broadway framebuffer after drawing */
+        update_broadway_framebuffer_if_enabled(surface);
     }
     else
     {
@@ -223,15 +245,28 @@ void Handle_RDS_MSG_TEXT_OUT(const RDS_MESSAGE *msg, const WCHAR *text_data)
 
 void Handle_RDS_MSG_PING(const RDS_MESSAGE *msg, HANDLE hPipe)
 {
-    printf("termsrv: Received RDS_MSG_PING.\n");
     RDS_MESSAGE pong_msg;
-    pong_msg.msgType = RDS_MSG_PONG;
     DWORD cbWritten = 0;
+    static DWORD ping_count = 0;
+    DWORD timestamp = GetTickCount();
+    
+    ping_count++;
+    printf("[PING #%lu] Received RDS_MSG_PING at %lu ms\n", (unsigned long)ping_count, (unsigned long)timestamp);
+    
+    ZeroMemory(&pong_msg, sizeof(RDS_MESSAGE));
+    pong_msg.msgType = RDS_MSG_PONG;
 
-    if (WriteFile(hPipe, &pong_msg, sizeof(RDS_MESSAGE), &cbWritten, NULL) && cbWritten == sizeof(RDS_MESSAGE)) { 
-	printf("termsrv: Sent RDS_MSG_PONG successfully.\n"); 
-    } else { 
-	printf("termsrv: ERR - WriteFile failed for RDS_MSG_PONG. GLE=%u\n", (unsigned int)GetLastError()); }
+    if (WriteFile(hPipe, &pong_msg, sizeof(RDS_MESSAGE), &cbWritten, NULL) && cbWritten == sizeof(RDS_MESSAGE)) 
+    { 
+        printf("[PING #%lu] Sent RDS_MSG_PONG successfully at %lu ms (response time: %lu ms)\n", 
+               (unsigned long)ping_count, (unsigned long)GetTickCount(), 
+               (unsigned long)(GetTickCount() - timestamp)); 
+    } 
+    else 
+    { 
+        printf("[PING #%lu] ERR - WriteFile failed for RDS_MSG_PONG. GLE=%lu\n", 
+               (unsigned long)ping_count, (unsigned long)GetLastError()); 
+    }
 }
 
 

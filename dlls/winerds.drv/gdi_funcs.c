@@ -1,497 +1,439 @@
-#include "rdsdrv_dll.h"
-#include "ntuser.h"
-#include "winuser.h"
-#include "pipe_client.h"
+/* Fixed version of gdi_funcs.c for Wine RDS driver */
 
-// Include the DDK definitions from the previous artifact
-//#include <windows.h>
-//#include <wingdi.h>
+#include <windows.h>
+#include <winbase.h>
+#include <winuser.h>
+#include <wingdi.h>
+#include <winerror.h>
+#include <stdio.h>
+#include <string.h>
 
 #include "rdsgdi_driver.h"
+#include "rdsdrv.h"
+#include "pipe_client.h"
+#include "rds_message.h"
 #include "wine/debug.h"
 
-
-// Include the DDK definitions from the previous artifact
-//#include <windows.h>
-//#include <wingdi.h>
- 
 WINE_DEFAULT_DEBUG_CHANNEL(winerds);
-
-#if 0
-struct rds_physdev {
-    struct gdi_physdev dev; // must be first!
-    //RDSContext *session_ctx; // optional pointer to per-session state
-};
-
-static const struct gdi_dc_funcs rds_dc_funcs = {
-    //.pCreateDC     = rds_CreateDC,
-    //.pDeleteDC     = rds_DeleteDC,
-//    .pTextOut      = rds_TextOut,
-//    .pBitBlt       = rds_BitBlt,
-    // etc.
-};
-
-
-BOOL rds_DeleteDC(PHYSDEV dev);
-BOOL rds_CreateDC(PHYSDEV dev);
-
-BOOL rds_CreateDC(PHYSDEV dev)
-{
-    struct rds_physdev *rds = (struct rds_physdev *)dev;
-    TRACE("rds_CreateDC called\n");
-
-    dev->funcs = &rds_dc_funcs;
-    return TRUE;
-}
-
-BOOL rds_DeleteDC(PHYSDEV dev)
-{
-    TRACE("rds_DeleteDC called\n");
-    return TRUE;
-}
-#endif
-
-// Add DDK definitions if winddi.h is not available
-#ifndef _WINDDI_H_
-// [Include all the DDK definitions from the previous artifact here]
-typedef HANDLE DHPDEV;
-typedef HANDLE HSURF;
-typedef ULONG_PTR PFN;
-
-typedef struct _DRVFN {
-    ULONG iFunc;
-    PFN   pfn;
-} DRVFN, *PDRVFN;
-
-typedef struct _DRVENABLEDATA {
-    ULONG   iDriverVersion;
-    ULONG   c;
-    DRVFN   *pdrvfn;
-} DRVENABLEDATA, *PDRVENABLEDATA;
-
-typedef struct _DEVINFO DEVINFO;
-typedef struct _SURFOBJ SURFOBJ;
-typedef struct _STROBJ STROBJ;
-typedef struct _FONTOBJ FONTOBJ;
-typedef struct _CLIPOBJ CLIPOBJ;
-typedef struct _BRUSHOBJ BRUSHOBJ;
-typedef ULONG MIX;
-
-#define GCAPS_OPAQUERECT     0x00000001
-#define GCAPS_HORIZSTRIKE    0x00000002
-#define GCAPS_VERTSTRIKE     0x00000004
-#define GCAPS_RASTERCAPS     0x00000008
-
-#define BMF_32BPP            9
-
-
-typedef struct _DEVINFO {
-    ULONG   flGraphicsCaps;
-    LONG    iDitherFormat;
-    ULONG   cxDither;
-    ULONG   cyDither;
-    HPALETTE hpalDefault;
-    // Note: Wine may expect more fields depending on usage
-} DEVINFO;
-
-typedef struct _GDIINFO {
-    // You can add real fields as needed
-    // For now, just a placeholder so sizeof(GDIINFO) works
-    ULONG dummy[64]; // adjust size as needed
-  ULONG ulVersion;
-  ULONG ulTechnology;
-  ULONG ulHorzRes;
-  ULONG ulVertRes;
-  INT cBitsPixel;
-  INT cPlanes;
-
-} GDIINFO;
-
-// Essential indices
-#define INDEX_DrvEnablePDEV             0
-#define INDEX_DrvCompletePDEV           1
-#define INDEX_DrvDisablePDEV            2
-#define INDEX_DrvEnableSurface          3
-#define INDEX_DrvDisableSurface         4
-#define INDEX_DrvGetModes               41
-
-// Technology constants
-#define DT_RASDISPLAY       1
 
 // Driver version
 #define DRIVER_VERSION 0x00030100
 
-// Graphics capabilities flags
-//#define GCAPS_OPAQUERECT            0x00000001
-//#define GCAPS_HORIZSTRIKE           0x00001000
-//#define GCAPS_VERTSTRIKE            0x00002000
-//#define GCAPS_RASTERCAPS            0x0000E000
-
-// Bitmap formats
-//#define BMF_32BPP      6L
-
-// Raster capabilities
-#define RC_BITBLT           0x0001
-#define RC_SCALING          0x0004
-#define RC_GDI20_OUTPUT     0x0010
-#define RC_DI_BITMAP        0x0080
-#define RC_PALETTE          0x0100
-#define RC_DIBTODEV         0x0200
-#define RC_STRETCHBLT       0x0800
-#define RC_STRETCHDIB       0x2000
-
-#endif // _WINDDI_H_
-
-// Define RDSDRV_PDEVICE structure
-typedef struct _RDSDRV_PDEVICE
+// Global driver state
+static CRITICAL_SECTION rds_pdev_list_lock;
+static CRITICAL_SECTION_DEBUG rds_pdev_list_lock_debug =
 {
-    HDC         hdc;
-    DWORD       session_id;
-    BOOL        is_screen;
-    RECT        bounds;
-    DWORD       bpp;
-    int         screen_width;
-    int         screen_height;
-    int         screen_bpp;
-    struct _RDSDRV_PDEVICE* next;
-} RDSDRV_PDEVICE;
+    0, 0, &rds_pdev_list_lock,
+    { &rds_pdev_list_lock_debug.ProcessLocksList, &rds_pdev_list_lock_debug.ProcessLocksList },
+      0, 0, { (DWORD_PTR)(__FILE__ ": rds_pdev_list_lock") }
+};
+static CRITICAL_SECTION rds_pdev_list_lock = { &rds_pdev_list_lock_debug, -1, 0, 0, 0, 0 };
 
 static RDSDRV_PDEVICE *rds_pdev_list_head = NULL;
-static CRITICAL_SECTION rds_pdev_list_lock;
 
-// Forward declarations
-static HDC WINAPI RdsCreateDCW(PHYSDEV dev, LPCWSTR driver, LPCWSTR device, LPCWSTR output, const DEVMODEW *devmode);
-static BOOL WINAPI RdsDeleteDCW(PHYSDEV dev, HDC hdc);
-int WINAPI RdsGetDeviceCaps(PHYSDEV dev, int index);
-
-// Helper to find RDSDRV_PDEVICE by HDC
-RDSDRV_PDEVICE* find_device_by_hdc(HDC hdc)
+// RDS driver device structure
+typedef struct tagRDS_PHYSDEV
 {
+    struct gdi_physdev dev;
     RDSDRV_PDEVICE *pdev;
+} RDS_PHYSDEV;
+
+// Helper to get RDS physdev
+static inline RDS_PHYSDEV *get_rds_dev(PHYSDEV dev)
+{
+    return (RDS_PHYSDEV *)dev;
+}
+
+// --- DC Functions ---
+static BOOL WINAPI RDS_CreateDC(PHYSDEV *pdev, LPCWSTR device, LPCWSTR driver, const DEVMODEW *devmode)
+{
+    RDS_PHYSDEV *physdev;
+    RDSDRV_PDEVICE *rds_pdev;
+    static DWORD create_dc_count = 0;
+    DWORD timestamp = GetTickCount();
+    
+    create_dc_count++;
+    TRACE("[CreateDC #%lu] Called at %lu ms for device='%S', driver='%S'\n", 
+           create_dc_count, timestamp,
+           device ? device : L"(null)", 
+           driver ? driver : L"(null)");
+
+    // Allocate our physical device
+    physdev = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(RDS_PHYSDEV));
+    if (!physdev) {
+        ERR("Failed to allocate RDS_PHYSDEV\n");
+        return FALSE;
+    }
+
+    // Allocate RDS device info
+    rds_pdev = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(RDSDRV_PDEVICE));
+    if (!rds_pdev) {
+        ERR("Failed to allocate RDSDRV_PDEVICE\n");
+        HeapFree(GetProcessHeap(), 0, physdev);
+        return FALSE;
+    }
+
+    // Initialize device properties based on the device type
+    if (device && (wcscmp(device, L"DISPLAY") == 0 || wcsstr(device, L"\\\\.\\DISPLAY") == device)) {
+        rds_pdev->is_screen = TRUE;
+        rds_pdev->screen_width = (devmode && (devmode->dmFields & DM_PELSWIDTH)) ? devmode->dmPelsWidth : 800;
+        rds_pdev->screen_height = (devmode && (devmode->dmFields & DM_PELSHEIGHT)) ? devmode->dmPelsHeight : 600;
+        rds_pdev->screen_bpp = (devmode && (devmode->dmFields & DM_BITSPERPEL)) ? devmode->dmBitsPerPel : 32;
+        TRACE("Created SCREEN pdev (%dx%dx%d)\n", 
+               rds_pdev->screen_width, rds_pdev->screen_height, rds_pdev->screen_bpp);
+    } else {
+        rds_pdev->is_screen = FALSE;
+        rds_pdev->screen_width = 800;
+        rds_pdev->screen_height = 600;
+        rds_pdev->screen_bpp = 32;
+        TRACE("Created non-screen pdev\n");
+    }
+
+    physdev->pdev = rds_pdev;
+
+    // Add to global list
     EnterCriticalSection(&rds_pdev_list_lock);
-    for (pdev = rds_pdev_list_head; pdev; pdev = pdev->next)
-    {
-        if (pdev->hdc == hdc) break;
+    rds_pdev->next = rds_pdev_list_head;
+    rds_pdev_list_head = rds_pdev;
+    LeaveCriticalSection(&rds_pdev_list_lock);
+
+    // Push our device onto the stack
+    push_dc_driver(pdev, &physdev->dev, &rds_dc_funcs);
+
+    // Start RDS pipe if this is a display device
+    if (rds_pdev->is_screen) {
+        TRACE("[CreateDC #%lu] Starting RDS client pipe for screen device...\n", create_dc_count);
+        if (StartRDSClientPipe()) {
+            TRACE("[CreateDC #%lu] RDS client pipe started successfully\n", create_dc_count);
+        } else {
+            ERR("[CreateDC #%lu] Failed to start RDS client pipe!\n", create_dc_count);
+        }
+    }
+
+    return TRUE;
+}
+
+static BOOL WINAPI RDS_DeleteDC(PHYSDEV dev)
+{
+    RDS_PHYSDEV *physdev = get_rds_dev(dev);
+    RDSDRV_PDEVICE *pdev = physdev->pdev;
+    RDSDRV_PDEVICE *prev_pdev = NULL;
+    
+    TRACE("winerds.drv: RDS_DeleteDC called\n");
+
+    if (!pdev) {
+        ERR("No PDEVICE found\n");
+        return TRUE;
+    }
+
+    // Remove from list
+    EnterCriticalSection(&rds_pdev_list_lock);
+    RDSDRV_PDEVICE *cur = rds_pdev_list_head;
+    while (cur) {
+        if (cur == pdev) {
+            if (prev_pdev) {
+                prev_pdev->next = cur->next;
+            } else {
+                rds_pdev_list_head = cur->next;
+            }
+            break;
+        }
+        prev_pdev = cur;
+        cur = cur->next;
     }
     LeaveCriticalSection(&rds_pdev_list_lock);
-    return pdev;
+
+    // Free resources
+    HeapFree(GetProcessHeap(), 0, pdev);
+    HeapFree(GetProcessHeap(), 0, physdev);
+
+    return TRUE;
 }
 
-// REMOVED DllMain - now handled in winerdsdrv_main.c
-#if 0
-// Initialize critical section - called from main DllMain
-void RDS_InitializeGDI(void)
+// --- Drawing Functions ---
+static BOOL WINAPI RDS_LineTo(PHYSDEV dev, INT x, INT y)
 {
-    InitializeCriticalSection(&rds_pdev_list_lock);
-    TRACE("winerds.drv: Initialized rds_pdev_list_lock.\n");
-    
-    if (!StartRDSClientPipe())
-    {
-        ERR("winerds.drv: CRITICAL ERROR: Failed to start RDS client pipe.\n");
-    }
-    else
-    {
-        TRACE("winerds.drv: RDS client pipe started successfully.\n");
-    }
-}
-#endif
-
-// Fix the timing issue in your RDS_InitializeGDI function in gdi_funcs.c
-// Make pipe connection optional during driver init, retry later when needed
-
-void RDS_InitializeGDI(void)
-{
-    InitializeCriticalSection(&rds_pdev_list_lock);
-    TRACE("winerds.drv: Initialized rds_pdev_list_lock.\n");
-    
-    // DON'T fail driver loading if pipe isn't ready yet!
-    // Termsrv might not be running when driver loads
-    if (!StartRDSClientPipe())
-    {
-        WARN("winerds.drv: Pipe not available during init - will retry later\n");
-        // Don't return/fail here - just continue
-    }
-    else
-    {
-        TRACE("winerds.drv: RDS client pipe started successfully.\n");
-    }
-}
-// Cleanup - called from main DllMain
-void RDS_CleanupGDI(void)
-{
-    TRACE("winerds.drv: RDS_CleanupGDI called.\n");
-    StopRDSClientPipe();
-    TRACE("winerds.drv: RDS client pipe stopped.\n");
-    DeleteCriticalSection(&rds_pdev_list_lock);
-    TRACE("winerds.drv: Deleted rds_pdev_list_lock.\n");
-}
-
-// --- Core Driver Functions ---
-HSURF WINAPI DrvEnableSurface(DHPDEV dhpdev)
-{
+    RDS_PHYSDEV *physdev = get_rds_dev(dev);
+    RDSDRV_PDEVICE *pdev = physdev->pdev;
     RDS_MESSAGE msg;
-    TRACE("winerds.drv: DrvEnableSurface called with dhpdev=%p\n", dhpdev);
-    msg.msgType = RDS_MSG_ENABLE_PRIMARY_SURFACE;
-    msg.params.enablePrimarySurface.surfaceId = 1;
-    if (!SendRDSMessage(&msg, NULL, 0))
-    {
-        ERR("winerds.drv: ERROR - Failed to send RDS_MSG_ENABLE_PRIMARY_SURFACE\n");
-        return NULL;
+    
+    TRACE("RDS_LineTo(%d, %d)\n", x, y);
+    
+    if (!pdev || !pdev->is_screen) {
+        return TRUE; // Nothing to do for non-screen devices
     }
-    TRACE("winerds.drv: DrvEnableSurface returning dummy HSURF 1 for primary surface.\n");
-    return (HSURF)1;
+
+    // Send line drawing message to termsrv
+    ZeroMemory(&msg, sizeof(RDS_MESSAGE));
+    msg.msgType = RDS_MSG_LINE_TO;
+    msg.params.lineTo.surfaceId = 1; // Primary surface
+    msg.params.lineTo.x = x;
+    msg.params.lineTo.y = y;
+    msg.params.lineTo.color = RGB(255, 255, 255); // Default white
+    msg.params.lineTo.lopnStyle = PS_SOLID;
+    msg.params.lineTo.lopnWidth_x = 1;
+    
+    SendRDSMessage(&msg, NULL, 0);
+    
+    return TRUE;
 }
 
-DHPDEV WINAPI DrvEnablePDEV(
-    DEVMODEW *pdm, LPWSTR pwszLogAddress, ULONG cPat, HSURF *phsurfPatterns,
-    ULONG cjCaps, ULONG *pdevcaps, ULONG cjDevInfo, DEVINFO *pdi,
-    DHPDEV hdev, LPWSTR pwszDeviceName, HANDLE hDriver)
+static BOOL WINAPI RDS_Rectangle(PHYSDEV dev, INT left, INT top, INT right, INT bottom)
 {
-    GDIINFO* pGdiInfo;
-
-    TRACE("winerds.drv: DrvEnablePDEV called. Device: %S, LogAddress: %S\n", 
-           pwszDeviceName ? pwszDeviceName : L"(null)", 
-           pwszLogAddress ? pwszLogAddress : L"(null)");
+    RDS_PHYSDEV *physdev = get_rds_dev(dev);
+    RDSDRV_PDEVICE *pdev = physdev->pdev;
+    RDS_MESSAGE msg;
     
-    if (!pdi || cjDevInfo < sizeof(DEVINFO)) {
-        ERR("winerds.drv: DrvEnablePDEV ERROR - DEVINFO buffer too small or NULL.\n");
-        return NULL;
-    }
-    if (!pdevcaps || cjCaps < sizeof(GDIINFO)) {
-         ERR("winerds.drv: DrvEnablePDEV ERROR - GDIINFO buffer (pdevcaps) too small or NULL.\n");
-         return NULL;
-    }
+    TRACE("RDS_Rectangle(%d, %d, %d, %d)\n", left, top, right, bottom);
     
-    memset(pdi, 0, sizeof(DEVINFO));
-    memset(pdevcaps, 0, sizeof(GDIINFO));
-    pGdiInfo = (GDIINFO*)pdevcaps;
+    if (!pdev || !pdev->is_screen) {
+        return TRUE;
+    }
 
-    // Fill DEVINFO (pdi)
-    pdi->flGraphicsCaps = GCAPS_OPAQUERECT | GCAPS_HORIZSTRIKE | GCAPS_VERTSTRIKE | GCAPS_RASTERCAPS;
-    pdi->iDitherFormat = BMF_32BPP;
-    pdi->cxDither = 0;
-    pdi->cyDither = 0;
-    pdi->hpalDefault = 0;
-    // Note: pdi->pfn will be set by Wine's GDI system
-
-    // Fill GDIINFO
-    pGdiInfo->ulVersion = DRIVER_VERSION;
-    pGdiInfo->ulTechnology = DT_RASDISPLAY;
-    pGdiInfo->ulHorzRes = (pdm && (pdm->dmFields & DM_PELSWIDTH)) ? pdm->dmPelsWidth : 800;
-    pGdiInfo->ulVertRes = (pdm && (pdm->dmFields & DM_PELSHEIGHT)) ? pdm->dmPelsHeight : 600;
-    pGdiInfo->cBitsPixel = (pdm && (pdm->dmFields & DM_BITSPERPEL)) ? pdm->dmBitsPerPel : 32;
-    pGdiInfo->cPlanes = 1;
-
-    TRACE("winerds.drv: DrvEnablePDEV returning dummy DHPDEV 1 (HDEV %p).\n", hdev);
-    return (DHPDEV)1; // Return a non-null handle
+    // Send rectangle message to termsrv
+    ZeroMemory(&msg, sizeof(RDS_MESSAGE));
+    msg.msgType = RDS_MSG_RECTANGLE;
+    msg.params.rectangle.surfaceId = 1;
+    msg.params.rectangle.left = left;
+    msg.params.rectangle.top = top;
+    msg.params.rectangle.right = right;
+    msg.params.rectangle.bottom = bottom;
+    msg.params.rectangle.color = RGB(255, 255, 255);
+    msg.params.rectangle.filled = FALSE;
+    msg.params.rectangle.pen_lopnStyle = PS_SOLID;
+    msg.params.rectangle.pen_lopnWidth_x = 1;
+    
+    SendRDSMessage(&msg, NULL, 0);
+    
+    return TRUE;
 }
 
-VOID WINAPI DrvCompletePDEV(DHPDEV dhpdev, DHPDEV hdev) {
-    TRACE("winerds.drv: STUB DrvCompletePDEV called for dhpdev=%p, hdev=%p\n", dhpdev, hdev);
+static BOOL WINAPI RDS_ExtTextOut(PHYSDEV dev, INT x, INT y, UINT flags, const RECT *rect,
+                                   LPCWSTR str, UINT count, const INT *dx)
+{
+    RDS_PHYSDEV *physdev = get_rds_dev(dev);
+    RDSDRV_PDEVICE *pdev = physdev->pdev;
+    RDS_MESSAGE msg;
+    DWORD data_size;
+    
+    TRACE("RDS_ExtTextOut(%d, %d, '%S', count=%u)\n", x, y, str, count);
+    
+    if (!pdev || !pdev->is_screen || !str || count == 0) {
+        return TRUE;
+    }
+
+    // Calculate size for text data
+    data_size = count * sizeof(WCHAR);
+
+    // Send text output message to termsrv
+    ZeroMemory(&msg, sizeof(RDS_MESSAGE));
+    msg.msgType = RDS_MSG_TEXT_OUT;
+    msg.params.textOut.surfaceId = 1;
+    msg.params.textOut.x = x;
+    msg.params.textOut.y = y;
+    msg.params.textOut.color = RGB(255, 255, 255);
+    msg.params.textOut.count = count;
+    msg.params.textOut.data_size = data_size;
+    msg.params.textOut.text_bk_color = RGB(0, 0, 0);
+    msg.params.textOut.bk_mode = TRANSPARENT;
+    
+    // Default font properties
+    msg.params.textOut.font_lfHeight = -13;
+    msg.params.textOut.font_lfWeight = FW_NORMAL;
+    wcscpy(msg.params.textOut.font_lfFaceName, L"Arial");
+    
+    SendRDSMessage(&msg, str, data_size);
+    
+    return TRUE;
 }
 
-//VOID WINAPI DrvEnablePDEV(DHPDEV dhpdev) {
-//    TRACE("winerds.drv: STUB DrvEnablePDEV called for dhpdev=%p\n", dhpdev);
-//}
+// Driver capabilities
+static INT WINAPI RDS_GetDeviceCaps(PHYSDEV dev, INT cap)
+{
+    RDS_PHYSDEV *physdev = get_rds_dev(dev);
+    RDSDRV_PDEVICE *pdev = physdev->pdev;
+    
+    TRACE("RDS_GetDeviceCaps(cap=%d)\n", cap);
+    
+    if (!pdev) {
+        return 0;
+    }
 
-VOID WINAPI DrvDisablePDEV(DHPDEV dhpdev) {
-    TRACE("winerds.drv: STUB DrvDisablePDEV called for dhpdev=%p\n", dhpdev);
+    switch (cap) {
+    case HORZRES:
+        return pdev->screen_width;
+    case VERTRES:
+        return pdev->screen_height;
+    case BITSPIXEL:
+        return pdev->screen_bpp;
+    case RASTERCAPS:
+        return RC_BITBLT | RC_BANDING | RC_SCALING | RC_BITMAP64 | RC_DI_BITMAP | RC_DIBTODEV;
+    case TECHNOLOGY:
+        return DT_RASDISPLAY;
+    default:
+        return 0;
+    }
 }
 
-VOID WINAPI DrvDisableSurface(DHPDEV dhpdev, HSURF hsurf) {
-    TRACE("winerds.drv: STUB DrvDisableSurface called for dhpdev=%p, hsurf=%p\n", dhpdev, hsurf);
-}
-
+// Get modes function
 ULONG WINAPI DrvGetModes(HANDLE hDriver, ULONG cjSize, DEVMODEW *pdm)
 {
+    const WCHAR deviceName[] = L"WineRDS Virtual Display";
+    
     TRACE("winerds.drv: DrvGetModes called. hDriver=%p, cjSize=%lu, pdm=%p\n", hDriver, cjSize, pdm);
+    
     if (pdm == NULL) {
         return sizeof(DEVMODEW);
     }
+    
     if (cjSize < sizeof(DEVMODEW)) {
         return 0;
     }
+    
     memset(pdm, 0, sizeof(DEVMODEW));
-    const WCHAR deviceName[] = L"WineRDS Virtual Display";
     lstrcpynW((LPWSTR)pdm->dmDeviceName, deviceName, CCHDEVICENAME);
     pdm->dmSize = sizeof(DEVMODEW);
     pdm->dmSpecVersion = DM_SPECVERSION;
-    pdm->dmDriverVersion = DRIVER_VERSION;
+    pdm->dmDriverVersion = (WORD)(DRIVER_VERSION & 0xFFFF);
     pdm->dmFields = DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL | DM_DISPLAYFREQUENCY | DM_DISPLAYFLAGS;
     pdm->dmPelsWidth = 800;
     pdm->dmPelsHeight = 600;
     pdm->dmBitsPerPel = 32;
     pdm->dmDisplayFrequency = 60;
     pdm->dmDisplayFlags = 0;
+    
     TRACE("winerds.drv: DrvGetModes filled DEVMODEW: %lux%lux%lu @ %luHz\n",
            pdm->dmPelsWidth, pdm->dmPelsHeight, pdm->dmBitsPerPel, pdm->dmDisplayFrequency);
+           
     return sizeof(DEVMODEW);
 }
 
-static DRVFN gdi_driver_core_funcs[] = {
-    { INDEX_DrvEnablePDEV,          (PFN)DrvEnablePDEV         },
-    { INDEX_DrvCompletePDEV,        (PFN)DrvCompletePDEV       },
-    { INDEX_DrvDisablePDEV,         (PFN)DrvDisablePDEV        },
-    { INDEX_DrvEnableSurface,       (PFN)DrvEnableSurface      },
-    { INDEX_DrvDisableSurface,      (PFN)DrvDisableSurface     },
-    { INDEX_DrvGetModes,            (PFN)DrvGetModes           },
+// Forward declaration
+static const struct gdi_dc_funcs rds_dc_funcs;
+
+// Driver function table
+static const struct gdi_dc_funcs rds_dc_funcs =
+{
+    NULL,                               /* pAbortDoc */
+    NULL,                               /* pAbortPath */
+    NULL,                               /* pAlphaBlend */
+    NULL,                               /* pAngleArc */
+    NULL,                               /* pArc */
+    NULL,                               /* pArcTo */
+    NULL,                               /* pBeginPath */
+    NULL,                               /* pBlendImage */
+    NULL,                               /* pChord */
+    NULL,                               /* pCloseFigure */
+    NULL,                               /* pCreateCompatibleDC */
+    RDS_CreateDC,                       /* pCreateDC */
+    RDS_DeleteDC,                       /* pDeleteDC */
+    NULL,                               /* pDeleteObject */
+    NULL,                               /* pEllipse */
+    NULL,                               /* pEndDoc */
+    NULL,                               /* pEndPage */
+    NULL,                               /* pEndPath */
+    NULL,                               /* pEnumFonts */
+    NULL,                               /* pExtEscape */
+    NULL,                               /* pExtFloodFill */
+    RDS_ExtTextOut,                     /* pExtTextOut */
+    NULL,                               /* pFillPath */
+    NULL,                               /* pFillRgn */
+    NULL,                               /* pFontIsLinked */
+    NULL,                               /* pFrameRgn */
+    NULL,                               /* pGetBoundsRect */
+    NULL,                               /* pGetCharABCWidths */
+    NULL,                               /* pGetCharABCWidthsI */
+    NULL,                               /* pGetCharWidth */
+    NULL,                               /* pGetCharWidthInfo */
+    RDS_GetDeviceCaps,                  /* pGetDeviceCaps */
+    NULL,                               /* pGetDeviceGammaRamp */
+    NULL,                               /* pGetFontData */
+    NULL,                               /* pGetFontRealizationInfo */
+    NULL,                               /* pGetFontUnicodeRanges */
+    NULL,                               /* pGetGlyphIndices */
+    NULL,                               /* pGetGlyphOutline */
+    NULL,                               /* pGetICMProfile */
+    NULL,                               /* pGetImage */
+    NULL,                               /* pGetKerningPairs */
+    NULL,                               /* pGetNearestColor */
+    NULL,                               /* pGetOutlineTextMetrics */
+    NULL,                               /* pGetPixel */
+    NULL,                               /* pGetSystemPaletteEntries */
+    NULL,                               /* pGetTextCharsetInfo */
+    NULL,                               /* pGetTextExtentExPoint */
+    NULL,                               /* pGetTextExtentExPointI */
+    NULL,                               /* pGetTextFace */
+    NULL,                               /* pGetTextMetrics */
+    NULL,                               /* pGradientFill */
+    NULL,                               /* pInvertRgn */
+    RDS_LineTo,                         /* pLineTo */
+    NULL,                               /* pMoveTo */
+    NULL,                               /* pPaintRgn */
+    NULL,                               /* pPatBlt */
+    NULL,                               /* pPie */
+    NULL,                               /* pPolyBezier */
+    NULL,                               /* pPolyBezierTo */
+    NULL,                               /* pPolyDraw */
+    NULL,                               /* pPolyPolygon */
+    NULL,                               /* pPolyPolyline */
+    NULL,                               /* pPolyline */
+    NULL,                               /* pPolylineTo */
+    NULL,                               /* pPutImage */
+    NULL,                               /* pRealizeDefaultPalette */
+    NULL,                               /* pRealizePalette */
+    RDS_Rectangle,                      /* pRectangle */
+    NULL,                               /* pResetDC */
+    NULL,                               /* pRoundRect */
+    NULL,                               /* pSelectBitmap */
+    NULL,                               /* pSelectBrush */
+    NULL,                               /* pSelectFont */
+    NULL,                               /* pSelectPalette */
+    NULL,                               /* pSelectPen */
+    NULL,                               /* pSetBkColor */
+    NULL,                               /* pSetBoundsRect */
+    NULL,                               /* pSetDCBrushColor */
+    NULL,                               /* pSetDCPenColor */
+    NULL,                               /* pSetDIBitsToDevice */
+    NULL,                               /* pSetDeviceClipping */
+    NULL,                               /* pSetDeviceGammaRamp */
+    NULL,                               /* pSetPixel */
+    NULL,                               /* pSetTextColor */
+    NULL,                               /* pStartDoc */
+    NULL,                               /* pStartPage */
+    NULL,                               /* pStretchBlt */
+    NULL,                               /* pStretchDIBits */
+    NULL,                               /* pStrokeAndFillPath */
+    NULL,                               /* pStrokePath */
+    NULL,                               /* pUnrealizePalette */
+    GDI_PRIORITY_GRAPHICS_DRV           /* priority */
 };
 
-BOOL WINAPI DrvEnableDriver( ULONG iEngineVersion, ULONG cj, DRVENABLEDATA *pded )
+// Initialize the driver
+BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
 {
-/* This compiles, I am just less sure that we even need worry about it */
-#if 0
-    TRACE("winerds.drv: DrvEnableDriver called, version 0x%lx, size %lu\n", iEngineVersion, cj);
-    if (iEngineVersion < DRIVER_VERSION) {
-        ERR("winerds.drv: DrvEnableDriver - Engine version too old\n");
-        return FALSE;
+    TRACE("[DllMain] Called at %lu ms, fdwReason=%d\n", GetTickCount(), fdwReason);
+    
+    switch (fdwReason) {
+    case DLL_PROCESS_ATTACH:
+        DisableThreadLibraryCalls(hinstDLL);
+        break;
+    case DLL_PROCESS_DETACH:
+        StopRDSClientPipe();
+        break;
     }
-    if (cj < sizeof(DRVENABLEDATA)) {
-        ERR("winerds.drv: DrvEnableDriver - Buffer too small\n");
-        return FALSE;
-    }
-    pded->iDriverVersion = DRIVER_VERSION;
-    pded->c = ARRAY_SIZE(gdi_driver_core_funcs);
-    pded->pdrvfn = gdi_driver_core_funcs;
-    TRACE("winerds.drv: DrvEnableDriver registered %lu core functions.\n", pded->c);
-#endif
+    
     return TRUE;
 }
 
-// --- DC Functions ---
-static HDC WINAPI RDS_CreateDCW(PHYSDEV dev, LPCWSTR driver, LPCWSTR device, LPCWSTR output, const DEVMODEW *devmode)
+// Entry point for Wine to get our driver
+const struct gdi_dc_funcs * CDECL __wine_get_gdi_driver(unsigned int version)
 {
-    RDSDRV_PDEVICE *pdev;
-    TRACE("winerds.drv: RdsCreateDCW called for driver='%S', device='%S', output='%S'\n", 
-           driver ? driver : L"(null)", 
-           device ? device : L"(null)", 
-           output ? output : L"(null)");
-
-    // For Wine, we typically need to call the next driver in the chain
-    // This is a simplified approach - you may need to adjust based on Wine's driver architecture
-    HDC hdc = NULL;
-    if (dev && dev->funcs && dev->funcs->pCreateDC) {
-        // Call the next driver's CreateDC
-//        hdc = dev->funcs->pCreateDC(GET_NEXT_PHYSDEV(dev, pCreateDC), driver, device, output, devmode);
-	return dev->funcs->pDeleteDC(GET_NEXT_PHYSDEV(dev, pDeleteDC));
-    }
-    
-    if (!hdc) {
-        ERR("winerds.drv: RdsCreateDCW - Failed to create base HDC\n");
+    TRACE("[__wine_get_gdi_driver] Called at %lu ms, version=%u\n", GetTickCount(), version);
+    if (version != WINE_GDI_DRIVER_VERSION)
+    {
+        ERR("version mismatch, driver wants %u but Wine has %u\n", WINE_GDI_DRIVER_VERSION, version);
         return NULL;
     }
-
-    pdev = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(RDSDRV_PDEVICE));
-    if (!pdev) {
-        ERR("winerds.drv: RdsCreateDCW - HeapAlloc failed\n");
-        return NULL;
-    }
-
-    pdev->hdc = hdc;
-    // Initialize device properties based on the device type
-    if (device && (wcscmp(device, L"DISPLAY") == 0 || wcsstr(device, L"\\\\.\\DISPLAY") == device)) {
-        pdev->is_screen = TRUE;
-        pdev->screen_width = (devmode && (devmode->dmFields & DM_PELSWIDTH)) ? devmode->dmPelsWidth : 800;
-        pdev->screen_height = (devmode && (devmode->dmFields & DM_PELSHEIGHT)) ? devmode->dmPelsHeight : 600;
-        pdev->screen_bpp = (devmode && (devmode->dmFields & DM_BITSPERPEL)) ? devmode->dmBitsPerPel : 32;
-        TRACE("winerds.drv: RdsCreateDCW created SCREEN pdev for HDC %p (%dx%dx%d)\n", 
-               hdc, pdev->screen_width, pdev->screen_height, pdev->screen_bpp);
-    } else {
-        pdev->is_screen = FALSE;
-        pdev->screen_width = 800;
-        pdev->screen_height = 600;
-        pdev->screen_bpp = 32;
-        TRACE("winerds.drv: RdsCreateDCW created non-screen pdev for HDC %p\n", hdc);
-    }
-
-    EnterCriticalSection(&rds_pdev_list_lock);
-    pdev->next = rds_pdev_list_head;
-    rds_pdev_list_head = pdev;
-    LeaveCriticalSection(&rds_pdev_list_lock);
-
-    return hdc;
+    TRACE("[__wine_get_gdi_driver] Returning driver function table\n");
+    return &rds_dc_funcs;
 }
-
-static BOOL WINAPI RDS_DeleteDCW(PHYSDEV dev, HDC hdc)
-{
-    RDSDRV_PDEVICE *pdev, *prev_pdev;
-    TRACE("winerds.drv: RdsDeleteDCW called for hdc=%p\n", hdc);
-
-    EnterCriticalSection(&rds_pdev_list_lock);
-    for (pdev = rds_pdev_list_head, prev_pdev = NULL; pdev; prev_pdev = pdev, pdev = pdev->next) {
-        if (pdev->hdc == hdc) {
-            if (prev_pdev) prev_pdev->next = pdev->next;
-            else rds_pdev_list_head = pdev->next;
-            break;
-        }
-    }
-    LeaveCriticalSection(&rds_pdev_list_lock);
-
-    if (pdev) HeapFree(GetProcessHeap(), 0, pdev);
-
-    // Call the next driver's DeleteDC
-    if (dev && dev->funcs && dev->funcs->pDeleteDC) {
-	return dev->funcs->pDeleteDC(GET_NEXT_PHYSDEV(dev, pDeleteDC));
-    }
-    return TRUE;
-}
-
-int WINAPI RDS_GetDeviceCaps(PHYSDEV dev, int index)
-{
-    RDSDRV_PDEVICE* rds_pdev = NULL;
-    
-    // In Wine's architecture, we need to get the HDC from the device context
-    // This is a simplified approach - you may need to adjust based on your Wine version
-    HDC hdc = NULL;
-    if (dev && dev->hdc) {
-        hdc = dev->hdc;
-        rds_pdev = find_device_by_hdc(hdc);
-    }
-
-    if (dev && dev->hdc)
-    {
-        rds_pdev = find_device_by_hdc(dev->hdc);
-    }
-
-    TRACE("winerds.drv: RdsGetDeviceCaps: hdc=%p, index=%d. rds_pdev found: %p\n",
-            (rds_pdev ? rds_pdev->hdc : NULL), index, rds_pdev);
-
-
-    if (rds_pdev && rds_pdev->is_screen)
-    {
-        TRACE("winerds.drv: RdsGetDeviceCaps for SCREEN DC: index %d\n", index);
-        switch (index)
-        {
-            case HORZRES:           return rds_pdev->screen_width;
-            case VERTRES:           return rds_pdev->screen_height;
-            case BITSPIXEL:         return rds_pdev->screen_bpp;
-            case PLANES:            return 1;
-            case NUMCOLORS:         return (rds_pdev->screen_bpp > 8) ? -1 : (1 << rds_pdev->screen_bpp);
-            case ASPECTX:           return 36;
-            case ASPECTY:           return 36;
-            case ASPECTXY:          return 51;
-            case LOGPIXELSX:        return 96;
-            case LOGPIXELSY:        return 96;
-            case TECHNOLOGY:        return DT_RASDISPLAY;
-            case DRIVERVERSION:     return DRIVER_VERSION;
-            case RASTERCAPS:
-                return RC_BITBLT   | RC_DI_BITMAP | RC_DIBTODEV | RC_STRETCHBLT |
-                       RC_STRETCHDIB | RC_PALETTE | RC_SCALING | RC_GDI20_OUTPUT;
-            default:
-		TRACE("winerds.drv: RdsGetDeviceCaps for SCREEN DC: Unhandled index %d, passing to wine_GetDeviceCaps\n", index);
-                break;
-        }
-    }
-    else if (dev && dev->hdc)
-    {
-        TRACE("winerds.drv: RdsGetDeviceCaps for non-screen DC: index %d, passing to wine_GetDeviceCaps\n", index);
-        //return NtGdiGetDeviceCaps( dev->hdc, index );
-	// This may create an endless loop depending on if the driver can be loaded
-        return GetDeviceCaps( dev->hdc, index );
-    }
-
-    WARN("winerds.drv: WARN - RdsGetDeviceCaps: dev, pdc, or hdc is NULL, or rds_pdev not found. index=%d. Returning 0.\n", index);
-
-    return 0;
-}
-

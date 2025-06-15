@@ -16,8 +16,10 @@ DWORD WINAPI RDSPipeServerThread(LPVOID lpParam)
     DWORD cbRead;
     BOOL bConnected;
     HANDLE hCurrentPipe = INVALID_HANDLE_VALUE;
+    DWORD connection_count = 0;
+    DWORD thread_start_time = GetTickCount();
 
-    printf("RDS Pipe Server Thread started.\n");
+    printf("[PIPE] Server thread started at %lu ms\n", (unsigned long)thread_start_time);
 
     while (bServerRunning)
     {
@@ -41,13 +43,17 @@ DWORD WINAPI RDSPipeServerThread(LPVOID lpParam)
             continue;
         }
 
-        printf("Pipe server instance created (%p). Waiting for client connection...\n", hCurrentPipe);
+        printf("[PIPE] Instance created (%p) at %lu ms. Waiting for client...\n", 
+               hCurrentPipe, (unsigned long)GetTickCount());
 
         bConnected = ConnectNamedPipe(hCurrentPipe, NULL) ? TRUE : (GetLastError() == ERROR_PIPE_CONNECTED);
 
         if (bConnected && bServerRunning)
         {
-            printf("Client connected to pipe instance (%p).\n", hCurrentPipe);
+            connection_count++;
+            DWORD connection_time = GetTickCount();
+            printf("[PIPE] Client #%lu connected to instance (%p) at %lu ms\n", 
+                   (unsigned long)connection_count, hCurrentPipe, (unsigned long)connection_time);
             // Loop to receive messages
             while (bServerRunning)
             {
@@ -59,15 +65,23 @@ DWORD WINAPI RDSPipeServerThread(LPVOID lpParam)
                 {
                     if (cbRead == 0) // Client disconnected gracefully after ConnectNamedPipe before sending anything
                     {
-                       printf("Client disconnected gracefully (ReadFile returned 0 bytes) from pipe instance (%p).\n", hCurrentPipe);
+                       printf("[PIPE] Client disconnected gracefully (0 bytes read) at %lu ms\n", 
+                              (unsigned long)GetTickCount());
                        break; // Break from inner message reading loop
                     }
 
                     if (cbRead >= sizeof(RDS_MESSAGE_TYPE)) // Basic check: enough data for at least the msgType
                     {
                         RDS_MESSAGE *rdsMsg = (RDS_MESSAGE*)buffer;
-                        // WINE_TRACE("Received message type: %d, size: %lu bytes\n", rdsMsg->msgType, cbRead);
-                        printf("Received message: type=%d, size=%lu bytes from pipe instance (%p)\n", rdsMsg->msgType, cbRead, hCurrentPipe);
+                        printf("[MSG] Received type %d (%s), size=%lu bytes at %lu ms\n", 
+                               rdsMsg->msgType,
+                               rdsMsg->msgType == RDS_MSG_PING ? "PING" :
+                               rdsMsg->msgType == RDS_MSG_PONG ? "PONG" :
+                               rdsMsg->msgType == RDS_MSG_LINE_TO ? "LINE_TO" :
+                               rdsMsg->msgType == RDS_MSG_RECTANGLE ? "RECTANGLE" :
+                               rdsMsg->msgType == RDS_MSG_TEXT_OUT ? "TEXT_OUT" :
+                               rdsMsg->msgType == RDS_MSG_MOVE_TO ? "MOVE_TO" : "OTHER",
+                               cbRead, (unsigned long)GetTickCount());
 
                         // Ensure we have the full fixed part of the message
                         if (cbRead < sizeof(RDS_MESSAGE)) {
@@ -158,7 +172,8 @@ DWORD WINAPI RDSPipeServerThread(LPVOID lpParam)
                     DWORD dwError = GetLastError();
                     if (dwError == ERROR_BROKEN_PIPE)
                     {
-                        printf("Client disconnected (ReadFile - ERROR_BROKEN_PIPE) from pipe instance (%p).\n", hCurrentPipe);
+                        printf("[PIPE] Client disconnected (ERROR_BROKEN_PIPE) at %lu ms\n", 
+                               (unsigned long)GetTickCount());
                     }
                     else
                     {
@@ -173,7 +188,7 @@ DWORD WINAPI RDSPipeServerThread(LPVOID lpParam)
             printf("Server shutting down while waiting for client on pipe instance (%p).\n", hCurrentPipe);
         }
         
-        printf("Closing pipe instance %p\n", hCurrentPipe);
+        printf("[PIPE] Closing instance %p at %lu ms\n", hCurrentPipe, (unsigned long)GetTickCount());
         DisconnectNamedPipe(hCurrentPipe);
         CloseHandle(hCurrentPipe);
         hCurrentPipe = INVALID_HANDLE_VALUE;
@@ -202,12 +217,14 @@ void StopRDSPipeServer(void)
 {
     if (!bServerRunning) return;
 
+    HANDLE hDummyClient;
+    
     printf("Stopping pipe server thread...\n");
     bServerRunning = FALSE;
 
     // Create a dummy client to connect to the pipe and unblock the server thread
     // if it's waiting in ConnectNamedPipe.
-    HANDLE hDummyClient = CreateFileW(
+    hDummyClient = CreateFileW(
         RDS_PIPE_NAME,
         GENERIC_WRITE, 
         0,             

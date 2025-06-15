@@ -1,0 +1,7 @@
++----------------------------+
+| Terminal Server Executable|
+|                            |
+| [ Mongoose WebSocket Server ] <== JSON input from browser
+| [ Win32 Input Dispatcher ] => PostMessage to Wine window
++----------------------------+
+
