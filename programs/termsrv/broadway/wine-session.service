@@ -1,0 +1,18 @@
+# wine-session@.service - systemd template for multi-session Wine
+
+[Unit]
+Description=Wine Remote Desktop Session (%i)
+After=network.target
+
+[Service]
+User=%i
+WorkingDirectory=/home/%i
+Environment=DISPLAY=:0
+Environment=WINERDS_SESSION=%i
+Environment=WINEPREFIX=/home/%i/.wine_sessions/%i
+ExecStart=/usr/bin/wine explorer /desktop=%i,800x600 notepad.exe
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+

@@ -1,0 +1,7 @@
+PROGRAMS = rds_test ping_test
+IMPORTS   = user32 gdi32
+
+EXTRADLLFLAGS = -mconsole
+
+rds_test_SOURCES = rds_test.c
+ping_test_SOURCES = ping_test.c
