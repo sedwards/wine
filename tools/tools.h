@@ -97,7 +97,7 @@ extern char **environ;
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 #endif
 
-enum target_cpu { CPU_i386, CPU_x86_64, CPU_ARM, CPU_ARM64, CPU_ARM64EC };
+enum target_cpu { CPU_i386, CPU_x86_64, CPU_RISCV, CPU_ARM, CPU_ARM64, CPU_ARM64EC };
 
 struct target
 {
@@ -558,6 +558,8 @@ static inline struct target get_default_target(void)
     target.cpu = CPU_ARM;
 #elif defined(__aarch64__)
     target.cpu = CPU_ARM64;
+#elif defined(__riscv)
+    target.cpu = CPU_RISCV;
 #else
 #error Unsupported CPU
 #endif
@@ -593,6 +595,7 @@ static inline unsigned int get_target_ptr_size( struct target target )
         [CPU_ARM]       = 4,
         [CPU_ARM64]     = 8,
         [CPU_ARM64EC]   = 8,
+        [CPU_RISCV]   = 8,
     };
     return sizes[target.cpu];
 }
@@ -614,6 +617,9 @@ static inline void set_target_ptr_size( struct target *target, unsigned int size
     case CPU_ARM64:
     case CPU_ARM64EC:
         if (size == 4) target->cpu = CPU_ARM;
+        break;
+    case CPU_RISCV:
+        if (size == 8) target->cpu = CPU_RISCV;
         break;
     }
 }
