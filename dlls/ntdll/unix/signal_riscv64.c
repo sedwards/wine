@@ -2,7 +2,7 @@
 #pragma makedep unix
 #endif
 
-#if defined(__riscv) || (__riscv_xlen == 64)
+#if defined(__riscv) && (__riscv_xlen == 64)
 
 #include "config.h"
 
@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <sys/types.h>
 #include <unistd.h>
+
 #ifdef HAVE_SYS_PARAM_H
 # include <sys/param.h>
 #endif
@@ -32,6 +33,7 @@
 #endif
 
 #include "ntstatus.h"
+#define WIN32_NO_STATUS
 #include "windef.h"
 #include "winnt.h"
 #include "winternl.h"
@@ -40,11 +42,6 @@
 #include "wine/debug.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(seh);
-
-#include "ntstatus.h"
-#define WIN32_NO_STATUS
-#include "winternl.h"
-#include "unix_private.h"
 
 #define REGn_sig(reg, context) ((context)->uc_mcontext.__gregs[(reg)])
 
@@ -70,6 +67,25 @@ struct syscall_frame
 };
 
 C_ASSERT( sizeof( struct syscall_frame ) % 16 == 0 );
+
+static void init_syscall_frame( TEB *teb, CONTEXT *context )
+{
+    struct thread_data *data = get_thread_data();
+    struct syscall_frame *frame = get_syscall_frame( data );
+
+    memset( frame, 0, sizeof(*frame) );
+
+    frame->pc = context->Pc;
+    frame->sp = context->Gpr.X[2];
+    frame->ra = context->Gpr.X[1];
+
+    memcpy( frame->x, context->Gpr.X, sizeof(frame->x) );
+
+    frame->fcsr = context->Fcsr;
+    memcpy( frame->f, context->F, sizeof(frame->f) );
+
+    frame->restore_flags = context->ContextFlags;
+}
 
 void set_process_instrumentation_callback( void *callback )
 {
@@ -106,14 +122,13 @@ NTSTATUS WINAPI NtGetContextThread( HANDLE handle, CONTEXT *context )
 
     if (flags & CONTEXT_CONTROL)
     {
-        context->Pc     = frame->pc;
+        context->Pc = frame->pc;
         context->Gpr.X[2] = frame->sp;
         context->Gpr.X[1] = frame->ra;
     }
 
     return STATUS_SUCCESS;
 }
-
 
 NTSTATUS WINAPI NtSetContextThread( HANDLE handle, const CONTEXT *context )
 {
@@ -147,20 +162,10 @@ NTSTATUS set_thread_wow64_context( HANDLE handle, const void *ctx, ULONG size )
     return STATUS_NOT_IMPLEMENTED;
 }
 
-
 NTSTATUS get_thread_wow64_context( HANDLE handle, void *ctx, ULONG size )
 {
     return STATUS_NOT_IMPLEMENTED;
 }
-
-
-//NTSTATUS call_user_apc_dispatcher( CONTEXT *context_ptr, unsigned int flags,
-//                                   ULONG_PTR arg1, ULONG_PTR arg2, ULONG_PTR arg3,
-//                                   ULONG_PTR *ret_ptr )
-//{
-//    return STATUS_NOT_IMPLEMENTED;
-//}
-
 
 NTSTATUS call_user_apc_dispatcher( CONTEXT *context_ptr, unsigned int flags,
                                    ULONG_PTR arg1, ULONG_PTR arg2, ULONG_PTR arg3,
@@ -174,7 +179,6 @@ void call_raise_user_exception_dispatcher( struct thread_data *data )
 {
 }
 
-
 NTSTATUS call_user_exception_dispatcher( struct thread_data *data,
                                          EXCEPTION_RECORD *rec,
                                          CONTEXT *context )
@@ -182,12 +186,10 @@ NTSTATUS call_user_exception_dispatcher( struct thread_data *data,
     return STATUS_NOT_IMPLEMENTED;
 }
 
-
 NTSTATUS WINAPI NtCallbackReturn( void *ret_ptr, ULONG ret_len, NTSTATUS status )
 {
     return STATUS_NOT_IMPLEMENTED;
 }
-
 
 NTSTATUS get_thread_ldt_entry( HANDLE handle,
                                THREAD_DESCRIPTOR_INFORMATION *info,
@@ -196,36 +198,30 @@ NTSTATUS get_thread_ldt_entry( HANDLE handle,
     return STATUS_NOT_IMPLEMENTED;
 }
 
-
 NTSTATUS signal_alloc_thread( TEB *teb )
 {
     return STATUS_SUCCESS;
 }
 
-
 void signal_free_thread( TEB *teb )
 {
 }
 
-
 void signal_init_process( TEB *teb )
 {
+    alloc_syscall_frame( sizeof(struct syscall_frame) );
 }
-
 
 void DECLSPEC_NORETURN signal_start_thread( PRTL_THREAD_START_ROUTINE entry,
                                             void *arg, TEB *teb )
 {
-    /* Stub: this will need real RISC-V thread startup eventually. */
     abort();
 }
-
 
 void __wine_syscall_dispatcher(void)
 {
     abort();
 }
-
 
 void __wine_unix_call_dispatcher(void)
 {
@@ -237,16 +233,10 @@ void *get_native_context( CONTEXT *context )
     return NULL;
 }
 
-
 void *get_wow_context( CONTEXT *context )
 {
     return NULL;
 }
 
+#endif /* defined(__riscv) && (__riscv_xlen == 64) */
 
-//void init_shared_data_cpuinfo( struct _KUSER_SHARED_DATA *data )
-//{
-//}
-
-#endif
-/* defined(__riscv) || (__riscv_xlen == 64) */
