@@ -46,29 +46,101 @@ WINE_DEFAULT_DEBUG_CHANNEL(seh);
 #include "winternl.h"
 #include "unix_private.h"
 
+#define REGn_sig(reg, context) ((context)->uc_mcontext.__gregs[(reg)])
+
+#define PC_sig(context) REGn_sig( REG_PC, context )
+#define RA_sig(context) REGn_sig( REG_RA, context )
+#define SP_sig(context) REGn_sig( REG_SP, context )
+
+struct syscall_frame
+{
+    ULONG64 x[32];
+    ULONG64 pc;
+    ULONG64 sp;
+    ULONG64 ra;
+
+    ULONG64 f[32];
+    ULONG64 fcsr;
+
+    ULONG restore_flags;
+
+    struct syscall_frame *prev_frame;
+    void *syscall_cfa;
+    ULONG syscall_id;
+};
+
+C_ASSERT( sizeof( struct syscall_frame ) % 16 == 0 );
 
 void set_process_instrumentation_callback( void *callback )
 {
 }
 
-
 NTSTATUS signal_set_full_context( CONTEXT *context )
 {
-    return STATUS_NOT_IMPLEMENTED;
-}
+    struct thread_data *data = get_thread_data();
+    struct syscall_frame *frame = get_syscall_frame( data );
+    NTSTATUS status;
 
+    status = NtSetContextThread( GetCurrentThread(), context );
+
+    if (!status && frame && (context->ContextFlags & CONTEXT_INTEGER))
+        frame->restore_flags |= CONTEXT_INTEGER;
+
+    return status;
+}
 
 NTSTATUS WINAPI NtGetContextThread( HANDLE handle, CONTEXT *context )
 {
-    return STATUS_NOT_IMPLEMENTED;
+    struct thread_data *data = get_thread_data();
+    struct syscall_frame *frame = get_syscall_frame( data );
+    DWORD flags = context->ContextFlags & ~CONTEXT_RISCV64;
+
+    if (handle != GetCurrentThread())
+        return STATUS_NOT_IMPLEMENTED;
+
+    if (!frame)
+        return STATUS_ACCESS_DENIED;
+
+    if (flags & CONTEXT_INTEGER)
+        memcpy( context->Gpr.X, frame->x, sizeof(frame->x) );
+
+    if (flags & CONTEXT_CONTROL)
+    {
+        context->Pc     = frame->pc;
+        context->Gpr.X[2] = frame->sp;
+        context->Gpr.X[1] = frame->ra;
+    }
+
+    return STATUS_SUCCESS;
 }
 
 
 NTSTATUS WINAPI NtSetContextThread( HANDLE handle, const CONTEXT *context )
 {
-    return STATUS_NOT_IMPLEMENTED;
-}
+    struct thread_data *data = get_thread_data();
+    struct syscall_frame *frame = get_syscall_frame( data );
+    DWORD flags = context->ContextFlags & ~CONTEXT_RISCV64;
 
+    if (handle != GetCurrentThread())
+        return STATUS_NOT_IMPLEMENTED;
+
+    if (!frame)
+        return STATUS_ACCESS_DENIED;
+
+    if (flags & CONTEXT_INTEGER)
+        memcpy( frame->x, context->Gpr.X, sizeof(frame->x) );
+
+    if (flags & CONTEXT_CONTROL)
+    {
+        frame->pc = context->Pc;
+        frame->sp = context->Gpr.X[2];
+        frame->ra = context->Gpr.X[1];
+    }
+
+    frame->restore_flags |= flags & ~CONTEXT_INTEGER;
+
+    return STATUS_SUCCESS;
+}
 
 NTSTATUS set_thread_wow64_context( HANDLE handle, const void *ctx, ULONG size )
 {
