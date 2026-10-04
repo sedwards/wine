@@ -856,6 +856,8 @@ static struct strarray get_compat_defines( int gcc_defs )
             break;
         case CPU_ARM64EC:
             break;
+        case CPU_RISCV:
+            break;
         }
         strarray_add(&args, "-D_stdcall=__stdcall");
         strarray_add(&args, "-D_cdecl=__cdecl");

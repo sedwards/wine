@@ -62,7 +62,7 @@ static const ULONG_PTR limit_4g = (ULONG_PTR)((ULONGLONG)1 << 32);
 
 static inline BOOL is_machine_64bit( WORD machine )
 {
-    return (machine == IMAGE_FILE_MACHINE_AMD64 || machine == IMAGE_FILE_MACHINE_ARM64);
+    return (machine == IMAGE_FILE_MACHINE_AMD64 || machine == IMAGE_FILE_MACHINE_ARM64 || IMAGE_FILE_MACHINE_RISCV64 );
 }
 
 #ifdef _WIN64
