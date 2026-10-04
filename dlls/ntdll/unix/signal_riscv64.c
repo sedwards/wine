@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -44,7 +45,6 @@
 WINE_DEFAULT_DEBUG_CHANNEL(seh);
 
 #define REGn_sig(reg, context) ((context)->uc_mcontext.__gregs[(reg)])
-
 #define PC_sig(context) REGn_sig( REG_PC, context )
 #define RA_sig(context) REGn_sig( REG_RA, context )
 #define SP_sig(context) REGn_sig( REG_SP, context )
@@ -68,28 +68,39 @@ struct syscall_frame
 
 C_ASSERT( sizeof( struct syscall_frame ) % 16 == 0 );
 
-static void init_syscall_frame( TEB *teb, CONTEXT *context )
+
+static struct syscall_frame *init_syscall_frame( PRTL_THREAD_START_ROUTINE entry,
+                                                 void *arg, TEB *teb )
 {
     struct thread_data *data = get_thread_data();
     struct syscall_frame *frame = get_syscall_frame( data );
 
     memset( frame, 0, sizeof(*frame) );
 
-    frame->pc = context->Pc;
-    frame->sp = context->Gpr.X[2];
-    frame->ra = context->Gpr.X[1];
+    /*
+     * Minimal native RV64 thread startup.
+     *
+     * a0 = thread entry point
+     * a1 = thread argument
+     * tp = TEB
+     */
+    frame->pc = (ULONG64)pRtlUserThreadStart;
+    frame->sp = (ULONG64)teb->Tib.StackBase;
 
-    memcpy( frame->x, context->Gpr.X, sizeof(frame->x) );
+    frame->x[10] = (ULONG64)entry;
+    frame->x[11] = (ULONG64)arg;
+    frame->x[4]  = (ULONG64)teb;
 
-    frame->fcsr = context->Fcsr;
-    memcpy( frame->f, context->F, sizeof(frame->f) );
+    frame->restore_flags = CONTEXT_CONTROL | CONTEXT_INTEGER;
 
-    frame->restore_flags = context->ContextFlags;
+    return frame;
 }
+
 
 void set_process_instrumentation_callback( void *callback )
 {
 }
+
 
 NTSTATUS signal_set_full_context( CONTEXT *context )
 {
@@ -104,6 +115,7 @@ NTSTATUS signal_set_full_context( CONTEXT *context )
 
     return status;
 }
+
 
 NTSTATUS WINAPI NtGetContextThread( HANDLE handle, CONTEXT *context )
 {
@@ -129,6 +141,7 @@ NTSTATUS WINAPI NtGetContextThread( HANDLE handle, CONTEXT *context )
 
     return STATUS_SUCCESS;
 }
+
 
 NTSTATUS WINAPI NtSetContextThread( HANDLE handle, const CONTEXT *context )
 {
@@ -157,15 +170,18 @@ NTSTATUS WINAPI NtSetContextThread( HANDLE handle, const CONTEXT *context )
     return STATUS_SUCCESS;
 }
 
+
 NTSTATUS set_thread_wow64_context( HANDLE handle, const void *ctx, ULONG size )
 {
     return STATUS_NOT_IMPLEMENTED;
 }
 
+
 NTSTATUS get_thread_wow64_context( HANDLE handle, void *ctx, ULONG size )
 {
     return STATUS_NOT_IMPLEMENTED;
 }
+
 
 NTSTATUS call_user_apc_dispatcher( CONTEXT *context_ptr, unsigned int flags,
                                    ULONG_PTR arg1, ULONG_PTR arg2, ULONG_PTR arg3,
@@ -175,9 +191,11 @@ NTSTATUS call_user_apc_dispatcher( CONTEXT *context_ptr, unsigned int flags,
     return STATUS_NOT_IMPLEMENTED;
 }
 
+
 void call_raise_user_exception_dispatcher( struct thread_data *data )
 {
 }
+
 
 NTSTATUS call_user_exception_dispatcher( struct thread_data *data,
                                          EXCEPTION_RECORD *rec,
@@ -186,10 +204,12 @@ NTSTATUS call_user_exception_dispatcher( struct thread_data *data,
     return STATUS_NOT_IMPLEMENTED;
 }
 
+
 NTSTATUS WINAPI NtCallbackReturn( void *ret_ptr, ULONG ret_len, NTSTATUS status )
 {
     return STATUS_NOT_IMPLEMENTED;
 }
+
 
 NTSTATUS get_thread_ldt_entry( HANDLE handle,
                                THREAD_DESCRIPTOR_INFORMATION *info,
@@ -198,40 +218,128 @@ NTSTATUS get_thread_ldt_entry( HANDLE handle,
     return STATUS_NOT_IMPLEMENTED;
 }
 
+
 NTSTATUS signal_alloc_thread( TEB *teb )
 {
     return STATUS_SUCCESS;
 }
 
+
 void signal_free_thread( TEB *teb )
 {
 }
+
 
 void signal_init_process( TEB *teb )
 {
     alloc_syscall_frame( sizeof(struct syscall_frame) );
 }
 
+
 void DECLSPEC_NORETURN signal_start_thread( PRTL_THREAD_START_ROUTINE entry,
                                             void *arg, TEB *teb )
 {
-    abort();
+    struct syscall_frame *frame;
+
+    frame = init_syscall_frame( entry, arg, teb );
+
+    /*
+     * Enter the RV64 dispatcher-return path with the syscall
+     * frame pointer in a0.
+     *
+     * The indirect register form avoids an R_RISCV_JAL relocation
+     * against an externally-bound symbol when building ntdll.so.
+     */
+    __asm__ volatile (
+        "mv a0, %0\n"
+        "jr %[dispatcher]\n"
+        :
+        : "r"(frame),
+          [dispatcher] "r"(__wine_syscall_dispatcher_return)
+        : "a0", "memory"
+    );
+
+    __builtin_unreachable();
 }
+
+
+void __wine_syscall_dispatcher_return( void )
+{
+    /*
+     * The actual RV64 dispatcher-return sequence is embedded below.
+     *
+     * a0 = struct syscall_frame *
+     *
+     * syscall_frame layout:
+     *
+     *   0..255   x[0..31]
+     *   256      pc
+     *   264      sp
+     *   272      ra
+     *
+     * t6 (x31) is used as the temporary branch target, so x31
+     * is intentionally not restored by this first POC path.
+     */
+    __asm__ volatile (
+        "ld t6, 256(a0)\n"
+
+        "ld x1,    8(a0)\n"
+        "ld x2,   16(a0)\n"
+        "ld x3,   24(a0)\n"
+        "ld x4,   32(a0)\n"
+        "ld x5,   40(a0)\n"
+        "ld x6,   48(a0)\n"
+        "ld x7,   56(a0)\n"
+        "ld x8,   64(a0)\n"
+        "ld x9,   72(a0)\n"
+        "ld x10,  80(a0)\n"
+        "ld x11,  88(a0)\n"
+        "ld x12,  96(a0)\n"
+        "ld x13, 104(a0)\n"
+        "ld x14, 112(a0)\n"
+        "ld x15, 120(a0)\n"
+        "ld x16, 128(a0)\n"
+        "ld x17, 136(a0)\n"
+        "ld x18, 144(a0)\n"
+        "ld x19, 152(a0)\n"
+        "ld x20, 160(a0)\n"
+        "ld x21, 168(a0)\n"
+        "ld x22, 176(a0)\n"
+        "ld x23, 184(a0)\n"
+        "ld x24, 192(a0)\n"
+        "ld x25, 200(a0)\n"
+        "ld x26, 208(a0)\n"
+        "ld x27, 216(a0)\n"
+        "ld x28, 224(a0)\n"
+        "ld x29, 232(a0)\n"
+        "ld x30, 240(a0)\n"
+
+        "ld sp, 264(a0)\n"
+
+        "jr t6\n"
+    );
+
+    __builtin_unreachable();
+}
+
 
 void __wine_syscall_dispatcher(void)
 {
     abort();
 }
 
+
 void __wine_unix_call_dispatcher(void)
 {
     abort();
 }
 
+
 void *get_native_context( CONTEXT *context )
 {
     return NULL;
 }
+
 
 void *get_wow_context( CONTEXT *context )
 {
