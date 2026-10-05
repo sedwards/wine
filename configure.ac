@@ -378,7 +378,7 @@ AS_VAR_SET_IF([enable_archs],
      for arch
      do
          case $arch in
-           i386|x86_64|arm|aarch64|arm64ec) cross_archs="$cross_archs $arch" ;;
+           i386|x86_64|arm|aarch64|arm64ec|riscv64) cross_archs="$cross_archs $arch" ;;
            no|none) PE_ARCHS=none ;;
            *) AC_MSG_ERROR([Unknown cross-compilation architecture '$arch']) ;;
          esac
@@ -426,32 +426,41 @@ do
       arm)  mingw_cpu=armv7 ;;
       *)    mingw_cpu=$wine_arch ;;
     esac
-    case "x$with_mingw" in
-      xclang|x*/clang) AS_VAR_SET(${wine_arch}_CC,$with_mingw) ;;
-      xllvm-mingw)     AS_VAR_SET(${wine_arch}_CC,${mingw_cpu}-w64-mingw32-clang) ;;
+    case $wine_arch in
+      riscv64)
+        dnl RISC-V POC: use the native compiler and ABI.
+        AC_CHECK_PROGS(riscv64_CC,[gcc],[false])
+        ;;
+      *)
+        case "x$with_mingw" in
+          xclang|x*/clang) AS_VAR_SET(${wine_arch}_CC,$with_mingw) ;;
+          xllvm-mingw)     AS_VAR_SET(${wine_arch}_CC,${mingw_cpu}-w64-mingw32-clang) ;;
+        esac
+        AS_VAR_IF([${wine_arch}_CC],[],
+            [case $wine_arch in
+              aarch64)
+                AC_CHECK_PROGS(aarch64_CC,[aarch64-w64-mingw32-clang aarch64-w64-mingw32-gcc clang],[false])
+                ;;
+              arm64ec)
+                AC_CHECK_PROGS(arm64ec_CC,[arm64ec-w64-mingw32-clang arm64ec-w64-mingw32-gcc clang],[false])
+                ;;
+              arm)
+                AC_CHECK_PROGS(arm_CC,[armv7-w64-mingw32-clang armv7-w64-mingw32-gcc clang],[false])
+                ;;
+              i386)
+                ac_prefix_list="m4_foreach([cc],[gcc,clang],m4_foreach([cpu],[i686,i586,i486,i386],[cpu-w64-mingw32-cc ]))"
+                AC_CHECK_PROGS(i386_CC,[$ac_prefix_list clang],[false])
+                ;;
+              x86_64)
+                ac_prefix_list="m4_foreach([cc],[gcc,clang],m4_foreach([cpu],[x86_64,amd64],[cpu-w64-mingw32-cc ]))"
+                AC_CHECK_PROGS(x86_64_CC,[$ac_prefix_list clang],[false])
+                ;;
+             esac
+             wine_try_msvc=yes],
+            [wine_try_msvc=no])
+        ;;
     esac
-    AS_VAR_IF([${wine_arch}_CC],[],
-        [case $wine_arch in
-          aarch64)
-            AC_CHECK_PROGS(aarch64_CC,[aarch64-w64-mingw32-clang aarch64-w64-mingw32-gcc clang],[false])
-            ;;
-          arm64ec)
-            AC_CHECK_PROGS(arm64ec_CC,[arm64ec-w64-mingw32-clang arm64ec-w64-mingw32-gcc clang],[false])
-            ;;
-          arm)
-            AC_CHECK_PROGS(arm_CC,[armv7-w64-mingw32-clang armv7-w64-mingw32-gcc clang],[false])
-            ;;
-          i386)
-            ac_prefix_list="m4_foreach([cc],[gcc,clang],m4_foreach([cpu],[i686,i586,i486,i386],[cpu-w64-mingw32-cc ]))"
-            AC_CHECK_PROGS(i386_CC,[$ac_prefix_list clang],[false])
-            ;;
-          x86_64)
-            ac_prefix_list="m4_foreach([cc],[gcc,clang],m4_foreach([cpu],[x86_64,amd64],[cpu-w64-mingw32-cc ]))"
-            AC_CHECK_PROGS(x86_64_CC,[$ac_prefix_list clang],[false])
-            ;;
-         esac
-         wine_try_msvc=yes],
-        [wine_try_msvc=no])
+    wine_try_msvc=yes
 
     CPPFLAGS=""
     AS_VAR_SET_IF([${wine_arch}_CFLAGS],[],[AS_VAR_SET([${wine_arch}_CFLAGS],[${CROSSCFLAGS:-"-g -O2"}])])
@@ -479,9 +488,28 @@ do
         shift
     done
 
+    if test "$wine_arch" = riscv64
+    then
+        dnl Native RISC-V GCC has no MinGW target triple.  Use a
+        dnl Wine-internal target name for the native RV64 POC.
+        target=riscv64
+    fi
+
     dnl Check if cross compiler supports -target argument
-    target_strip=${target:-llvm}-strip
-    if test "$wine_try_msvc" = yes -o -z "$target"
+    if test "$wine_arch" = riscv64
+    then
+        dnl Native RV64 GCC is not a MinGW/LLVM target compiler.
+        target_strip=strip
+        llvm_extra_cflags=""
+        llvm_cflags=""
+        llvm_extra_ldflags=""
+    else
+        target_strip=${target:-llvm}-strip
+    fi
+    if test "$wine_arch" = riscv64
+    then
+        :
+    elif test "$wine_try_msvc" = yes -o -z "$target"
     then
         case $wine_arch in
           arm)  llvm_target="$mingw_cpu-windows-gnu"
@@ -2001,25 +2029,32 @@ then
     WINE_TRY_CFLAGS([-fno-builtin],[MSVCRTFLAGS="$MSVCRTFLAGS -fno-builtin"])
     WINE_TRY_CFLAGS([-fshort-wchar],[MSVCRTFLAGS="$MSVCRTFLAGS -fshort-wchar"])
     WINE_TRY_CFLAGS([-Wno-format],[MSVCRTFLAGS="$MSVCRTFLAGS -Wno-format"])
+
     if test "$HOST_ARCH" = i386
     then
       dnl gcc-4.6+ omits frame pointers by default, breaking some copy protections
       WINE_TRY_CFLAGS([-fno-omit-frame-pointer],[MSVCRTFLAGS="$MSVCRTFLAGS -fno-omit-frame-pointer"])
     else
-      dnl Default to ms_abi on 64-bit
-      AC_CACHE_CHECK([for working -mabi=ms], ac_cv_mabi_ms,
-             [CFLAGS="$CFLAGS -mabi=ms"
-              AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <stdarg.h>
+      dnl Default to ms_abi on 64-bit.
+      dnl RISC-V has no Microsoft PE ABI, so the RV64 POC uses the
+      dnl native ABI instead.
+      if test "$HOST_ARCH" = riscv64
+      then
+        :
+      else
+        AC_CACHE_CHECK([for working -mabi=ms], ac_cv_mabi_ms,
+          [CFLAGS="$CFLAGS -mabi=ms"
+           AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <stdarg.h>
 void a(int b, ...) { __builtin_ms_va_list list; __builtin_ms_va_start(list,b); }]])],
-                 [ac_cv_mabi_ms=yes],[ac_cv_mabi_ms=no])
-              CFLAGS=$saved_CFLAGS])
-      AS_VAR_IF([ac_cv_mabi_ms],[yes],
-                [MSVCRTFLAGS="$MSVCRTFLAGS -mabi=ms"],
-                [test -n "$PE_ARCHS" || AC_MSG_ERROR([The compiler doesn't support -mabi=ms. Use gcc instead of clang, or install mingw-w64.])
-                 DLLEXT=""])
+             [ac_cv_mabi_ms=yes],[ac_cv_mabi_ms=no])
+           CFLAGS=$saved_CFLAGS])
+        AS_VAR_IF([ac_cv_mabi_ms],[yes],
+          [MSVCRTFLAGS="$MSVCRTFLAGS -mabi=ms"],
+          [test -n "$PE_ARCHS" || AC_MSG_ERROR([The compiler doesn't support -mabi=ms. Use gcc instead of clang, or install mingw-w64.])
+           DLLEXT=""])
+      fi
     fi
   fi
-
   CFLAGS=$saved_CFLAGS
 
   dnl Enable -Werror

@@ -1200,6 +1200,7 @@ static const char *get_target_machine(void)
         [CPU_ARM]     = "arm",
         [CPU_ARM64]   = "arm64",
         [CPU_ARM64EC] = "arm64ec",
+        [CPU_RISCV]   = "riscv64",
     };
 
     return machine_names[target.cpu];

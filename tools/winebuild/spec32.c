@@ -37,6 +37,7 @@
 #define IMAGE_FILE_MACHINE_AMD64   0x8664
 #define IMAGE_FILE_MACHINE_ARMNT   0x01c4
 #define IMAGE_FILE_MACHINE_ARM64   0xaa64
+#define IMAGE_FILE_MACHINE_RISCV64 0x5064
 
 #define IMAGE_SIZEOF_NT_OPTIONAL32_HEADER 224
 #define IMAGE_SIZEOF_NT_OPTIONAL64_HEADER 240
@@ -789,6 +790,7 @@ void output_module( DLLSPEC *spec )
     case CPU_x86_64:  machine = IMAGE_FILE_MACHINE_AMD64; break;
     case CPU_ARM:     machine = IMAGE_FILE_MACHINE_ARMNT; break;
     case CPU_ARM64:   machine = IMAGE_FILE_MACHINE_ARM64; break;
+    case CPU_RISCV:   machine = IMAGE_FILE_MACHINE_RISCV64; break;
     }
     output( "\t.short 0x%04x\n",          /* Machine */
              machine );
@@ -1208,6 +1210,7 @@ static void output_pe_file( DLLSPEC *spec, const char signature[32] )
     case CPU_x86_64:  put_word( IMAGE_FILE_MACHINE_AMD64 ); break;
     case CPU_ARM:     put_word( IMAGE_FILE_MACHINE_ARMNT ); break;
     case CPU_ARM64:   put_word( IMAGE_FILE_MACHINE_ARM64 ); break;
+    case CPU_RISCV:   put_word( IMAGE_FILE_MACHINE_RISCV64 ); break;
     }
     put_word( pe.sec_count );                        /* NumberOfSections */
     put_dword( hash_filename(spec->file_name) );     /* TimeDateStamp */
