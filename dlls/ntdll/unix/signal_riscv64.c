@@ -205,12 +205,6 @@ NTSTATUS call_user_exception_dispatcher( struct thread_data *data,
 }
 
 
-NTSTATUS WINAPI NtCallbackReturn( void *ret_ptr, ULONG ret_len, NTSTATUS status )
-{
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-
 NTSTATUS get_thread_ldt_entry( HANDLE handle,
                                THREAD_DESCRIPTOR_INFORMATION *info,
                                ULONG len )
@@ -344,6 +338,17 @@ void *get_native_context( CONTEXT *context )
 void *get_wow_context( CONTEXT *context )
 {
     return NULL;
+}
+
+NTSTATUS DECLSPEC_EXPORT KeUserModeCallback( ULONG id, const void *args, ULONG len,
+                             void **ret_ptr, ULONG *ret_len )
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS WINAPI NtCallbackReturn( void *ret_ptr, ULONG ret_len, NTSTATUS status )
+{
+    return STATUS_NOT_IMPLEMENTED;
 }
 
 #endif /* defined(__riscv) && (__riscv_xlen == 64) */
