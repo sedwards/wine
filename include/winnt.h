@@ -2825,6 +2825,12 @@ static FORCEINLINE struct _TEB * WINAPI NtCurrentTeb(void)
 {
     return (struct _TEB *)__getReg(18);
 }
+#elif defined(__riscv) && defined(__GNUC__)
+register struct _TEB *__wine_current_teb __asm__("tp");
+static FORCEINLINE struct _TEB * WINAPI NtCurrentTeb(void)
+{
+    return __wine_current_teb;
+}
 #elif defined(__x86_64__) && defined(__GNUC__)
 static FORCEINLINE struct _TEB * WINAPI NtCurrentTeb(void)
 {

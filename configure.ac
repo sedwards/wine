@@ -166,6 +166,7 @@ case "$host_cpu" in
   arm*)            HOST_ARCH=arm ;;
   i[[3456789]]86*) HOST_ARCH=i386 ;;
   x86_64)          HOST_ARCH=x86_64 ;;
+  riscv64)         HOST_ARCH=riscv64 ;;
 esac
 m4_set_add_all([_AC_SUBST_VARS],[HOST_ARCH]m4_foreach([cpu],[aarch64,arm,arm64ec,i386,x86_64],
                                 [m4_foreach([var],[CC,CXX,CFLAGS,CXXFLAGS,EXTRACFLAGS,EXTRACXXFLAGS,LDFLAGS,DEBUG,TARGET,STRIP,DELAYLOADFLAG,DISABLED_SUBDIRS],[,cpu[_]var])]))

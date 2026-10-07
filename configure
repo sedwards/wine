@@ -6538,6 +6538,7 @@ case "$host_cpu" in
   arm*)            HOST_ARCH=arm ;;
   i[3456789]86*) HOST_ARCH=i386 ;;
   x86_64)          HOST_ARCH=x86_64 ;;
+  riscv64)         HOST_ARCH=riscv64 ;;
 esac
 
 
