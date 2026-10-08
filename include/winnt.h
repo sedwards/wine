@@ -2394,6 +2394,37 @@ typedef void (CALLBACK *PTERMINATION_HANDLER)(BOOLEAN,DWORD);
 #define UNW_FLAG_EHANDLER  1
 #define UNW_FLAG_UHANDLER  2
 
+#elif defined(__riscv)
+
+#if __riscv_xlen == 64
+
+typedef struct _DISPATCHER_CONTEXT_RISCV64
+{
+    ULONG_PTR                     ControlPc;
+    ULONG_PTR                     ImageBase;
+    PRISCV64_RUNTIME_FUNCTION    FunctionEntry;
+    ULONG_PTR                     EstablisherFrame;
+    ULONG_PTR                     TargetPc;
+    PRISCV64_CONTEXT              ContextRecord;
+    PEXCEPTION_ROUTINE            LanguageHandler;
+    PVOID                         HandlerData;
+    struct _UNWIND_HISTORY_TABLE *HistoryTable;
+    DWORD                         ScopeIndex;
+    BOOLEAN                       ControlPcIsUnwound;
+    PBYTE                         NonVolatileRegisters;
+} DISPATCHER_CONTEXT_RISCV64, *PDISPATCHER_CONTEXT_RISCV64;
+
+typedef DISPATCHER_CONTEXT_RISCV64 DISPATCHER_CONTEXT, *PDISPATCHER_CONTEXT;
+
+typedef LONG (CALLBACK *PEXCEPTION_FILTER)(struct _EXCEPTION_POINTERS*,ULONG_PTR);
+typedef void (CALLBACK *PTERMINATION_HANDLER)(BOOLEAN,ULONG_PTR);
+
+#define UNW_FLAG_NHANDLER  0
+#define UNW_FLAG_EHANDLER  1
+#define UNW_FLAG_UHANDLER  2
+
+#endif /* __riscv_xlen == 64 */
+
 #elif defined(__aarch64__)
 
 #undef _DISPATCHER_CONTEXT_ARM64

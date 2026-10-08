@@ -648,7 +648,7 @@ static void output_import_thunk( const char *name, const char *table, int pos )
         output( "\tjmpq *%s+%d(%%rip)\n", table, pos );
         break;
     case CPU_RISCV:
-        output( "\tla t0, %s+%d\n", table, pos );
+        output( "\tlla t0, %s+%d\n", table, pos );
         output( "\tld t0, 0(t0)\n" );
         output( "\tjr t0\n" );
         break;
