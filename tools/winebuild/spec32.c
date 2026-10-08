@@ -364,6 +364,50 @@ static void output_relay_debug( struct exports *exports )
             break;
         }
 
+        case CPU_RISCV:
+        {
+            int stack_size = 16 * ((odp->u.func.nb_args + 2) / 2);
+            int j;
+
+            output( "\t.balign 4\n" );
+            output( "__wine_spec_relay_entry_point_%d:\n", i );
+
+            /*
+             * Build the argument array expected by relay_call:
+             *
+             *   0(sp)             saved return address
+             *   8(sp)             argument 0
+             *   ...
+             *
+             * Pass sp + 8 as the argument array, so stack[-1] is the
+             * original return address.  Preserve the incoming sp in t0
+             * before allocating the relay frame since arguments beyond
+             * a7 are supplied on the caller's stack.
+             */
+            output( "\tmv t0, sp\n" );
+            output( "\taddi sp, sp, -%d\n", stack_size );
+            output( "\tsd ra, 0(sp)\n" );
+
+            for (j = 0; j < min(odp->u.func.nb_args, 8); j++)
+                output( "\tsd a%d, %d(sp)\n", j, (j + 1) * 8 );
+
+            for (j = 8; j < odp->u.func.nb_args; j++)
+                output( "\tld t1, %d(t0)\n\tsd t1, %d(sp)\n",
+                        (j - 8) * 8, (j + 1) * 8 );
+
+            output( "\taddi a2, sp, 8\n" );
+            output( "\tli a1, %u\n", odp->u.func.args_str_offset << 16 );
+            if (i - exports->base)
+                output( "\taddi a1, a1, %u\n", i - exports->base );
+            output( "\tlla a0, .L__wine_spec_relay_descr\n" );
+            output( "\tld t1, 8(a0)\n" );
+            output( "\tjalr ra, 0(t1)\n" );
+            output( "\tld ra, 0(sp)\n" );
+            output( "\taddi sp, sp, %d\n", stack_size );
+            output( "\tret\n" );
+            break;
+        }
+
         case CPU_x86_64:
             output( "\t.balign 4\n" );
             output( "\t.long 0x90909090,0x90909090\n" );
@@ -767,7 +811,10 @@ void output_module( DLLSPEC *spec )
         break;
     default:
         output( "\n\t.section \".init\",\"ax\"\n" );
-        output( "\tjmp 1f\n" );
+        if (target.cpu == CPU_RISCV)
+          output( "\tj 1f\n" );
+        else
+          output( "\tjmp 1f\n" );
         output( "__wine_spec_pe_header:\n" );
         output( "\t.skip %u\n", 65536 + page_size );
         output( "1:\n" );

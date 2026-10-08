@@ -4476,8 +4476,9 @@ fprintf( stderr, "MAKEDEP: obj_dir=%s unixlib=%s\n",
         for (arch = 0; arch < archs.count; arch++)
         {
             if (is_multiarch( arch )) output_module( make, arch );
+            //if (make->importlib && arch && is_multiarch( arch ))
             if (make->importlib && (is_multiarch( arch ) || (!arch && !is_native_arch_disabled( make ))))
-                output_import_lib( make, arch );
+             output_import_lib( make, arch );
         }
         if (make->is_exe && !make->is_win16 && unix_lib_supported && strendswith( make->module, ".exe" ))
         {

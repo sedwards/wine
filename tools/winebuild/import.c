@@ -1170,9 +1170,9 @@ void output_stubs( DLLSPEC *spec )
             break;
         case CPU_RISCV:
             output_cfi( ".cfi_startproc" );
-            output( "\tla a0, .L__wine_spec_file_name\n" );
+            output( "\tlla a0, .L__wine_spec_file_name\n" );
             if (exp_name)
-                output( "\tla a1, .L%s_string\n", name );
+                output( "\tlla a1, .L%s_string\n", name );
             else
                 output( "\tli a1, %u\n", odp->ordinal );
             output( "\ttail %s\n", asm_name("__wine_spec_unimplemented_stub") );
