@@ -657,6 +657,7 @@ static inline int get_cpu_from_name( const char *name )
         { "arm64ec",   CPU_ARM64EC },
         { "arm64",     CPU_ARM64 },
         { "arm",       CPU_ARM },
+        { "riscv64",   CPU_RISCV },
     };
     unsigned int i;
 
@@ -704,6 +705,7 @@ static inline const char *get_cpu_name( enum target_cpu cpu )
         [CPU_ARM]     = "arm",
         [CPU_ARM64]   = "aarch64",
         [CPU_ARM64EC] = "arm64ec",
+        [CPU_RISCV]   = "riscv64",
     };
     return cpu_names[cpu];
 }
