@@ -945,7 +945,7 @@ static void output_delayed_import_thunks( const DLLSPEC *spec )
             output( "\tsd a6, 48(sp)\n" );
             output( "\tsd a7, 56(sp)\n" );
             output( "\tld a1, 8(sp)\n" );
-            output( "\tla a0, .L__wine_spec_delay_imports+%d\n", pos );
+            output( "\tlla a0, .L__wine_spec_delay_imports+%d\n", pos );
             output( "\tcall %s\n", asm_name("__delayLoadHelper2") );
             output( "\tmv t0, a0\n" );
             output( "\tld a0, 0(sp)\n" );
@@ -990,7 +990,7 @@ static void output_delayed_import_thunks( const DLLSPEC *spec )
                 output( "\tjmp %s\n", asm_name(module_func) );
                 break;
             case CPU_RISCV:
-                output( "\tla a1, .L__wine_delay_IAT+%d\n", iat_pos );
+                output( "\tlla a1, .L__wine_delay_IAT+%d\n", iat_pos );
                 output( "\tj %s\n", asm_name(module_func) );
                 break;
             default:

@@ -27,6 +27,7 @@
  */
 
 #include <stdarg.h>
+#include <setjmp.h>
 #include "excpt.h"
 #undef USE_COMPILER_EXCEPTIONS
 #undef GetExceptionInformation
