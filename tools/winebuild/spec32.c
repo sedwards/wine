@@ -398,7 +398,12 @@ static void output_relay_debug( struct exports *exports )
             output( "\taddi a2, sp, 8\n" );
             output( "\tli a1, %u\n", odp->u.func.args_str_offset << 16 );
             if (i - exports->base)
-                output( "\taddi a1, a1, %u\n", i - exports->base );
+            {
+                if (i - exports->base <= 2047)
+                    output( "\taddi a1, a1, %u\n", i - exports->base );
+                else
+                    output( "\tli t1, %u\n\tadd a1, a1, t1\n", i - exports->base );
+            }
             output( "\tlla a0, .L__wine_spec_relay_descr\n" );
             output( "\tld t1, 8(a0)\n" );
             output( "\tjalr ra, 0(t1)\n" );
