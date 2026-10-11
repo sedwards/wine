@@ -615,6 +615,15 @@ static const char *escape_cstring( const char *str )
     return ret;
 }
 
+/*
+ * Check whether the native platform supports ELF-only Winelib builds
+ * without requiring a PE toolchain.
+ */
+static bool non_pe_supported_platform(void)
+{
+    return archs.count &&
+           get_cpu_from_name( archs.str[0] ) == CPU_RISCV;
+}
 
 /*******************************************************************
  *         is_native_arch_disabled
@@ -5025,7 +5034,7 @@ static void load_sources( struct makefile *make )
      * the ELF Unix library instead of being left in the native PE object set.
      * Other architectures keep the normal Wine source classification.
      */
-    if (make->unixlib && get_cpu_from_name( archs.str[0] ) == CPU_RISCV)
+    if (make->unixlib && non_pe_supported_platform())
     {
         LIST_FOR_EACH_ENTRY( file, &make->sources, struct incl_file, entry )
             if (strendswith( file->name, ".c" )) file->file->flags |= FLAG_C_UNIX;
