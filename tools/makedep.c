@@ -4043,7 +4043,10 @@ static void output_module( struct makefile *make, unsigned int arch )
     output_filename( arch_make_variable( "LDFLAGS", link_arch ));
     output( "\n" );
 
-    if (!make->data_only && !arch && unix_lib_supported) output_fake_module( make, spec_file );
+    //if (!make->data_only && !arch && unix_lib_supported) output_fake_module( make, spec_file );
+    if (!make->data_only && !arch && unix_lib_supported &&
+        !non_pe_supported_platform())
+        output_fake_module( make, spec_file );
 }
 
 
