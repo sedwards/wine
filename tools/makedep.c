@@ -3853,10 +3853,12 @@ static void output_source_default( struct makefile *make, struct incl_file *sour
     struct strarray targets = empty_strarray;
     unsigned int arch;
 
+#if 0
     if (make->unixlib && get_cpu_from_name( archs.str[0] ) == CPU_RISCV &&
         strendswith( source->name, ".c" ))
         fprintf( stderr, "RISC-V SOURCE: %s flags=%x unixlib=%s\n",
                  source->name, source->file->flags, make->unixlib );
+#endif
 
     for (arch = 0; arch < archs.count; arch++)
         if (!source->arch || source->arch == arch)
@@ -4429,10 +4431,12 @@ fprintf( stderr, "MAKEDEP: obj_dir=%s unixlib=%s\n",
             for (j = 0; output_source_funcs[j].ext; j++)
                 if (!strcmp( ext, output_source_funcs[j].ext )) break;
 
+#if 0
             if (make->unixlib && get_cpu_from_name( archs.str[0] ) == CPU_RISCV &&
                 make->obj_dir && !strcmp( make->obj_dir, "dlls/kernelbase" ))
                 fprintf( stderr, "KERNELBASE SOURCE: name=%s arch=%u flags=%x\\n",
                          source->name, source->arch, source->file->flags );
+#endif
 
             output_source_funcs[j].fn( make, source, obj );
         }
@@ -4486,8 +4490,13 @@ fprintf( stderr, "MAKEDEP: obj_dir=%s unixlib=%s\n",
         {
             if (is_multiarch( arch )) output_module( make, arch );
             //if (make->importlib && arch && is_multiarch( arch ))
-            if (make->importlib && (is_multiarch( arch ) || (!arch && !is_native_arch_disabled( make ))))
-             output_import_lib( make, arch );
+            //if (make->importlib && (is_multiarch( arch ) || (!arch && !is_native_arch_disabled( make ))))
+            // output_import_lib( make, arch );
+            if (make->importlib &&
+                (is_multiarch( arch ) ||
+                 (!non_pe_supported_platform() && !arch &&
+                  !is_native_arch_disabled( make ))))
+                output_import_lib( make, arch );
         }
         if (make->is_exe && !make->is_win16 && unix_lib_supported && strendswith( make->module, ".exe" ))
         {
