@@ -5027,7 +5027,6 @@ static void load_sources( struct makefile *make )
 
     add_generated_sources( make );
 
-#if 0
     /*
      * RISC-V currently has no PE compiler/toolchain. Treat the C sources of
      * native Unix libraries as Unix-library sources so they are built into
@@ -5039,7 +5038,6 @@ static void load_sources( struct makefile *make )
         LIST_FOR_EACH_ENTRY( file, &make->sources, struct incl_file, entry )
             if (strendswith( file->name, ".c" )) file->file->flags |= FLAG_C_UNIX;
     }
-#endif
 
     LIST_FOR_EACH_ENTRY( file, &make->includes, struct incl_file, entry ) parse_file( make, file, false );
     LIST_FOR_EACH_ENTRY( file, &make->sources, struct incl_file, entry ) get_dependencies( file, file );
