@@ -9966,6 +9966,12 @@ static LONG CALLBACK breakpoint_handler(EXCEPTION_POINTERS *ExceptionInfo)
     ok(rec->ExceptionInformation[0] == 0,
        "got ExceptionInformation[0] = %p\n", (void *)rec->ExceptionInformation[0]);
     context->Pc += 4;
+#elif defined(__riscv) && __riscv_xlen == 64
+    ok(context->Pc == (DWORD_PTR)code_mem,
+       "expected pc = %p, got %p\n", code_mem, (void *)context->Pc);
+    ok(rec->ExceptionAddress == code_mem,
+       "expected address %p, got %p\n", code_mem, rec->ExceptionAddress);
+    context->Pc += 4;
 #endif
 
     breakpoint_exceptions++;
@@ -9978,6 +9984,8 @@ static const BYTE breakpoint_code[] = { 0xcd, 0x03, 0xc3 };   /* int $0x3; ret *
 static const DWORD breakpoint_code[] = { 0xdefe, 0x4770 };  /* udf #0xfe; bx lr */
 #elif defined(__aarch64__)
 static const DWORD breakpoint_code[] = { 0xd43e0000, 0xd65f03c0 };  /* brk #0xf000; ret */
+#elif defined(__riscv) && __riscv_xlen == 64
+static const DWORD breakpoint_code[] = { 0x00100073, 0x00008067 }; /* ebreak; ret */
 #endif
 
 static void test_breakpoint(DWORD numexc)
