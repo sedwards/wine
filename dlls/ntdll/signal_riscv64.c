@@ -20,6 +20,23 @@
 ALL_SYSCALLS
 #undef SYSCALL_ENTRY
 
+/*
+ * Temporary build-enabling implementations.
+ * Proper RISC-V64 SEH dispatch and breakpoint handling are still required.
+ */
+NTSTATUS call_seh_handlers( EXCEPTION_RECORD *rec, CONTEXT *context )
+{
+    (void)rec;
+    (void)context;
+    return STATUS_UNHANDLED_EXCEPTION;
+}
+
+void WINAPI process_breakpoint(void)
+{
+    __asm__ volatile("ebreak");
+}
+
+
 /* Stack probing. */
 __ASM_GLOBAL_FUNC( __chkstk, "ret" )
 

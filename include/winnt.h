@@ -8336,6 +8336,10 @@ static FORCEINLINE unsigned char InterlockedCompareExchange128( volatile __int64
                           : "m" (dest[0]), "m" (dest[1]), "3" (compare[0]), "4" (compare[1]),
                             "c" (xchg_high), "b" (xchg_low) );
     return ret;
+#elif defined(__riscv) && __riscv_xlen == 64
+    return __atomic_compare_exchange_n( (__int128 *)dest, (__int128 *)compare,
+                                        ((__int128)xchg_high << 64) | xchg_low, 0,
+                                        __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST );
 #else
     return __sync_bool_compare_and_swap( (__int128 *)dest, *(__int128 *)compare, ((__int128)xchg_high << 64) | xchg_low );
 #endif

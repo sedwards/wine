@@ -202,6 +202,9 @@ __ASM_GLOBAL_FUNC( call_stubless_func,
     "mov w16,#"#num"\n\t" \
     "b call_stubless_func\n\t"
 
+#elif defined(__riscv) && __riscv_xlen == 64
+#define T(num) ""
+
 #elif defined __arm__
 
 __ASM_GLOBAL_FUNC( call_stubless_func,
@@ -228,6 +231,9 @@ __ASM_GLOBAL_FUNC( call_stubless_func,
     "ldr ip,1f\n\t" \
     "b.w call_stubless_func\n" \
     "1:\t.long "#num"\n\t"
+
+#elif defined(__riscv) && __riscv_xlen == 64
+#define T(num) ""
 
 #endif  /* __i386__ */
 
@@ -285,6 +291,9 @@ __ASM_GLOBAL_FUNC( stubless_thunks, ALL_THUNK_ENTRIES )
     "ldr r0, [r0, #0x10]\n\t" \
     "ldr ip, [r0]\n\t" \
     "ldr pc, [ip, #(4*"#num")]\n\t"
+
+#elif defined(__riscv) && __riscv_xlen == 64
+#define T(num) ""
 
 #endif  /* __i386__ */
 
