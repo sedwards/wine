@@ -1073,7 +1073,8 @@ __ASM_GLOBAL_FUNC( NdrClientCall2,
                    "ret" )
 #endif
 
-#if defined(__aarch64__) || defined(__arm__)
+#if defined(__aarch64__) || defined(__arm__) || \
+    (defined(__riscv) && (__riscv_xlen == 64))
 static void **args_regs_to_stack( void **regs, void **fpu_regs, const NDR_PROC_PARTIAL_OIF_HEADER *header )
 {
     static const unsigned int nb_gpregs = sizeof(void *); /* 4 gpregs on arm32, 8 on arm64 */
