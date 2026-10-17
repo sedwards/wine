@@ -697,6 +697,7 @@ static const char *get_multiarch_dir( struct target target )
    case CPU_ARM:     return "/arm-linux-gnueabi";
    case CPU_ARM64EC:
    case CPU_ARM64:   return "/aarch64-linux-gnu";
+   case CPU_RISCV: return "/riscv64-linux-gnu";
    default:
        assert(0);
    }
