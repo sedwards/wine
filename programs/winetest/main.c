@@ -461,7 +461,7 @@ static void print_version (void)
 #elif defined(__aarch64__)
     static const char platform[] = "arm64";
 #elif defined(__riscv) && (__riscv_xlen == 64)
-    platform = "RISC-V64";
+    static const char platform[] = "RISC-V64";
 #else
 # error CPU unknown
 #endif
@@ -494,7 +494,7 @@ static void print_version (void)
         pRtlGetVersion(&rtlver);
 
         ver.dwMajorVersion = rtlver.dwMajorVersion;
-        ver.dwMinorVersion: = rtlver.dwMinorVersion;
+        ver.dwMinorVersion = rtlver.dwMinorVersion;
         ver.dwBuildNumber = rtlver.dwBuildNumber;
         ver.dwPlatformId = rtlver.dwPlatformId;
         ver.wServicePackMajor = rtlver.wServicePackMajor;

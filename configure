@@ -806,6 +806,7 @@ LDEXECFLAGS
 LDDLLFLAGS
 DLLFLAGS
 OPENGL_LIBS
+ATOMIC_LIBS
 I386_LIBS
 DLLEXT
 riscv64_CC
@@ -10511,6 +10512,56 @@ then :
 fi
 
 
+ATOMIC_LIBS=""
+case $host_cpu in
+    riscv64*)
+        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for __atomic_compare_exchange_16 in -latomic" >&5
+printf %s "checking for __atomic_compare_exchange_16 in -latomic... " >&6; }
+if test ${ac_cv_lib_atomic___atomic_compare_exchange_16+y}
+then :
+  printf %s "(cached) " >&6
+else $as_nop
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-latomic  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+/* Override any GCC internal prototype to avoid an error.
+   Use char because int might match the return type of a GCC
+   builtin and then its argument prototype would still apply.  */
+char __atomic_compare_exchange_16 ();
+int
+main (void)
+{
+return __atomic_compare_exchange_16 ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"
+then :
+  ac_cv_lib_atomic___atomic_compare_exchange_16=yes
+else $as_nop
+  ac_cv_lib_atomic___atomic_compare_exchange_16=no
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.beam \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_atomic___atomic_compare_exchange_16" >&5
+printf "%s\n" "$ac_cv_lib_atomic___atomic_compare_exchange_16" >&6; }
+if test "x$ac_cv_lib_atomic___atomic_compare_exchange_16" = xyes
+then :
+  ATOMIC_LIBS="-latomic"
+else $as_nop
+  as_fn_error $? "RISC-V64 requires libatomic with __atomic_compare_exchange_16" "$LINENO" 5
+fi
+
+        LDFLAGS="$LDFLAGS $ATOMIC_LIBS"
+        ;;
+esac
+
+
 OPENGL_LIBS=""
 
 
@@ -12780,6 +12831,8 @@ else $as_nop
                 case $HOST_ARCH in
                   aarch64)
                                                             as_fn_append WINEPRELOADER_LDFLAGS " -static -Wl,-Ttext=0x7d7d000000" ;;
+                  riscv64)
+                                        as_fn_append WINEPRELOADER_LDFLAGS " -static-pie" ;;
                   *)
                     as_fn_append WINEPRELOADER_LDFLAGS " -static -Wl,-Ttext=0x7d7d00000000" ;;
                 esac
@@ -23524,6 +23577,7 @@ PE_ARCHS = $PE_ARCHS
 riscv64_CC = $riscv64_CC
 DLLEXT = $DLLEXT
 I386_LIBS = $I386_LIBS
+ATOMIC_LIBS = $ATOMIC_LIBS
 OPENGL_LIBS = $OPENGL_LIBS
 DLLFLAGS = $DLLFLAGS
 LDDLLFLAGS = $LDDLLFLAGS

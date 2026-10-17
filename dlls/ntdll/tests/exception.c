@@ -12931,6 +12931,7 @@ START_TEST(exception)
             return;
         }
 
+#if !defined(__riscv) || __riscv_xlen != 64
         if (pRtlRaiseException)
         {
             test_stage = STAGE_RTLRAISE_NOT_HANDLED;
@@ -12943,7 +12944,7 @@ START_TEST(exception)
             run_rtlraiseexception_test(EXCEPTION_INVALID_HANDLE);
         }
         else skip( "RtlRaiseException not found\n" );
-
+#endif
         test_stage = STAGE_OUTPUTDEBUGSTRINGA_CONTINUE;
 
         test_outputdebugstring(FALSE, 0, FALSE, 0, 0);
@@ -12959,10 +12960,12 @@ START_TEST(exception)
         test_ripevent(0);
         test_stage = STAGE_RIPEVENT_NOT_HANDLED;
         test_ripevent(1);
+#if !defined(__riscv) || __riscv_xlen != 64
         test_stage = STAGE_SERVICE_CONTINUE;
         test_debug_service(0);
         test_stage = STAGE_SERVICE_NOT_HANDLED;
         test_debug_service(1);
+#endif
         test_stage = STAGE_BREAKPOINT_CONTINUE;
         test_breakpoint(0);
         test_stage = STAGE_BREAKPOINT_NOT_HANDLED;
@@ -13068,7 +13071,7 @@ START_TEST(exception)
 
 #endif
 
-#if !defined(__risc) || __riscv_xlen != 64
+#if !defined(__riscv) || __riscv_xlen != 64
     test_KiUserExceptionDispatcher();
     test_KiUserApcDispatcher();
     test_KiUserCallbackDispatcher();
