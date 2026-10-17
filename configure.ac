@@ -733,9 +733,16 @@ dnl **** Check for some libraries ****
 dnl Check for -li386 for NetBSD and OpenBSD
 AC_CHECK_LIB(i386,i386_set_ldt,[AC_SUBST(I386_LIBS, "-li386")])
 
-dnl Check for the gcc atomic libs needed for RiscV and if they support __atomic_compare_exchange_16
-AC_CHECK_LIB([atomic], [__atomic_compare_exchange_16],
-             [ATOMIC_LIBS="-latomic"], [ATOMIC_LIBS=""])
+dnl Check for libatomic on RISC-V64.
+ATOMIC_LIBS=""
+case $host_cpu in
+    riscv64*)
+        AC_CHECK_LIB([atomic], [__atomic_compare_exchange_16],
+                     [ATOMIC_LIBS="-latomic"],
+                     [AC_MSG_ERROR([RISC-V64 requires libatomic with __atomic_compare_exchange_16])])
+        LDFLAGS="$LDFLAGS $ATOMIC_LIBS"
+        ;;
+esac
 AC_SUBST([ATOMIC_LIBS])
 
 AC_SUBST(OPENGL_LIBS,"")
