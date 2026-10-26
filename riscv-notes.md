@@ -1,4 +1,4 @@
-sudo apt install llvm strace libc6-dev-riscv64-cross
+sudo apt install llvm strace libc6-dev-riscv64-cross gh
 apt-cache policy clang lld llvm
 
 make -B dlls/ntdll/actctx.o \
