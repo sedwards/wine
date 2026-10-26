@@ -12830,9 +12830,9 @@ else $as_nop
 
                 case $HOST_ARCH in
                   aarch64)
-                                                            as_fn_append WINEPRELOADER_LDFLAGS " -static -Wl,-Ttext=0x7d7d000000" ;;
-                  riscv64)
-                                        as_fn_append WINEPRELOADER_LDFLAGS " -static-pie" ;;
+                                        as_fn_append WINEPRELOADER_LDFLAGS " -static -Wl,-Ttext=0x7d7d000000" ;;
+                  riscv|riscv64)
+                                        as_fn_append WINEPRELOADER_LDFLAGS " -static -Wl,-Ttext=0x7d400000" ;;
                   *)
                     as_fn_append WINEPRELOADER_LDFLAGS " -static -Wl,-Ttext=0x7d7d00000000" ;;
                 esac

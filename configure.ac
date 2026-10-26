@@ -1123,12 +1123,11 @@ case $host_os in
             [
                 case $HOST_ARCH in
                   aarch64)
-                    dnl AArch64 kernels may be limited to 39 bits of address
-                    dnl space; limit the text section load address to that.
+                    dnl AArch64 kernels may be limited to 39 bits of address space.
                     AS_VAR_APPEND([WINEPRELOADER_LDFLAGS],[" -static -Wl,-Ttext=0x7d7d000000"]) ;;
-                  riscv64)
-                    dnl RISC-V requires static PIE; avoid a fixed Sv39-incompatible address.
-                    AS_VAR_APPEND([WINEPRELOADER_LDFLAGS],[" -static-pie"]) ;;
+                  riscv|riscv64)
+                    dnl Use a low fixed address compatible with RISC-V Sv39.
+                    AS_VAR_APPEND([WINEPRELOADER_LDFLAGS],[" -static -Wl,-Ttext=0x7d400000"]) ;;
                   *)
                     AS_VAR_APPEND([WINEPRELOADER_LDFLAGS],[" -static -Wl,-Ttext=0x7d7d00000000"]) ;;
                 esac
