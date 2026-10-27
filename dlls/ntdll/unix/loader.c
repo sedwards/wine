@@ -264,6 +264,7 @@ static const char *get_so_dir( WORD machine )
     case IMAGE_FILE_MACHINE_AMD64: return "/x86_64-unix";
     case IMAGE_FILE_MACHINE_ARMNT: return "/arm-unix";
     case IMAGE_FILE_MACHINE_ARM64: return "/aarch64-unix";
+    case IMAGE_FILE_MACHINE_RISCV64: return "/riscv64-unix";
     default: return "";
     }
 }
@@ -276,6 +277,7 @@ static const char *get_pe_dir( WORD machine )
     case IMAGE_FILE_MACHINE_AMD64: return "/x86_64-windows";
     case IMAGE_FILE_MACHINE_ARMNT: return "/arm-windows";
     case IMAGE_FILE_MACHINE_ARM64: return "/aarch64-windows";
+    case IMAGE_FILE_MACHINE_RISCV64: return "/riscv64-windows";
     default: return "";
     }
 }
@@ -288,6 +290,7 @@ static WORD get_alt_machine( WORD machine )
     case IMAGE_FILE_MACHINE_AMD64: return IMAGE_FILE_MACHINE_I386;
     case IMAGE_FILE_MACHINE_ARMNT: return IMAGE_FILE_MACHINE_ARM64;
     case IMAGE_FILE_MACHINE_ARM64: return IMAGE_FILE_MACHINE_ARMNT;
+    case IMAGE_FILE_MACHINE_RISCV64: return IMAGE_FILE_MACHINE_RISCV64;
     default: return machine;
     }
 }
@@ -1180,10 +1183,12 @@ static NTSTATUS find_builtin_dll( UNICODE_STRING *nt_name, ANSI_STRING *exp_name
     {
         /* try as a dll */
         ptr = prepend_build_dir_path( file + pos, ".dll", pe_dir, "/dlls", pe_build_dir );
+        TRACE( "DEBUG PE candidate: %s\n", ptr );
         status = open_builtin_pe_file( ptr, &attr, module, size_ptr, image_info,
                                        limit_low, limit_high, load_machine, prefer_native, offset );
         ptr = prepend_build_dir_path( file + pos, ".dll", "", "/dlls", build_dir );
         if (status != STATUS_DLL_NOT_FOUND) goto done;
+        TRACE( "DEBUG Unix candidate: %s\n", ptr );
         status = open_builtin_so_file( ptr, &attr, module, image_info,
                                        search_machine, load_machine, prefer_native );
         if (status != STATUS_DLL_NOT_FOUND) goto done;
