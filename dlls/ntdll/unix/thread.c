@@ -197,6 +197,12 @@ static unsigned int get_server_context_flags( const void *context, USHORT machin
         if (flags & CONTEXT_ARM_FLOATING_POINT) ret |= SERVER_CTX_FLOATING_POINT;
         if (flags & CONTEXT_ARM_DEBUG_REGISTERS) ret |= SERVER_CTX_DEBUG_REGISTERS;
         break;
+    case IMAGE_FILE_MACHINE_RISCV64:
+        flags = ((const RISCV64_CONTEXT *)context)->ContextFlags & ~CONTEXT_RISCV64;
+        if (flags & CONTEXT_RISCV64_CONTROL) ret |= SERVER_CTX_CONTROL;
+        if (flags & CONTEXT_RISCV64_INTEGER) ret |= SERVER_CTX_INTEGER;
+        if (flags & CONTEXT_RISCV64_FLOATING_POINT) ret |= SERVER_CTX_FLOATING_POINT;
+        break;
     case IMAGE_FILE_MACHINE_ARM64:
         flags = ((const ARM64_NT_CONTEXT *)context)->ContextFlags & ~CONTEXT_ARM64;
         if (flags & CONTEXT_ARM64_CONTROL) ret |= SERVER_CTX_CONTROL;
@@ -574,6 +580,37 @@ static NTSTATUS context_to_server( struct context_data *to, USHORT to_machine, c
             for (i = 0; i < ARM_MAX_BREAKPOINTS; i++) to->debug.arm_regs.bcr[i] = from->Bcr[i];
             for (i = 0; i < ARM_MAX_WATCHPOINTS; i++) to->debug.arm_regs.wvr[i] = from->Wvr[i];
             for (i = 0; i < ARM_MAX_WATCHPOINTS; i++) to->debug.arm_regs.wcr[i] = from->Wcr[i];
+        }
+        exception_request_flags_to_server( to, flags );
+        return STATUS_SUCCESS;
+    }
+
+    case MAKELONG( IMAGE_FILE_MACHINE_RISCV64, IMAGE_FILE_MACHINE_RISCV64 ):
+    {
+        const RISCV64_CONTEXT *from = src;
+
+        flags = from->ContextFlags & ~CONTEXT_RISCV64;
+        if (flags & CONTEXT_RISCV64_CONTROL)
+        {
+            to->flags |= SERVER_CTX_CONTROL;
+            to->ctl.riscv64_regs.pc = from->Pc;
+            to->ctl.riscv64_regs.sp = from->Gpr.X[2];
+            to->ctl.riscv64_regs.ra = from->Gpr.X[1];
+        }
+        if (flags & CONTEXT_RISCV64_INTEGER)
+        {
+            to->flags |= SERVER_CTX_INTEGER;
+            /* x0 is constant and x2 (sp) is carried by SERVER_CTX_CONTROL.
+             * Keep the protocol integer union at its original 240 bytes. */
+            to->integer.riscv64_regs.x[0] = from->Gpr.X[1];
+            for (i = 3; i < 32; i++)
+                to->integer.riscv64_regs.x[i - 2] = from->Gpr.X[i];
+        }
+        if (flags & CONTEXT_RISCV64_FLOATING_POINT)
+        {
+            to->flags |= SERVER_CTX_FLOATING_POINT;
+            for (i = 0; i < 32; i++) to->fp.riscv64_regs.f[i] = from->F[i].Q;
+            to->fp.riscv64_regs.fcsr = from->Fcsr;
         }
         exception_request_flags_to_server( to, flags );
         return STATUS_SUCCESS;
@@ -1010,6 +1047,34 @@ static NTSTATUS context_from_server( void *dst, const struct context_data *from,
             for (i = 0; i < ARM_MAX_BREAKPOINTS; i++) to->Bcr[i] = from->debug.arm_regs.bcr[i];
             for (i = 0; i < ARM_MAX_WATCHPOINTS; i++) to->Wvr[i] = from->debug.arm_regs.wvr[i];
             for (i = 0; i < ARM_MAX_WATCHPOINTS; i++) to->Wcr[i] = from->debug.arm_regs.wcr[i];
+        }
+        exception_request_flags_from_server( &to->ContextFlags, from );
+        return STATUS_SUCCESS;
+    }
+
+    case MAKELONG( IMAGE_FILE_MACHINE_RISCV64, IMAGE_FILE_MACHINE_RISCV64 ):
+    {
+        RISCV64_CONTEXT *to = dst;
+
+        to_flags = to->ContextFlags & ~CONTEXT_RISCV64;
+        if ((from->flags & SERVER_CTX_CONTROL) && (to_flags & CONTEXT_RISCV64_CONTROL))
+        {
+            to->Pc = from->ctl.riscv64_regs.pc;
+            to->Gpr.X[2] = from->ctl.riscv64_regs.sp;
+            to->Gpr.X[1] = from->ctl.riscv64_regs.ra;
+        }
+        if ((from->flags & SERVER_CTX_INTEGER) && (to_flags & CONTEXT_RISCV64_INTEGER))
+        {
+            to->Gpr.X[0] = 0;
+            to->Gpr.X[1] = from->integer.riscv64_regs.x[0];
+            for (i = 3; i < 32; i++)
+                to->Gpr.X[i] = from->integer.riscv64_regs.x[i - 2];
+            /* Preserve x2: it is restored from SERVER_CTX_CONTROL, if present. */
+        }
+        if ((from->flags & SERVER_CTX_FLOATING_POINT) && (to_flags & CONTEXT_RISCV64_FLOATING_POINT))
+        {
+            for (i = 0; i < 32; i++) to->F[i].Q = from->fp.riscv64_regs.f[i];
+            to->Fcsr = from->fp.riscv64_regs.fcsr;
         }
         exception_request_flags_from_server( &to->ContextFlags, from );
         return STATUS_SUCCESS;
@@ -1541,6 +1606,9 @@ void abort_thread( int status )
 {
     pthread_sigmask( SIG_BLOCK, &server_block_set, NULL );
     if (InterlockedDecrement( &nb_threads ) <= 0) abort_process( status );
+#ifdef __riscv
+    riscv64_unregister_thread_data();
+#endif
     pthread_exit_wrapper( status );
 }
 
@@ -1727,6 +1795,69 @@ NTSTATUS WINAPI NtRaiseException( EXCEPTION_RECORD *rec, CONTEXT *context, BOOL 
     return STATUS_SUCCESS;
 }
 
+
+#ifdef __riscv
+/* Native Linux TIDs identify the running kernel thread without depending on
+ * pthread-specific keys.  This registry is deliberately separate from the
+ * Windows TEB and does not modify the ELF tp register.  A fixed-size array
+ * avoids allocation in the recovery path. */
+#define RISCV64_THREAD_SLOTS 4096
+static struct
+{
+    volatile long tid;
+    struct thread_data *data;
+} riscv64_threads[RISCV64_THREAD_SLOTS];
+
+static long riscv64_native_tid(void)
+{
+    register long a0 __asm__("a0") = 0;
+    register long a7 __asm__("a7") = 178; /* Linux gettid */
+    __asm__ volatile ("ecall" : "+r"(a0) : "r"(a7) : "memory");
+    return a0;
+}
+
+void riscv64_register_thread_data( struct thread_data *data )
+{
+    long tid = riscv64_native_tid();
+    unsigned int i;
+    for (i = 0; i < RISCV64_THREAD_SLOTS; ++i)
+    {
+        long expected = 0;
+        if (__atomic_compare_exchange_n( &riscv64_threads[i].tid, &expected, -tid,
+                                         0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE ))
+        {
+            __atomic_store_n( &riscv64_threads[i].data, data, __ATOMIC_RELEASE );
+            __atomic_store_n( &riscv64_threads[i].tid, tid, __ATOMIC_RELEASE );
+            return;
+        }
+    }
+    ERR( "RISC-V64 native thread registry exhausted for tid=%ld\n", tid );
+    abort();
+}
+
+void riscv64_unregister_thread_data(void)
+{
+    long tid = riscv64_native_tid();
+    unsigned int i;
+    for (i = 0; i < RISCV64_THREAD_SLOTS; ++i)
+        if (__atomic_load_n( &riscv64_threads[i].tid, __ATOMIC_ACQUIRE ) == tid)
+        {
+            __atomic_store_n( &riscv64_threads[i].tid, 0, __ATOMIC_RELEASE );
+            __atomic_store_n( &riscv64_threads[i].data, NULL, __ATOMIC_RELEASE );
+            return;
+        }
+}
+
+struct thread_data *riscv64_lookup_thread_data(void)
+{
+    long tid = riscv64_native_tid();
+    unsigned int i;
+    for (i = 0; i < RISCV64_THREAD_SLOTS; ++i)
+        if (__atomic_load_n( &riscv64_threads[i].tid, __ATOMIC_ACQUIRE ) == tid)
+            return __atomic_load_n( &riscv64_threads[i].data, __ATOMIC_ACQUIRE );
+    return NULL;
+}
+#endif
 
 /**********************************************************************
  *           NtCurrentTeb   (NTDLL.@)
@@ -2527,7 +2658,22 @@ NTSTATUS WINAPI NtSetInformationThread( HANDLE handle, THREADINFOCLASS class,
 {
     unsigned int status;
 
-    TRACE("(%p,%d,%p,%x)\n", handle, class, data, length);
+#if defined(__riscv) && __riscv_xlen == 64
+    /* Early, async-signal-safe entry marker.  Deliberately avoid TRACE,
+     * getenv(), TLS and printf until we know the service was entered.
+     * Diagnostic branch only; remove after the syscall bridge is fixed. */
+    if (class == ThreadNameInformation)
+    {
+        static const char marker[] = "RV64-THREADNAME RAW ENTRY\n";
+        write( 2, marker, sizeof(marker) - 1 );
+    }
+#endif
+#if defined(__riscv) && __riscv_xlen == 64
+    /* Isolate the Wine debug/TLS path from the service body when requested.
+     * If this avoids the fault, the normal TRACE path is implicated. */
+    if (class != ThreadNameInformation || !getenv("WINE_RISCV_SKIP_THREAD_TRACE"))
+#endif
+        TRACE("(%p,%d,%p,%x)\n", handle, class, data, length);
 
     switch (class)
     {
@@ -2664,12 +2810,37 @@ NTSTATUS WINAPI NtSetInformationThread( HANDLE handle, THREADINFOCLASS class,
     {
         const THREAD_NAME_INFORMATION *info = data;
         THREAD_BASIC_INFORMATION tbi;
+        BOOL diag = FALSE;
+#if defined(__riscv) && __riscv_xlen == 64
+        const char *diag_env = getenv("WINE_RISCV_RPC_DIAG");
+        diag = diag_env && *diag_env && strcmp(diag_env, "0");
+#endif
+        if (diag) WARN("RV64-THREADNAME enter handle=%p info=%p length=%u\n", handle, info, length);
 
         if (length != sizeof(*info)) return STATUS_INFO_LENGTH_MISMATCH;
         if (!info) return STATUS_ACCESS_VIOLATION;
-        if (info->ThreadName.Length && !info->ThreadName.Buffer) return STATUS_ACCESS_VIOLATION;
-
+#if defined(__riscv) && __riscv_xlen == 64
+        if (diag)
+        {
+            static const char before[] = "RV64-THREADNAME before structure read\n";
+            write( 2, before, sizeof(before) - 1 );
+        }
+#endif
+        {
+            USHORT name_length = info->ThreadName.Length;
+            WCHAR *name_buffer = info->ThreadName.Buffer;
+#if defined(__riscv) && __riscv_xlen == 64
+            if (diag)
+            {
+                static const char after[] = "RV64-THREADNAME after structure read\n";
+                write( 2, after, sizeof(after) - 1 );
+            }
+#endif
+            if (name_length && !name_buffer) return STATUS_ACCESS_VIOLATION;
+            if (diag) WARN("RV64-THREADNAME validated name_length=%u name_buffer=%p\n", name_length, name_buffer);
+        }
         status = NtQueryInformationThread( handle, ThreadBasicInformation, &tbi, sizeof(tbi), NULL );
+        if (diag) WARN("RV64-THREADNAME query returned status=%08x\n", status);
         if (handle == GetCurrentThread() || (!status && (HandleToULong(tbi.ClientId.UniqueThread) == GetCurrentThreadId())))
             WARN_(threadname)( "Thread renamed to %s\n", debugstr_us(&info->ThreadName) );
         else if (!status)
@@ -2677,6 +2848,7 @@ NTSTATUS WINAPI NtSetInformationThread( HANDLE handle, THREADINFOCLASS class,
         else
             WARN_(threadname)( "Thread handle %p renamed to %s\n", handle, debugstr_us(&info->ThreadName) );
 
+        if (diag) WARN("RV64-THREADNAME before server request\n");
         SERVER_START_REQ( set_thread_info )
         {
             req->handle = wine_server_obj_handle( handle );
@@ -2686,7 +2858,9 @@ NTSTATUS WINAPI NtSetInformationThread( HANDLE handle, THREADINFOCLASS class,
         }
         SERVER_END_REQ;
 
+        if (diag) WARN("RV64-THREADNAME server returned status=%08x\n", status);
         set_native_thread_name( handle, &info->ThreadName );
+        if (diag) WARN("RV64-THREADNAME native name set\n");
 
         return status;
     }

@@ -10039,6 +10039,12 @@ static LONG CALLBACK breakpoint_handler(EXCEPTION_POINTERS *ExceptionInfo)
     ok(rec->ExceptionInformation[0] == 0,
        "got ExceptionInformation[0] = %p\n", (void *)rec->ExceptionInformation[0]);
     context->Pc += 4;
+#elif defined(__riscv) && __riscv_xlen == 64
+    ok(context->Pc == (DWORD_PTR)code_mem,
+       "expected pc = %p, got %p\n", code_mem, (void *)context->Pc);
+    ok(rec->ExceptionAddress == code_mem,
+       "expected address %p, got %p\n", code_mem, rec->ExceptionAddress);
+    context->Pc += 4;
 #endif
 
     breakpoint_exceptions++;
@@ -10051,6 +10057,8 @@ static const BYTE breakpoint_code[] = { 0xcd, 0x03, 0xc3 };   /* int $0x3; ret *
 static const DWORD breakpoint_code[] = { 0xdefe, 0x4770 };  /* udf #0xfe; bx lr */
 #elif defined(__aarch64__)
 static const DWORD breakpoint_code[] = { 0xd43e0000, 0xd65f03c0 };  /* brk #0xf000; ret */
+#elif defined(__riscv) && __riscv_xlen == 64
+static const DWORD breakpoint_code[] = { 0x00100073, 0x00008067 }; /* ebreak; ret */
 #endif
 
 static void test_breakpoint(DWORD numexc)
@@ -12552,6 +12560,55 @@ static void test_set_live_context(void)
 }
 #endif
 
+#if defined(__riscv) && __riscv_xlen == 64
+static ULONG (WINAPI *pRtlWalkFrameChain)(void **, ULONG, ULONG);
+
+static DECLSPEC_NOINLINE void riscv64_walk_frames( unsigned int depth )
+{
+    void *frames[3][16];
+    ULONG counts[3], flags[] = { 0, 2 << 8, 20 << 8 };
+    volatile unsigned int saved_depth = depth;
+    unsigned int i, j;
+
+    if (depth)
+    {
+        riscv64_walk_frames( depth - 1 );
+        /* Keep recursive frames and their unwind metadata observable. */
+        ok( saved_depth == depth, "Recursive frame was corrupted\n" );
+        return;
+    }
+
+    for (i = 0; i < ARRAY_SIZE(counts); ++i)
+    {
+        for (j = 0; j < ARRAY_SIZE(frames[i]); ++j) frames[i][j] = (void *)0xdeadbeef;
+        /* Use the same call site so skipped frames can be compared exactly. */
+        counts[i] = pRtlWalkFrameChain( frames[i], 8, flags[i] );
+    }
+    ok( counts[0] >= 6 && counts[0] <= 8, "Expected recursive frames, got %lu\n", counts[0] );
+    ok( counts[1] == (counts[0] > 2 ? counts[0] - 2 : 0),
+        "Skip returned %lu frames for %lu total\n", counts[1], counts[0] );
+    ok( counts[2] == 0, "Skip beyond count returned %lu frames\n", counts[2] );
+    for (i = 0; i < counts[1] && i + 2 < counts[0]; ++i)
+        ok( frames[1][i] == frames[0][i + 2], "Skipped frame %u differs: %p / %p\n",
+            i, frames[1][i], frames[0][i + 2] );
+    for (i = 0; i < ARRAY_SIZE(counts); ++i)
+        if (counts[i] < ARRAY_SIZE(frames[i]))
+            ok( frames[i][counts[i]] == (void *)0xdeadbeef, "Wrote beyond frame count\n" );
+    ok( !pRtlWalkFrameChain( NULL, 0, 0 ), "Zero-length walk returned frames\n" );
+}
+
+static void test_riscv64_backtrace(void)
+{
+    pRtlWalkFrameChain = (void *)GetProcAddress( hntdll, "RtlWalkFrameChain" );
+    if (!pRtlWalkFrameChain)
+    {
+        win_skip( "RtlWalkFrameChain not available\n" );
+        return;
+    }
+    riscv64_walk_frames( 5 );
+}
+#endif
+
 static void test_backtrace(void)
 {
     void *buffer[1024];
@@ -13100,6 +13157,7 @@ START_TEST(exception)
             return;
         }
 
+#if !defined(__riscv) || __riscv_xlen != 64
         if (pRtlRaiseException)
         {
             test_stage = STAGE_RTLRAISE_NOT_HANDLED;
@@ -13112,7 +13170,7 @@ START_TEST(exception)
             run_rtlraiseexception_test(EXCEPTION_INVALID_HANDLE);
         }
         else skip( "RtlRaiseException not found\n" );
-
+#endif
         test_stage = STAGE_OUTPUTDEBUGSTRINGA_CONTINUE;
 
         test_outputdebugstring(FALSE, 0, FALSE, 0, 0);
@@ -13128,10 +13186,12 @@ START_TEST(exception)
         test_ripevent(0);
         test_stage = STAGE_RIPEVENT_NOT_HANDLED;
         test_ripevent(1);
+#if !defined(__riscv) || __riscv_xlen != 64
         test_stage = STAGE_SERVICE_CONTINUE;
         test_debug_service(0);
         test_stage = STAGE_SERVICE_NOT_HANDLED;
         test_debug_service(1);
+#endif
         test_stage = STAGE_BREAKPOINT_CONTINUE;
         test_breakpoint(0);
         test_stage = STAGE_BREAKPOINT_NOT_HANDLED;
@@ -13245,6 +13305,7 @@ START_TEST(exception)
     test_debugger(DBG_EXCEPTION_HANDLED, TRUE);
     test_debugger(DBG_CONTINUE, TRUE);
     test_thread_context();
+
     test_outputdebugstring(FALSE, 1, FALSE, 0, 0);
     if (pWaitForDebugEventEx)
     {
@@ -13270,6 +13331,9 @@ START_TEST(exception)
     test_suspend_thread();
     test_suspend_process();
     test_unload_trace();
+#if defined(__riscv) && __riscv_xlen == 64
+    test_riscv64_backtrace();
+#endif
     test_backtrace();
     test_context_exception_request();
     test_RtlAddVectoredExceptionHandler();
