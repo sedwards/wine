@@ -668,12 +668,15 @@ static void test_riscv64_thread_context(void)
     rv64_thread_checkpoint( "CreateThread returned" );
     ok( !!thread, "CreateThread failed: %lu\n", GetLastError() );
     if (!thread) return;
+    rv64_thread_checkpoint( "suspended-thread wait enter" );
     ret = WaitForSingleObject( thread, 100 );
+    rv64_thread_checkpoint( "suspended-thread wait returned" );
     ok( ret == WAIT_TIMEOUT, "Suspended thread wait returned %#lx\n", ret );
     ok( !state.ready, "Suspended thread executed its entry point\n" );
     context.ContextFlags = CONTEXT_FULL;
     rv64_thread_checkpoint( "NtGetContextThread enter" );
     status = NtGetContextThread( thread, &context );
+    rv64_thread_checkpoint( "initial NtGetContextThread returned" );
     ok( !status, "Initial NtGetContextThread returned %#lx\n", status );
     if (!status)
     {
@@ -696,7 +699,9 @@ static void test_riscv64_thread_context(void)
     ok( ret == 0, "SuspendThread returned %#lx\n", ret );
     if (ret == ~0u) goto done;
     context.ContextFlags = CONTEXT_FULL | CONTEXT_EXCEPTION_REQUEST;
+    rv64_thread_checkpoint( "suspended NtGetContextThread enter" );
     status = NtGetContextThread( thread, &context );
+    rv64_thread_checkpoint( "suspended NtGetContextThread returned" );
     ok( !status, "NtGetContextThread returned %#lx\n", status );
     if (!status)
     {
@@ -734,7 +739,9 @@ static void test_riscv64_thread_context(void)
         rv64_thread_checkpoint( "NtSetContextThread returned" );
         ok( !status, "NtSetContextThread returned %#lx\n", status );
         updated.ContextFlags = CONTEXT_FULL;
+        rv64_thread_checkpoint( "updated NtGetContextThread enter" );
         status = NtGetContextThread( thread, &updated );
+        rv64_thread_checkpoint( "updated NtGetContextThread returned" );
         ok( !status, "Updated NtGetContextThread returned %#lx\n", status );
         if (!status)
         {
