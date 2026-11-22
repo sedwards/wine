@@ -114,11 +114,23 @@ static struct syscall_frame *init_syscall_frame( PRTL_THREAD_START_ROUTINE entry
     context.Gpr.X[2]  = stack_top;
     context.Pc        = (ULONG64)pRtlUserThreadStart;
 
+    if (riscv64_transition_diag_enabled())
+        WARN( "RV64-START initial entry=%p arg=%p target=%p sp=%p teb=%p frame=%p\n",
+              entry, arg, pRtlUserThreadStart, (void *)stack_top, teb, frame );
+
     if (data->suspend)
     {
         context.ContextFlags |= CONTEXT_EXCEPTION_REPORTING | CONTEXT_EXCEPTION_ACTIVE;
         wait_suspend( &context );
     }
+
+    if (riscv64_transition_diag_enabled())
+        WARN( "RV64-START post-suspend entry=%p arg=%p target=%p sp=%p flags=%#lx\n",
+              (void *)(ULONG_PTR)context.Gpr.X[10],
+              (void *)(ULONG_PTR)context.Gpr.X[11],
+              (void *)(ULONG_PTR)context.Pc,
+              (void *)(ULONG_PTR)context.Gpr.X[2],
+              (unsigned long)context.ContextFlags );
 
     /* Apply any debugger-supplied stack before placing the initial context. */
     ctx = (CONTEXT *)((context.Gpr.X[2] - sizeof(*ctx)) & ~(ULONG_PTR)15);
@@ -141,6 +153,13 @@ static struct syscall_frame *init_syscall_frame( PRTL_THREAD_START_ROUTINE entry
     frame->x[1] = frame->ra;
 
     frame->restore_flags = CONTEXT_FULL & ~CONTEXT_RISCV64;
+
+    if (riscv64_transition_diag_enabled())
+        WARN( "RV64-START loader handoff pc=%p sp=%p a0_context=%p saved_entry=%p saved_arg=%p\n",
+              (void *)(ULONG_PTR)frame->pc, (void *)(ULONG_PTR)frame->sp,
+              (void *)(ULONG_PTR)frame->x[10],
+              (void *)(ULONG_PTR)ctx->Gpr.X[10],
+              (void *)(ULONG_PTR)ctx->Gpr.X[11] );
 
     return frame;
 }
