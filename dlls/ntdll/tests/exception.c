@@ -13006,11 +13006,147 @@ static void test_RtlAddVectoredExceptionHandler(void)
 }
 
 #if defined(__riscv) && __riscv_xlen == 64
-/* RISC-V64 coverage for the dispatcher entry points and context APIs.
- * Unlike the other architecture tests these do not patch dispatcher code. */
-static volatile LONG riscv64_exception_hits;
+/*
+ * Unlike x86/x86-64/ARM64, RISC-V64's dispatcher entry points are very
+ * short.  Replacing an entire absolute-jump stub could overwrite the next
+ * entry point.  Patch only the first 32-bit word with a JAL x0 to a nearby
+ * trampoline, then restore that word before executing the original entry.
+ *
+ * The RISC-V JAL range is +/- 1 MiB; if we cannot reserve nearby executable
+ * memory, report a skip instead of risking an out-of-range branch.
+ */
+struct riscv64_dispatcher_hook
+{
+    void *entry;
+    BYTE *trampoline;
+    DWORD original, protection;
+    BOOL installed;
+};
+
+struct riscv64_exception_layout
+{
+    CONTEXT context;
+    EXCEPTION_RECORD record;
+};
+
+struct riscv64_apc_layout
+{
+    void (*func)(ULONG_PTR, ULONG_PTR, ULONG_PTR);
+    ULONG_PTR args[3];
+    ULONG_PTR alertable;
+    ULONG_PTR reserved;
+    CONTEXT context;
+};
+
+struct riscv64_callback_layout
+{
+    void *args;
+    ULONG len, id;
+    ULONG64 ra, sp, pc;
+    BYTE args_data[0];
+};
+
+C_ASSERT(offsetof(struct riscv64_exception_layout, record) == sizeof(CONTEXT));
+C_ASSERT(offsetof(struct riscv64_apc_layout, context) == 0x30);
+C_ASSERT(offsetof(struct riscv64_callback_layout, args_data) == 40);
+
+/* Encodes JAL zero,offset.  Offset is signed and 2-byte aligned. */
+static DWORD riscv64_jal( LONGLONG offset )
+{
+    ULONG imm = (ULONG)offset;
+
+    return ((imm & 0x100000) << 11) | ((imm & 0x7fe) << 20) |
+           ((imm & 0x800) << 9) | (imm & 0xff000) | 0x6f;
+}
+
+static BYTE *riscv64_alloc_near( void *entry )
+{
+    const ULONG_PTR granularity = 0x10000;
+    ULONG_PTR base = (ULONG_PTR)entry & ~(granularity - 1), addr, distance;
+    BYTE *mem;
+    unsigned int side;
+
+    for (distance = 0; distance <= 0xf0000; distance += granularity)
+    {
+        for (side = 0; side < 2; ++side)
+        {
+            if (side && !distance) continue;
+            if (side && base < distance) continue;
+            addr = side ? base - distance : base + distance;
+            if (!addr) continue;
+            mem = VirtualAlloc( (void *)addr, 0x1000, MEM_RESERVE | MEM_COMMIT,
+                                PAGE_EXECUTE_READWRITE );
+            if (!mem) continue;
+            if ((LONGLONG)((ULONG_PTR)mem - (ULONG_PTR)entry) >= -(1 << 20) &&
+                (LONGLONG)((ULONG_PTR)mem - (ULONG_PTR)entry) < (1 << 20))
+                return mem;
+            VirtualFree( mem, 0, MEM_RELEASE );
+        }
+    }
+    return NULL;
+}
+
+static BOOL riscv64_install_hook( struct riscv64_dispatcher_hook *hook,
+                                  void *entry, void *func )
+{
+    static const DWORD trampoline_code[] =
+    {
+        0x00010513, /* mv a0,sp */
+        0x00000297, /* auipc t0,0 */
+        0x0142b283, /* ld t0,20(t0) -- address stored at byte 24 */
+        0x000280e7, /* jalr ra,t0,0 -- call the frame checker */
+        0x00050067, /* jalr zero,a0,0 -- jump to restored dispatcher */
+        0x00000013  /* nop, aligns the literal to 8 bytes */
+    };
+    DWORD patch;
+    LONGLONG distance;
+
+    memset( hook, 0, sizeof(*hook) );
+    if (!entry) return FALSE;
+    hook->trampoline = riscv64_alloc_near( entry );
+    if (!hook->trampoline) return FALSE;
+    hook->entry = entry;
+    memcpy( hook->trampoline, trampoline_code, sizeof(trampoline_code) );
+    memcpy( hook->trampoline + sizeof(trampoline_code), &func, sizeof(func) );
+    FlushInstructionCache( GetCurrentProcess(), hook->trampoline, 32 );
+
+    distance = (LONGLONG)((ULONG_PTR)hook->trampoline - (ULONG_PTR)entry);
+    if (distance < -(1 << 20) || distance >= (1 << 20) || (distance & 1))
+        return FALSE;
+    if (!VirtualProtect( entry, sizeof(patch), PAGE_EXECUTE_READWRITE, &hook->protection ))
+        return FALSE;
+
+    memcpy( &hook->original, entry, sizeof(hook->original) );
+    patch = riscv64_jal( distance );
+    memcpy( entry, &patch, sizeof(patch) );
+    FlushInstructionCache( GetCurrentProcess(), entry, sizeof(patch) );
+    hook->installed = TRUE;
+    return TRUE;
+}
+
+static void riscv64_unhook( struct riscv64_dispatcher_hook *hook )
+{
+    DWORD protection;
+
+    if (!hook->installed) return;
+    memcpy( hook->entry, &hook->original, sizeof(hook->original) );
+    FlushInstructionCache( GetCurrentProcess(), hook->entry, sizeof(hook->original) );
+    VirtualProtect( hook->entry, sizeof(hook->original), hook->protection, &protection );
+    hook->installed = FALSE;
+}
+
+static void riscv64_free_hook( struct riscv64_dispatcher_hook *hook )
+{
+    riscv64_unhook( hook );
+    if (hook->trampoline) VirtualFree( hook->trampoline, 0, MEM_RELEASE );
+    hook->trampoline = NULL;
+}
+
+static volatile LONG riscv64_exception_hits, riscv64_layout_hits;
 static DWORD riscv64_exception_code;
 static ULONG_PTR riscv64_exception_pc;
+static struct riscv64_dispatcher_hook riscv64_exception_hook;
+#define RISCV64_TEST_ARGUMENT ((ULONG_PTR)0x12345678aabbccddull)
 
 static LONG WINAPI riscv64_exception_handler( EXCEPTION_POINTERS *exception )
 {
@@ -13021,51 +13157,211 @@ static LONG WINAPI riscv64_exception_handler( EXCEPTION_POINTERS *exception )
     return EXCEPTION_CONTINUE_EXECUTION;
 }
 
-static void test_KiUserExceptionDispatcher(void)
+static void *WINAPI riscv64_exception_layout_hook( struct riscv64_exception_layout *stack )
 {
-    PVOID handler;
-    const DWORD code = 0xe0426464;
+    CONTEXT *ctx = &stack->context;
+    ULONG_PTR sp = ctx->Gpr.X[2];
+    TEB *teb = NtCurrentTeb();
 
-    ok( !!pKiUserExceptionDispatcher, "KiUserExceptionDispatcher export missing\\n" );
-    handler = AddVectoredExceptionHandler( 1, riscv64_exception_handler );
-    ok( !!handler, "AddVectoredExceptionHandler failed\\n" );
-    if (!handler) return;
-
-    riscv64_exception_hits = 0;
-    riscv64_exception_pc = 0;
-    riscv64_exception_code = code;
-    RaiseException( code, 0, 0, NULL );
-    ok( riscv64_exception_hits == 1, "expected one exception, got %ld\\n",
-        riscv64_exception_hits );
-    ok( !!riscv64_exception_pc, "exception context has null PC\\n" );
-    ok( RemoveVectoredExceptionHandler( handler ), "RemoveVectoredExceptionHandler failed\\n" );
+    ++riscv64_layout_hits;
+    ok( !((ULONG_PTR)stack & 15), "unaligned exception stack %p\n", stack );
+    ok( !((ULONG_PTR)ctx & 15), "unaligned exception CONTEXT %p\n", ctx );
+    ok( stack->record.ExceptionCode == EXCEPTION_BREAKPOINT,
+        "unexpected exception code %#lx\n", stack->record.ExceptionCode );
+    ok( stack->record.ExceptionAddress == code_mem, "exception address %p, expected %p\n",
+        stack->record.ExceptionAddress, code_mem );
+    ok( ctx->Pc == (ULONG_PTR)code_mem, "exception PC %p, expected %p\n",
+        (void *)(ULONG_PTR)ctx->Pc, code_mem );
+    ok( (ctx->ContextFlags & CONTEXT_CONTROL) == CONTEXT_CONTROL,
+        "missing control flags %#lx\n", ctx->ContextFlags );
+    ok( (ctx->ContextFlags & CONTEXT_INTEGER) == CONTEXT_INTEGER,
+        "missing integer flags %#lx\n", ctx->ContextFlags );
+    ok( sp >= (ULONG_PTR)teb->Tib.StackLimit && sp < (ULONG_PTR)teb->Tib.StackBase,
+        "saved SP %p outside Windows stack %p-%p\n", (void *)sp,
+        teb->Tib.StackLimit, teb->Tib.StackBase );
+    ok( !(sp & 15), "saved SP %#Ix is not 16-byte aligned\n", sp );
+    ok( ctx->Gpr.X[1] != 0, "saved return address is null\n" );
+    ok( ctx->Gpr.X[10] == RISCV64_TEST_ARGUMENT, "saved a0 %#Ix / %#Ix\n",
+        (ULONG_PTR)ctx->Gpr.X[10], RISCV64_TEST_ARGUMENT );
+    riscv64_unhook( &riscv64_exception_hook );
+    return pKiUserExceptionDispatcher;
 }
 
-static volatile LONG riscv64_apc_hits;
-static void CALLBACK riscv64_apc_callback( ULONG_PTR arg )
+static LONG WINAPI riscv64_breakpoint_continue( EXCEPTION_POINTERS *exception )
 {
-    if (arg == 0x6464) ++riscv64_apc_hits;
+    if (exception->ExceptionRecord->ExceptionCode != EXCEPTION_BREAKPOINT)
+        return EXCEPTION_CONTINUE_SEARCH;
+    ++riscv64_exception_hits;
+    ok( exception->ContextRecord->Pc == (ULONG_PTR)code_mem,
+        "breakpoint context PC %p / %p\n",
+        (void *)(ULONG_PTR)exception->ContextRecord->Pc, code_mem );
+    /* ebreak is a four-byte RISC-V instruction, unlike c.ebreak. */
+    exception->ContextRecord->Pc += 4;
+    return EXCEPTION_CONTINUE_EXECUTION;
+}
+
+static void test_KiUserExceptionDispatcher(void)
+{
+    static const DWORD code[] = { 0x00100073, 0x00008067 }; /* ebreak; ret */
+    void (WINAPI *func)(ULONG_PTR) = code_mem;
+    PVOID handler;
+    BOOL hooked;
+
+    if (!pKiUserExceptionDispatcher)
+    {
+        skip( "KiUserExceptionDispatcher is not exported\n" );
+        return;
+    }
+    memcpy( code_mem, code, sizeof(code) );
+    FlushInstructionCache( GetCurrentProcess(), code_mem, sizeof(code) );
+
+    hooked = riscv64_install_hook( &riscv64_exception_hook, pKiUserExceptionDispatcher,
+                                  riscv64_exception_layout_hook );
+    if (!hooked) win_skip( "cannot hook RISC-V64 exception dispatcher for exact frame check\n" );
+
+    handler = AddVectoredExceptionHandler( 1, riscv64_breakpoint_continue );
+    ok( !!handler, "AddVectoredExceptionHandler failed\n" );
+    if (handler)
+    {
+        riscv64_exception_hits = 0;
+        riscv64_layout_hits = 0;
+        func( RISCV64_TEST_ARGUMENT );
+        ok( riscv64_exception_hits == 1, "expected one breakpoint, got %ld\n",
+            riscv64_exception_hits );
+        if (hooked)
+            ok( riscv64_layout_hits == 1, "expected one dispatcher frame, got %ld\n",
+                riscv64_layout_hits );
+        ok( RemoveVectoredExceptionHandler( handler ), "RemoveVectoredExceptionHandler failed\n" );
+    }
+    riscv64_free_hook( &riscv64_exception_hook );
+}
+
+static volatile LONG riscv64_apc_hits, riscv64_apc_layout_hits;
+static struct riscv64_dispatcher_hook riscv64_apc_hook;
+static void CALLBACK riscv64_apc_callback( ULONG_PTR arg1, ULONG_PTR arg2, ULONG_PTR arg3 )
+{
+    ok( arg1 == 0x6464, "APC arg1 %#Ix\n", arg1 );
+    ok( arg2 == 0x5678, "APC arg2 %#Ix\n", arg2 );
+    ok( arg3 == 0xdeadbeef, "APC arg3 %#Ix\n", arg3 );
+    ++riscv64_apc_hits;
+}
+
+static void *WINAPI riscv64_apc_layout_hook( struct riscv64_apc_layout *stack )
+{
+    CONTEXT *ctx = &stack->context;
+    TEB *teb = NtCurrentTeb();
+
+    ++riscv64_apc_layout_hits;
+    ok( !((ULONG_PTR)stack & 15), "unaligned APC stack %p\n", stack );
+    ok( stack->func == riscv64_apc_callback, "wrong APC func %p / %p\n",
+        stack->func, riscv64_apc_callback );
+    ok( stack->args[0] == 0x6464 && stack->args[1] == 0x5678 &&
+        stack->args[2] == 0xdeadbeef, "wrong APC args %#Ix,%#Ix,%#Ix\n",
+        stack->args[0], stack->args[1], stack->args[2] );
+    ok( stack->alertable, "APC frame is not alertable\n" );
+    ok( !stack->reserved, "APC reserved field %#Ix\n", stack->reserved );
+    ok( (ctx->ContextFlags & CONTEXT_CONTROL) == CONTEXT_CONTROL,
+        "APC context missing control flags %#lx\n", ctx->ContextFlags );
+    ok( ctx->Pc && ctx->Gpr.X[2], "APC context PC %p SP %p\n",
+        (void *)(ULONG_PTR)ctx->Pc, (void *)(ULONG_PTR)ctx->Gpr.X[2] );
+    ok( !(ctx->Gpr.X[2] & 15), "APC saved SP %#Ix is unaligned\n",
+        (ULONG_PTR)ctx->Gpr.X[2] );
+    ok( ctx->Gpr.X[2] >= (ULONG_PTR)teb->Tib.StackLimit &&
+        ctx->Gpr.X[2] < (ULONG_PTR)teb->Tib.StackBase,
+        "APC saved SP outside thread stack\n" );
+
+    riscv64_unhook( &riscv64_apc_hook );
+    return pKiUserApcDispatcher;
 }
 
 static void test_KiUserApcDispatcher(void)
 {
+    NTSTATUS status;
     DWORD result;
+    BOOL hooked;
 
-    ok( !!pKiUserApcDispatcher, "KiUserApcDispatcher export missing\\n" );
+    if (!pKiUserApcDispatcher || !pNtQueueApcThread)
+    {
+        skip( "KiUserApcDispatcher or NtQueueApcThread unavailable\n" );
+        return;
+    }
+    hooked = riscv64_install_hook( &riscv64_apc_hook, pKiUserApcDispatcher,
+                                  riscv64_apc_layout_hook );
+    if (!hooked) win_skip( "cannot hook RISC-V64 APC dispatcher for exact frame check\n" );
+
     riscv64_apc_hits = 0;
-    result = QueueUserAPC( riscv64_apc_callback, GetCurrentThread(), 0x6464 );
-    ok( !!result, "QueueUserAPC failed, error %lu\\n", GetLastError() );
-    if (!result) return;
-    result = SleepEx( 1000, TRUE );
-    ok( result == WAIT_IO_COMPLETION, "SleepEx returned %#lx\\n", result );
-    ok( riscv64_apc_hits == 1, "expected one APC, got %ld\\n", riscv64_apc_hits );
+    riscv64_apc_layout_hits = 0;
+    status = pNtQueueApcThread( GetCurrentThread(), riscv64_apc_callback,
+                                0x6464, 0x5678, 0xdeadbeef );
+    ok( !status, "NtQueueApcThread returned %#lx\n", status );
+    if (!status)
+    {
+        result = SleepEx( 1000, TRUE );
+        ok( result == WAIT_IO_COMPLETION, "SleepEx returned %#lx\n", result );
+        ok( riscv64_apc_hits == 1, "expected one APC, got %ld\n", riscv64_apc_hits );
+        if (hooked)
+            ok( riscv64_apc_layout_hits == 1, "expected one APC frame, got %ld\n",
+                riscv64_apc_layout_hits );
+    }
+    riscv64_free_hook( &riscv64_apc_hook );
+}
+
+static volatile LONG riscv64_callback_layout_hits;
+static struct riscv64_dispatcher_hook riscv64_callback_hook;
+
+static void *WINAPI riscv64_callback_layout_hook( struct riscv64_callback_layout *stack )
+{
+    ULONG_PTR redzone, args_end, base = (ULONG_PTR)NtCurrentTeb()->Tib.StackBase;
+    void *module = NULL, *win32u = GetModuleHandleA( "win32u.dll" );
+
+    ++riscv64_callback_layout_hits;
+    ok( !((ULONG_PTR)stack & 15), "unaligned callback stack %p\n", stack );
+    ok( stack->args == stack->args_data, "callback args %p / %p\n",
+        stack->args, stack->args_data );
+    ok( stack->len < 0x100000, "unexpected callback argument length %lu\n", stack->len );
+    args_end = (ULONG_PTR)stack->args_data + stack->len;
+    redzone = (ULONG_PTR)stack->sp - args_end;
+    ok( redzone >= 16 && redzone <= 31, "invalid callback redzone %#Ix\n", redzone );
+    ok( stack->ra && stack->pc, "callback RA %p PC %p\n",
+        (void *)(ULONG_PTR)stack->ra, (void *)(ULONG_PTR)stack->pc );
+    ok( stack->sp >= (ULONG_PTR)NtCurrentTeb()->Tib.StackLimit && stack->sp <= base,
+        "callback saved SP outside thread stack: %p\n", (void *)(ULONG_PTR)stack->sp );
+    ok( NtCurrentTeb()->Peb->KernelCallbackTable != NULL,
+        "missing kernel callback table\n" );
+    if (pRtlPcToFileHeader && win32u && stack->pc)
+    {
+        pRtlPcToFileHeader( (void *)(ULONG_PTR)stack->pc, &module );
+        ok( module == win32u, "callback PC module %p, expected win32u %p\n", module, win32u );
+    }
+
+    riscv64_unhook( &riscv64_callback_hook );
+    return pKiUserCallbackDispatcher;
 }
 
 static void test_KiUserCallbackDispatcher(void)
 {
-    /* The existing test_user_callback() exercises the actual user-mode
-     * callback round-trip; here verify the dispatcher is exported. */
-    ok( !!pKiUserCallbackDispatcher, "KiUserCallbackDispatcher export missing\\n" );
+    HWND hwnd;
+    BOOL hooked;
+
+    if (!pKiUserCallbackDispatcher)
+    {
+        skip( "KiUserCallbackDispatcher is not exported\n" );
+        return;
+    }
+    hooked = riscv64_install_hook( &riscv64_callback_hook, pKiUserCallbackDispatcher,
+                                  riscv64_callback_layout_hook );
+    if (!hooked)
+    {
+        win_skip( "cannot hook RISC-V64 callback dispatcher for exact frame check\n" );
+        return;
+    }
+    riscv64_callback_layout_hits = 0;
+    hwnd = CreateWindowA( "Static", "riscv64 callback test", 0, 0, 0, 0, 0,
+                          0, 0, 0, 0, 0 );
+    if (hwnd) DestroyWindow( hwnd );
+    ok( riscv64_callback_layout_hits == 1, "expected callback dispatcher entry, got %ld\n",
+        riscv64_callback_layout_hits );
+    riscv64_free_hook( &riscv64_callback_hook );
 }
 
 static void test_rtlraiseexception(void)
