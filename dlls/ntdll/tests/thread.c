@@ -617,6 +617,43 @@ static void test_riscv64_thread_smoke(void)
     CloseHandle( thread );
 }
 
+/* Check suspended startup separately from register-context manipulation. */
+static void test_riscv64_thread_startup(void)
+{
+    DWORD ret, exit_code = 0;
+    HANDLE thread = CreateThread( NULL, 0, rv64_thread_smoke_proc, NULL, CREATE_SUSPENDED, NULL );
+
+    rv64_thread_checkpoint( "startup CreateThread returned" );
+    ok( !!thread, "Suspended CreateThread failed: %lu\n", GetLastError() );
+    if (!thread) return;
+
+    rv64_thread_checkpoint( "startup first wait enter" );
+    ret = WaitForSingleObject( thread, 100 );
+    rv64_thread_checkpoint( "startup first wait returned" );
+    ok( ret == WAIT_TIMEOUT, "Suspended thread ran before resume: %#lx\n", ret );
+
+    rv64_thread_checkpoint( "startup ResumeThread enter" );
+    ret = ResumeThread( thread );
+    rv64_thread_checkpoint( "startup ResumeThread returned" );
+    ok( ret == 1, "ResumeThread previous suspend count %#lx\n", ret );
+
+    rv64_thread_checkpoint( "startup completion wait enter" );
+    if (ret != ~0u)
+    {
+        DWORD wait = WaitForSingleObject( thread, 5000 );
+        rv64_thread_checkpoint( "startup completion wait returned" );
+        ok( wait == WAIT_OBJECT_0, "Resumed thread wait returned %#lx\n", wait );
+        if (wait == WAIT_OBJECT_0)
+        {
+            ok( GetExitCodeThread( thread, &exit_code ), "GetExitCodeThread failed: %lu\n", GetLastError() );
+            ok( exit_code == 0x1234abcd, "Resumed thread exit code %#lx\n", exit_code );
+        }
+        else if (wait == WAIT_TIMEOUT) TerminateThread( thread, 1 );
+    }
+    else TerminateThread( thread, 1 );
+    CloseHandle( thread );
+}
+
 struct riscv64_context_test
 {
     LONG ready, stop;
@@ -820,6 +857,7 @@ START_TEST(thread)
                 return;
             }
             if (!strcmp( selection, "smoke" )) test_riscv64_thread_smoke();
+            else if (!strcmp( selection, "startup" )) test_riscv64_thread_startup();
             else if (!strcmp( selection, "context" )) test_riscv64_thread_context();
             else if (!strcmp( selection, "hidden" )) test_dbg_hidden_thread_creation();
             else if (!strcmp( selection, "teb" )) test_unique_teb();
@@ -836,6 +874,9 @@ START_TEST(thread)
     rv64_thread_checkpoint( "smoke group enter" );
     test_riscv64_thread_smoke();
     rv64_thread_checkpoint( "smoke group returned" );
+    rv64_thread_checkpoint( "startup group enter" );
+    test_riscv64_thread_startup();
+    rv64_thread_checkpoint( "startup group returned" );
     rv64_thread_checkpoint( "context group enter" );
     test_riscv64_thread_context();
     rv64_thread_checkpoint( "context group returned" );
