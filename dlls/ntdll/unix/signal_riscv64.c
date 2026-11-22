@@ -183,8 +183,10 @@ NTSTATUS WINAPI NtGetContextThread( HANDLE handle, CONTEXT *context )
 {
     struct thread_data *data = get_thread_data();
     struct syscall_frame *frame = get_syscall_frame( data );
-    DWORD flags = context->ContextFlags & ~CONTEXT_RISCV64;
+    DWORD flags;
 
+    if (!context) return STATUS_INVALID_PARAMETER;
+    flags = context->ContextFlags & ~CONTEXT_RISCV64;
     if ((context->ContextFlags & CONTEXT_RISCV64) != CONTEXT_RISCV64)
         return STATUS_INVALID_PARAMETER;
     if (flags & ~(CONTEXT_FULL | CONTEXT_EXCEPTION_REQUEST | CONTEXT_EXCEPTION_REPORTING |
@@ -205,6 +207,10 @@ NTSTATUS WINAPI NtGetContextThread( HANDLE handle, CONTEXT *context )
     {
         context->Gpr.X[0] = 0;
         context->Gpr.X[1] = frame->ra;
+        /* Keep the integer register image complete even if the caller
+         * did not request CONTEXT_CONTROL.  SP itself is only writable
+         * through CONTEXT_CONTROL, as on the other native ports. */
+        context->Gpr.X[2] = frame->sp;
         memcpy( context->Gpr.X + 3, frame->x + 3, 29 * sizeof(frame->x[0]) );
     }
 
