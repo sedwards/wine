@@ -13345,6 +13345,10 @@ static void *WINAPI riscv64_callback_layout_hook( struct riscv64_callback_layout
         "callback saved SP outside thread stack: %p\n", (void *)(ULONG_PTR)stack->sp );
     ok( NtCurrentTeb()->Peb->KernelCallbackTable != NULL,
         "missing kernel callback table\n" );
+    ok( stack->id < 128, "invalid callback index %lu\n", stack->id );
+    if (stack->id < 128 && NtCurrentTeb()->Peb->KernelCallbackTable)
+        ok( !!NtCurrentTeb()->Peb->KernelCallbackTable[stack->id],
+            "callback table entry %lu is null\n", stack->id );
     if (pRtlPcToFileHeader && win32u && stack->pc)
     {
         pRtlPcToFileHeader( (void *)(ULONG_PTR)stack->pc, &module );
@@ -13358,7 +13362,12 @@ static void *WINAPI riscv64_callback_layout_hook( struct riscv64_callback_layout
 static void test_KiUserCallbackDispatcher(void)
 {
     HWND hwnd;
+    NTSTATUS status;
     BOOL hooked;
+
+    status = NtCallbackReturn( NULL, 0, STATUS_SUCCESS );
+    ok( status == STATUS_NO_CALLBACK_ACTIVE,
+        "NtCallbackReturn without an active callback returned %#lx\n", status );
 
     if (!pKiUserCallbackDispatcher)
     {
@@ -13471,8 +13480,8 @@ static void test_debugger( DWORD cont_status, BOOL with_WaitForDebugEventEx )
     STARTUPINFOA si = { 0 };
     PROCESS_INFORMATION pi;
     DEBUG_EVENT event;
-    CONTEXT context;
-    DWORD result, code, continuation, instruction, exit_code = ~0u;
+    CONTEXT context, verify;
+    DWORD code, continuation, instruction, exit_code = ~0u;
     BOOL ret, handshake = FALSE, hit_breakpoint = FALSE, exited = FALSE;
     unsigned int i;
     SIZE_T bytes;
@@ -13554,6 +13563,21 @@ static void test_debugger( DWORD cont_status, BOOL with_WaitForDebugEventEx )
                     context.Gpr.X[10] = RISCV64_DEBUG_RESUME_VALUE;
                     status = pNtSetContextThread( pi.hThread, &context );
                     ok( !status, "NtSetContextThread(debuggee) returned %#lx\n", status );
+                    if (!status)
+                    {
+                        memset( &verify, 0, sizeof(verify) );
+                        verify.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+                        status = pNtGetContextThread( pi.hThread, &verify );
+                        ok( !status, "NtGetContextThread(after set) returned %#lx\n", status );
+                        if (!status)
+                        {
+                            ok( verify.Pc == context.Pc, "restored PC %p / %p\n",
+                                (void *)(ULONG_PTR)verify.Pc, (void *)(ULONG_PTR)context.Pc );
+                            ok( verify.Gpr.X[10] == RISCV64_DEBUG_RESUME_VALUE,
+                                "restored a0 %#Ix / %#Ix\n",
+                                (ULONG_PTR)verify.Gpr.X[10], RISCV64_DEBUG_RESUME_VALUE );
+                        }
+                    }
                 }
                 continuation = cont_status;
             }
