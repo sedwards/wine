@@ -741,6 +741,18 @@ ULONG WINAPI RtlWalkFrameChain( void **buffer, ULONG count, ULONG flags )
 }
 __ASM_GLOBAL_FUNC( __C_specific_handler, "li a0, 1\n\tret" )
 
+/* A loader failure can leave its NTSTATUS in the context's entry-point
+ * register.  Never reinterpret that value as an application callback.
+ * Both sign-extended and zero-extended 32-bit failure values are possible
+ * at the Winelib/PE boundary on RV64. */
+static BOOL riscv64_thread_entry_is_error( ULONG64 value )
+{
+    ULONG status = (ULONG)value;
+
+    return (status & 0xc0000000) == 0xc0000000 &&
+           (value == (ULONG64)status || value == (ULONG64)(LONG)status);
+}
+
 /* Thread startup. */
 void WINAPI LdrInitializeThunk( CONTEXT *context, ULONG_PTR unk2,
                                 ULONG_PTR unk3, ULONG_PTR unk4 )
@@ -762,6 +774,19 @@ void WINAPI LdrInitializeThunk( CONTEXT *context, ULONG_PTR unk2,
           (void *)(ULONG_PTR)context->Gpr.X[3],
           (unsigned long)context->ContextFlags );
     loader_init( context, (void **)&context->Gpr.X[10] );
+
+    /* loader_init() may replace the thread entry with an NTSTATUS when
+     * initialization fails.  Do not continue to RtlUserThreadStart with
+     * STATUS_ACCESS_VIOLATION (or another failed status) as a function
+     * pointer: that produces a misleading secondary SIGSEGV. */
+    if (riscv64_thread_entry_is_error( context->Gpr.X[10] ))
+    {
+        NTSTATUS failure = (NTSTATUS)(ULONG)context->Gpr.X[10];
+        ERR( "RV64 loader failed: entry register contains status %#lx, arg=%p, pc=%p; terminating thread\n",
+             (unsigned long)(ULONG)failure, (void *)(ULONG_PTR)context->Gpr.X[11],
+             (void *)(ULONG_PTR)context->Pc );
+        RtlExitUserThread( failure );
+    }
 
     WARN( "RISCV64 LdrInitializeThunk: after loader_init pc=%p sp=%p ra=%p\n",
           (void *)(ULONG_PTR)context->Pc,
@@ -800,6 +825,13 @@ void WINAPI RtlUserThreadStart( PRTL_THREAD_START_ROUTINE entry, void *arg )
               teb->Tib.Self, teb->Tib.StackBase, teb->Tib.StackLimit, teb->Peb );
     else
         ERR( "RV64 thread start has NULL TEB; cannot safely access thread environment\n" );
+    if (riscv64_thread_entry_is_error( (ULONG64)(ULONG_PTR)entry ))
+    {
+        NTSTATUS failure = (NTSTATUS)(ULONG)(ULONG_PTR)entry;
+        ERR( "RV64 thread startup rejected NTSTATUS %#lx as entry address; arg=%p thunk=%p\n",
+             (unsigned long)(ULONG)failure, arg, thunk );
+        RtlExitUserThread( failure );
+    }
     if (!thunk || !entry)
     {
         ERR( "RV64 invalid thread startup: entry=%p thunk=%p\n", entry, thunk );
