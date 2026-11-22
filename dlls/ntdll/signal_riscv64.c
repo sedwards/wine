@@ -411,7 +411,7 @@ static void __attribute__((used,noreturn)) riscv64_dispatch_callback( struct ris
 {
     NTSTATUS (WINAPI *callback)( void *, ULONG );
     NTSTATUS status;
-    void **table = NtCurrentTeb()->Peb->KernelCallbackTable;
+    NTSTATUS (WINAPI **table)( void *, ULONG ) = NtCurrentTeb()->Peb->KernelCallbackTable;
 
     if (!table) RtlRaiseStatus( STATUS_INVALID_PARAMETER );
     callback = table[stack->id];
