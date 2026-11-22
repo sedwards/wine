@@ -671,6 +671,23 @@ static void test_riscv64_thread_context(void)
         ok( context.Gpr.X[0] == 0, "x0 is not zero\n" );
         ok( context.Gpr.X[18] == 0x12345678, "Unexpected s2 %s\n",
             wine_dbgstr_longlong(context.Gpr.X[18]) );
+        {
+            CONTEXT integer_context;
+            memset( &integer_context, 0, sizeof(integer_context) );
+            integer_context.ContextFlags = CONTEXT_INTEGER;
+            rv64_thread_checkpoint( "integer-only NtGetContextThread enter" );
+            status = NtGetContextThread( thread, &integer_context );
+            rv64_thread_checkpoint( "integer-only NtGetContextThread returned" );
+            ok( !status, "Integer-only NtGetContextThread returned %#lx\n", status );
+            if (!status)
+            {
+                ok( !integer_context.Gpr.X[0], "x0 is not zero\n" );
+                ok( integer_context.Gpr.X[2] == context.Gpr.X[2],
+                    "Integer-only query lost SP %s / %s\n",
+                    wine_dbgstr_longlong(integer_context.Gpr.X[2]),
+                    wine_dbgstr_longlong(context.Gpr.X[2]) );
+            }
+        }
         ok( context.F[8].Q == 0x12345678, "Unexpected fs0 %s\n",
             wine_dbgstr_longlong(context.F[8].Q) );
         updated = context;
