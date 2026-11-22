@@ -106,22 +106,22 @@ static void test_linux_signal_translation(void)
 {
     PVOID handler = AddVectoredExceptionHandler( 1, translation_handler );
 
-    ok( !!handler, "failed to install translation handler\\n" );
+    ok( !!handler, "failed to install translation handler\n" );
     if (!handler) return;
 
     translation_mode = 1;
-    __asm__ volatile( "xor %%rax, %%rax\\n\\t.byte 0xc6,0x00,0x01" : : : "rax", "memory" );
+    __asm__ volatile( "xor %%rax, %%rax\n\t.byte 0xc6,0x00,0x01" : : : "rax", "memory" );
     translation_mode = 0;
-    ok( translated_segv_count == 1, "expected one translated SIGSEGV, got %u\\n",
+    ok( translated_segv_count == 1, "expected one translated SIGSEGV, got %u\n",
         translated_segv_count );
 
     translation_mode = 2;
     __asm__ volatile( "int3" ::: "memory" );
     translation_mode = 0;
-    ok( translated_trap_count == 1, "expected one translated SIGTRAP, got %u\\n",
+    ok( translated_trap_count == 1, "expected one translated SIGTRAP, got %u\n",
         translated_trap_count );
 
-    ok( RemoveVectoredExceptionHandler( handler ), "failed to remove translation handler\\n" );
+    ok( RemoveVectoredExceptionHandler( handler ), "failed to remove translation handler\n" );
 }
 #endif
 
