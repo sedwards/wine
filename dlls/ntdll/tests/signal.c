@@ -8,6 +8,9 @@
  * License as published by the Free Software Foundation; either
  * version 2.1 of the License, or (at your option) any later version.
  */
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 #include <stdarg.h>
 #include <string.h>
 #include "ntstatus.h"
@@ -19,7 +22,6 @@
 #include "wine/test.h"
 
 #if defined(__linux__) && defined(__x86_64__) && !defined(__WINE_PE_BUILD)
-#define _GNU_SOURCE
 #include <signal.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
