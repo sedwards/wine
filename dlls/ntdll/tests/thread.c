@@ -585,6 +585,38 @@ static void rv64_thread_checkpoint( const char *phase )
     fflush( stderr );
 }
 
+/* Basic thread creation and join must work before suspended-context tests
+ * can meaningfully diagnose register restoration. */
+static DWORD WINAPI rv64_thread_smoke_proc( void *arg )
+{
+    return 0x1234abcd;
+}
+
+static void test_riscv64_thread_smoke(void)
+{
+    DWORD ret, exit_code = 0;
+    HANDLE thread;
+
+    rv64_thread_checkpoint( "smoke CreateThread enter" );
+    thread = CreateThread( NULL, 0, rv64_thread_smoke_proc, NULL, 0, NULL );
+    rv64_thread_checkpoint( "smoke CreateThread returned" );
+    ok( !!thread, "Smoke CreateThread failed: %lu\n", GetLastError() );
+    if (!thread) return;
+
+    rv64_thread_checkpoint( "smoke wait enter" );
+    ret = WaitForSingleObject( thread, 5000 );
+    rv64_thread_checkpoint( "smoke wait returned" );
+    ok( ret == WAIT_OBJECT_0, "Smoke thread wait returned %#lx\n", ret );
+    if (ret == WAIT_OBJECT_0)
+    {
+        ok( GetExitCodeThread( thread, &exit_code ), "Smoke GetExitCodeThread failed: %lu\n",
+            GetLastError() );
+        ok( exit_code == 0x1234abcd, "Smoke thread exit code %#lx\n", exit_code );
+    }
+    else if (ret == WAIT_TIMEOUT) TerminateThread( thread, 1 );
+    CloseHandle( thread );
+}
+
 struct riscv64_context_test
 {
     LONG ready, stop;
@@ -775,6 +807,7 @@ START_TEST(thread)
         DWORD length = GetEnvironmentVariableA( "WINE_RISCV_THREAD_SUITE", selection, sizeof(selection) );
         if (length && length < sizeof(selection))
         {
+            if (!strcmp( selection, "smoke" )) test_riscv64_thread_smoke();
             if (!strcmp( selection, "context" )) test_riscv64_thread_context();
             else if (!strcmp( selection, "hidden" )) test_dbg_hidden_thread_creation();
             else if (!strcmp( selection, "teb" )) test_unique_teb();
@@ -788,6 +821,9 @@ START_TEST(thread)
             return;
         }
     }
+    rv64_thread_checkpoint( "smoke group enter" );
+    test_riscv64_thread_smoke();
+    rv64_thread_checkpoint( "smoke group returned" );
     rv64_thread_checkpoint( "context group enter" );
     test_riscv64_thread_context();
     rv64_thread_checkpoint( "context group returned" );
