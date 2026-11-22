@@ -589,6 +589,7 @@ static void rv64_thread_checkpoint( const char *phase )
  * can meaningfully diagnose register restoration. */
 static DWORD WINAPI rv64_thread_smoke_proc( void *arg )
 {
+    rv64_thread_checkpoint( "smoke worker entered" );
     return 0x1234abcd;
 }
 
@@ -609,6 +610,7 @@ static void test_riscv64_thread_smoke(void)
     ok( ret == WAIT_OBJECT_0, "Smoke thread wait returned %#lx\n", ret );
     if (ret == WAIT_OBJECT_0)
     {
+        rv64_thread_checkpoint( "smoke worker completed" );
         ok( GetExitCodeThread( thread, &exit_code ), "Smoke GetExitCodeThread failed: %lu\n",
             GetLastError() );
         ok( exit_code == 0x1234abcd, "Smoke thread exit code %#lx\n", exit_code );
