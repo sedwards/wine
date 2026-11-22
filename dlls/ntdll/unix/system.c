@@ -666,6 +666,33 @@ static void set_feature_bitmap( ULONG flag, BOOLEAN enabled )
 }
 #endif
 
+#if defined(__riscv) && __riscv_xlen == 64
+/* ARM's CPU implementer/part fields do not describe RISC-V CPUs.
+ * Use the Linux uarch string for the native CPU name, without mapping
+ * the PE machine identifier to a Windows PROCESSOR_ARCHITECTURE value. */
+static void init_cpu_model(void)
+{
+    FILE *f;
+    char line[512];
+    char *value, *end;
+
+    strcpy( cpu_vendor, "RISC-V" );
+    strcpy( cpu_name, "RISC-V64" );
+
+    if (!(f = fopen( "/proc/cpuinfo", "r" ))) return;
+    while (fgets( line, sizeof(line), f ))
+    {
+        if (strncmp( line, "uarch", 5 ) || (line[5] != ':' && line[5] != ' ' && line[5] != '\t'))
+            continue;
+        if (!(value = strchr( line, ':' ))) continue;
+        while (*++value == ' ' || *value == '\t') ;
+        if ((end = strchr( value, '\n' ))) *end = 0;
+        if (*value) snprintf( cpu_name, sizeof(cpu_name), "%s", value );
+        break;
+    }
+    fclose( f );
+}
+#else
 static void init_cpu_model(void)
 {
     unsigned int implementer = 0x41, part = 0, variant = 0, revision = 0;
@@ -753,6 +780,8 @@ static void init_cpu_model(void)
     set_feature_bitmap( PF_ARM_SME_FA64_INSTRUCTIONS_AVAILABLE,   HAS_FEATURE( 2, HWCAP2_SME_FA64, "FEAT_SME_FA64" ) );
 #endif
 }
+
+#endif /* RISC-V64 CPU model */
 
 static ULONGLONG get_cpu_features(void)
 {
