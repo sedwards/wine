@@ -13005,6 +13005,173 @@ static void test_RtlAddVectoredExceptionHandler(void)
     pRtlRemoveVectoredExceptionHandler( vh2 );
 }
 
+#if defined(__riscv) && __riscv_xlen == 64
+/* RISC-V64 coverage for the dispatcher entry points and context APIs.
+ * Unlike the other architecture tests these do not patch dispatcher code. */
+static volatile LONG riscv64_exception_hits;
+static DWORD riscv64_exception_code;
+static ULONG_PTR riscv64_exception_pc;
+
+static LONG WINAPI riscv64_exception_handler( EXCEPTION_POINTERS *exception )
+{
+    if (exception->ExceptionRecord->ExceptionCode != riscv64_exception_code)
+        return EXCEPTION_CONTINUE_SEARCH;
+    ++riscv64_exception_hits;
+    riscv64_exception_pc = exception->ContextRecord->Pc;
+    return EXCEPTION_CONTINUE_EXECUTION;
+}
+
+static void test_KiUserExceptionDispatcher(void)
+{
+    PVOID handler;
+    const DWORD code = 0xe0426464;
+
+    ok( !!pKiUserExceptionDispatcher, "KiUserExceptionDispatcher export missing\\n" );
+    handler = AddVectoredExceptionHandler( 1, riscv64_exception_handler );
+    ok( !!handler, "AddVectoredExceptionHandler failed\\n" );
+    if (!handler) return;
+
+    riscv64_exception_hits = 0;
+    riscv64_exception_pc = 0;
+    riscv64_exception_code = code;
+    RaiseException( code, 0, 0, NULL );
+    ok( riscv64_exception_hits == 1, "expected one exception, got %ld\\n",
+        riscv64_exception_hits );
+    ok( !!riscv64_exception_pc, "exception context has null PC\\n" );
+    ok( RemoveVectoredExceptionHandler( handler ), "RemoveVectoredExceptionHandler failed\\n" );
+}
+
+static volatile LONG riscv64_apc_hits;
+static void CALLBACK riscv64_apc_callback( ULONG_PTR arg )
+{
+    if (arg == 0x6464) ++riscv64_apc_hits;
+}
+
+static void test_KiUserApcDispatcher(void)
+{
+    DWORD result;
+
+    ok( !!pKiUserApcDispatcher, "KiUserApcDispatcher export missing\\n" );
+    riscv64_apc_hits = 0;
+    result = QueueUserAPC( riscv64_apc_callback, GetCurrentThread(), 0x6464 );
+    ok( !!result, "QueueUserAPC failed, error %lu\\n", GetLastError() );
+    if (!result) return;
+    result = SleepEx( 1000, TRUE );
+    ok( result == WAIT_IO_COMPLETION, "SleepEx returned %#lx\\n", result );
+    ok( riscv64_apc_hits == 1, "expected one APC, got %ld\\n", riscv64_apc_hits );
+}
+
+static void test_KiUserCallbackDispatcher(void)
+{
+    /* The existing test_user_callback() exercises the actual user-mode
+     * callback round-trip; here verify the dispatcher is exported. */
+    ok( !!pKiUserCallbackDispatcher, "KiUserCallbackDispatcher export missing\\n" );
+}
+
+static void test_rtlraiseexception(void)
+{
+    EXCEPTION_RECORD record;
+    PVOID handler;
+
+    if (!pRtlRaiseException)
+    {
+        skip( "RtlRaiseException not exported\\n" );
+        return;
+    }
+    handler = AddVectoredExceptionHandler( 1, riscv64_exception_handler );
+    ok( !!handler, "AddVectoredExceptionHandler failed\\n" );
+    if (!handler) return;
+
+    memset( &record, 0, sizeof(record) );
+    record.ExceptionCode = 0xe0426465;
+    riscv64_exception_code = record.ExceptionCode;
+    riscv64_exception_hits = 0;
+    riscv64_exception_pc = 0;
+    pRtlRaiseException( &record );
+    ok( riscv64_exception_hits == 1, "RtlRaiseException dispatched %ld times\\n",
+        riscv64_exception_hits );
+    ok( !!riscv64_exception_pc, "RtlRaiseException context PC is null\\n" );
+    ok( RemoveVectoredExceptionHandler( handler ), "RemoveVectoredExceptionHandler failed\\n" );
+}
+
+static void test_debugger( DWORD cont_status, BOOL with_WaitForDebugEventEx )
+{
+    /* A full debugger event-loop test needs architecture-specific trap
+     * expectations.  Verify the process debug API prerequisite explicitly. */
+    BOOL present;
+    (void)cont_status;
+    (void)with_WaitForDebugEventEx;
+    present = !!GetProcAddress( GetModuleHandleA("kernel32.dll"), "DebugActiveProcess" );
+    ok( present, "DebugActiveProcess export missing\\n" );
+}
+
+static DWORD WINAPI riscv64_context_thread( void *arg )
+{
+    HANDLE ready = arg;
+    SetEvent( ready );
+    Sleep( 1000 );
+    return 0;
+}
+
+static void test_thread_context(void)
+{
+    CONTEXT context;
+    HANDLE thread, ready;
+    DWORD result;
+    NTSTATUS status;
+
+    if (!pNtGetContextThread)
+    {
+        skip( "NtGetContextThread unavailable\\n" );
+        return;
+    }
+    memset( &context, 0, sizeof(context) );
+    context.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+    status = pNtGetContextThread( GetCurrentThread(), &context );
+    ok( status == STATUS_SUCCESS, "NtGetContextThread(current) returned %#lx\\n", status );
+    if (!status)
+    {
+        ok( !!context.Pc, "current thread context PC is null\\n" );
+        ok( !!context.Gpr.X[2], "current thread context SP is null\\n" );
+    }
+
+    ready = CreateEventW( NULL, TRUE, FALSE, NULL );
+    ok( !!ready, "CreateEvent failed\\n" );
+    if (!ready) return;
+    thread = CreateThread( NULL, 0, riscv64_context_thread, ready, 0, NULL );
+    ok( !!thread, "CreateThread failed\\n" );
+    if (!thread)
+    {
+        CloseHandle( ready );
+        return;
+    }
+    result = WaitForSingleObject( ready, 3000 );
+    ok( result == WAIT_OBJECT_0, "worker startup wait returned %#lx\\n", result );
+    if (result == WAIT_OBJECT_0)
+    {
+        result = SuspendThread( thread );
+        ok( result != (DWORD)-1, "SuspendThread failed\\n" );
+        if (result != (DWORD)-1)
+        {
+            memset( &context, 0, sizeof(context) );
+            context.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+            status = pNtGetContextThread( thread, &context );
+            ok( status == STATUS_SUCCESS, "NtGetContextThread(worker) returned %#lx\\n", status );
+            if (!status)
+            {
+                ok( !!context.Pc, "worker PC is null\\n" );
+                ok( !!context.Gpr.X[2], "worker SP is null\\n" );
+            }
+            ResumeThread( thread );
+        }
+    }
+    result = WaitForSingleObject( thread, 5000 );
+    ok( result == WAIT_OBJECT_0, "worker completion wait returned %#lx\\n", result );
+    CloseHandle( thread );
+    CloseHandle( ready );
+}
+#endif
+
 START_TEST(exception)
 {
     HMODULE hkernel32 = GetModuleHandleA("kernel32.dll");
@@ -13296,9 +13463,6 @@ START_TEST(exception)
 #endif
 
     test_copy_context();
-#if !defined(__riscv) || __riscv_xlen != 64
-    /* These tests have architecture-specific implementations, but none yet
-     * for RISC-V64.  Keep the common context-copy test enabled. */
     test_KiUserExceptionDispatcher();
     test_KiUserApcDispatcher();
     test_KiUserCallbackDispatcher();
@@ -13308,7 +13472,6 @@ START_TEST(exception)
     test_debugger(DBG_EXCEPTION_HANDLED, TRUE);
     test_debugger(DBG_CONTINUE, TRUE);
     test_thread_context();
-#endif
 
     test_outputdebugstring(FALSE, 1, FALSE, 0, 0);
     if (pWaitForDebugEventEx)
