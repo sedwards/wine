@@ -13390,15 +13390,189 @@ static void test_rtlraiseexception(void)
     ok( RemoveVectoredExceptionHandler( handler ), "RemoveVectoredExceptionHandler failed\\n" );
 }
 
+/*
+ * Debugger parity with the x86, x86-64 and ARM64 tests: create a debuggee,
+ * observe a first-chance exception, read/modify its RISC-V64 CONTEXT, then
+ * resume it with either DBG_CONTINUE or DBG_EXCEPTION_NOT_HANDLED.
+ */
+#define RISCV64_DEBUG_MARKER 0xe0426470
+#define RISCV64_DEBUG_RESUME_VALUE ((ULONG_PTR)0x6464aabbccdd1122ull)
+static volatile LONG riscv64_debuggee_veh_hits;
+
+static LONG WINAPI riscv64_debuggee_veh( EXCEPTION_POINTERS *exception )
+{
+    CONTEXT *ctx = exception->ContextRecord;
+
+    if (exception->ExceptionRecord->ExceptionCode != EXCEPTION_BREAKPOINT)
+        return EXCEPTION_CONTINUE_SEARCH;
+    ++riscv64_debuggee_veh_hits;
+    ok( !!ctx->Pc && !!ctx->Gpr.X[2], "debuggee VEH PC/SP missing\n" );
+    ctx->Pc += 4; /* ebreak, not c.ebreak */
+    ctx->Gpr.X[10] = RISCV64_DEBUG_RESUME_VALUE;
+    return EXCEPTION_CONTINUE_EXECUTION;
+}
+
+static void riscv64_debuggee( DWORD cont_status )
+{
+    PVOID handler;
+    ULONG_PTR value = 0;
+
+    if (!NtCurrentTeb()->Peb->BeingDebugged)
+    {
+        ok( 0, "RISC-V debuggee was not launched under a debugger\n" );
+        ExitProcess( 1 );
+    }
+
+    handler = AddVectoredExceptionHandler( 1, riscv64_debuggee_veh );
+    if (!handler) ExitProcess( 2 );
+
+    /* A distinct, first-chance exception marks the breakpoint that follows.
+     * This avoids confusing it with ntdll's initial debugger breakpoint. */
+    RaiseException( RISCV64_DEBUG_MARKER, 0, 0, NULL );
+
+    __asm__ volatile( ".4byte 0x00100073\n\tmv %0, a0"
+                      : "=r"(value) : : "memory" );
+
+    ok( value == RISCV64_DEBUG_RESUME_VALUE, "debugger-resumed a0 %#Ix / %#Ix\n",
+        value, RISCV64_DEBUG_RESUME_VALUE );
+    ok( riscv64_debuggee_veh_hits == (cont_status == DBG_EXCEPTION_NOT_HANDLED),
+        "debuggee VEH calls %ld for continuation status %#lx\n",
+        riscv64_debuggee_veh_hits, cont_status );
+
+    RemoveVectoredExceptionHandler( handler );
+    ExitProcess( value == RISCV64_DEBUG_RESUME_VALUE &&
+                 riscv64_debuggee_veh_hits == (cont_status == DBG_EXCEPTION_NOT_HANDLED) ? 0 : 3 );
+}
+
 static void test_debugger( DWORD cont_status, BOOL with_WaitForDebugEventEx )
 {
-    /* A full debugger event-loop test needs architecture-specific trap
-     * expectations.  Verify the process debug API prerequisite explicitly. */
-    BOOL present;
-    (void)cont_status;
-    (void)with_WaitForDebugEventEx;
-    present = !!GetProcAddress( GetModuleHandleA("kernel32.dll"), "DebugActiveProcess" );
-    ok( present, "DebugActiveProcess export missing\\n" );
+    char cmdline[MAX_PATH];
+    STARTUPINFOA si = { 0 };
+    PROCESS_INFORMATION pi;
+    DEBUG_EVENT event;
+    CONTEXT context;
+    DWORD result, code, continuation, instruction, exit_code = ~0u;
+    BOOL ret, handshake = FALSE, hit_breakpoint = FALSE, exited = FALSE;
+    unsigned int i;
+    SIZE_T bytes;
+    NTSTATUS status;
+
+    if (!pNtGetContextThread || !pNtSetContextThread)
+    {
+        skip( "NtGetContextThread/NtSetContextThread are unavailable\n" );
+        return;
+    }
+    if (with_WaitForDebugEventEx && !pWaitForDebugEventEx)
+    {
+        win_skip( "WaitForDebugEventEx is not exported\n" );
+        return;
+    }
+    si.cb = sizeof(si);
+    sprintf( cmdline, "%s %s riscv64_debuggee %lu", my_argv[0], my_argv[1], cont_status );
+    ret = CreateProcessA( NULL, cmdline, NULL, NULL, FALSE, DEBUG_PROCESS, NULL, NULL, &si, &pi );
+    ok( ret, "CreateProcess(DEBUG_PROCESS) failed: %lu\n", GetLastError() );
+    if (!ret) return;
+
+    for (i = 0; i < 100; ++i)
+    {
+        memset( &event, 0, sizeof(event) );
+        ret = with_WaitForDebugEventEx ? pWaitForDebugEventEx( &event, 10000 ) :
+                                        WaitForDebugEvent( &event, 10000 );
+        if (!ret)
+        {
+            ok( 0, "WaitForDebugEvent failed or timed out: %lu\n", GetLastError() );
+            break;
+        }
+        continuation = DBG_CONTINUE;
+        if (event.dwDebugEventCode == CREATE_PROCESS_DEBUG_EVENT &&
+            event.u.CreateProcessInfo.hFile)
+            CloseHandle( event.u.CreateProcessInfo.hFile );
+        else if (event.dwDebugEventCode == LOAD_DLL_DEBUG_EVENT &&
+                 event.u.LoadDll.hFile)
+            CloseHandle( event.u.LoadDll.hFile );
+        else if (event.dwDebugEventCode == EXCEPTION_DEBUG_EVENT)
+        {
+            code = event.u.Exception.ExceptionRecord.ExceptionCode;
+            if (code == RISCV64_DEBUG_MARKER)
+            {
+                ok( event.u.Exception.dwFirstChance, "debug marker is not first-chance\n" );
+                ok( !handshake, "duplicate debug marker\n" );
+                handshake = TRUE;
+            }
+            else if (code == EXCEPTION_BREAKPOINT && handshake && !hit_breakpoint)
+            {
+                hit_breakpoint = TRUE;
+                ok( event.u.Exception.dwFirstChance, "target breakpoint is not first-chance\n" );
+                memset( &context, 0, sizeof(context) );
+                context.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+                status = pNtGetContextThread( pi.hThread, &context );
+                ok( !status, "NtGetContextThread(debuggee) returned %#lx\n", status );
+                if (!status)
+                {
+                    ok( (context.ContextFlags & CONTEXT_CONTROL) == CONTEXT_CONTROL,
+                        "debug context flags %#lx\n", context.ContextFlags );
+                    ok( context.Pc == (ULONG_PTR)event.u.Exception.ExceptionRecord.ExceptionAddress,
+                        "debug PC %p / exception address %p\n",
+                        (void *)(ULONG_PTR)context.Pc,
+                        event.u.Exception.ExceptionRecord.ExceptionAddress );
+                    ok( !!context.Gpr.X[1], "debug context RA is null\n" );
+                    ok( !!context.Gpr.X[2] && !(context.Gpr.X[2] & 15),
+                        "debug context SP %#Ix is invalid\n", (ULONG_PTR)context.Gpr.X[2] );
+                }
+                instruction = 0;
+                bytes = 0;
+                ret = ReadProcessMemory( pi.hProcess,
+                    event.u.Exception.ExceptionRecord.ExceptionAddress,
+                    &instruction, sizeof(instruction), &bytes );
+                ok( ret && bytes == sizeof(instruction) && instruction == 0x00100073,
+                    "debug breakpoint instruction %#lx (read %Iu bytes, ret %d)\n",
+                    instruction, bytes, ret );
+                if (cont_status == DBG_CONTINUE && !status)
+                {
+                    context.Pc = (ULONG_PTR)event.u.Exception.ExceptionRecord.ExceptionAddress + 4;
+                    context.Gpr.X[10] = RISCV64_DEBUG_RESUME_VALUE;
+                    status = pNtSetContextThread( pi.hThread, &context );
+                    ok( !status, "NtSetContextThread(debuggee) returned %#lx\n", status );
+                }
+                continuation = cont_status;
+            }
+            else if (code == EXCEPTION_BREAKPOINT && !handshake)
+            {
+                /* Process startup breakpoint, also used by other Wine tests. */
+                trace( "RISC-V debuggee startup breakpoint %p\n",
+                       event.u.Exception.ExceptionRecord.ExceptionAddress );
+            }
+            else
+            {
+                ok( 0, "unexpected debuggee exception %#lx, first-chance %lu, address %p\n",
+                    code, event.u.Exception.dwFirstChance,
+                    event.u.Exception.ExceptionRecord.ExceptionAddress );
+                continuation = DBG_EXCEPTION_NOT_HANDLED;
+            }
+        }
+        else if (event.dwDebugEventCode == EXIT_PROCESS_DEBUG_EVENT)
+        {
+            exited = TRUE;
+            exit_code = event.u.ExitProcess.dwExitCode;
+        }
+
+        ret = ContinueDebugEvent( event.dwProcessId, event.dwThreadId, continuation );
+        ok( ret, "ContinueDebugEvent(%#lx) failed: %lu\n",
+            continuation, GetLastError() );
+        if (!ret || exited) break;
+    }
+
+    ok( handshake, "RISC-V debuggee marker was never delivered\n" );
+    ok( hit_breakpoint, "RISC-V debuggee breakpoint was never delivered\n" );
+    ok( exited, "RISC-V debuggee did not exit within the debug event loop\n" );
+    if (exited) ok( !exit_code, "RISC-V debuggee exit code %#lx\n", exit_code );
+    if (!exited)
+    {
+        TerminateProcess( pi.hProcess, 1 );
+        WaitForSingleObject( pi.hProcess, 5000 );
+    }
+    CloseHandle( pi.hThread );
+    CloseHandle( pi.hProcess );
 }
 
 static DWORD WINAPI riscv64_context_thread( void *arg )
@@ -13474,6 +13648,14 @@ START_TEST(exception)
     hntdll = GetModuleHandleA("ntdll.dll");
 
     my_argc = winetest_get_mainargs( &my_argv );
+
+#if defined(__riscv) && __riscv_xlen == 64
+    if (my_argc >= 4 && !strcmp(my_argv[2], "riscv64_debuggee"))
+    {
+        riscv64_debuggee( strtoul( my_argv[3], NULL, 0 ) );
+        return;
+    }
+#endif
 
     if (my_argc >= 3 && !strcmp(my_argv[2], "suspend_process"))
     {
