@@ -2659,16 +2659,6 @@ NTSTATUS WINAPI NtSetInformationThread( HANDLE handle, THREADINFOCLASS class,
     unsigned int status;
 
 #if defined(__riscv) && __riscv_xlen == 64
-    /* Early, async-signal-safe entry marker.  Deliberately avoid TRACE,
-     * getenv(), TLS and printf until we know the service was entered.
-     * Diagnostic branch only; remove after the syscall bridge is fixed. */
-    if (class == ThreadNameInformation)
-    {
-        static const char marker[] = "RV64-THREADNAME RAW ENTRY\n";
-        write( 2, marker, sizeof(marker) - 1 );
-    }
-#endif
-#if defined(__riscv) && __riscv_xlen == 64
     /* Isolate the Wine debug/TLS path from the service body when requested.
      * If this avoids the fault, the normal TRACE path is implicated. */
     if (class != ThreadNameInformation || !getenv("WINE_RISCV_SKIP_THREAD_TRACE"))
@@ -2859,7 +2849,9 @@ NTSTATUS WINAPI NtSetInformationThread( HANDLE handle, THREADINFOCLASS class,
         SERVER_END_REQ;
 
         if (diag) WARN("RV64-THREADNAME server returned status=%08x\n", status);
-        set_native_thread_name( handle, &info->ThreadName );
+        /* Do not update the native thread name if wineserver rejected
+         * the requested Windows thread description. */
+        if (!status) set_native_thread_name( handle, &info->ThreadName );
         if (diag) WARN("RV64-THREADNAME native name set\n");
 
         return status;
