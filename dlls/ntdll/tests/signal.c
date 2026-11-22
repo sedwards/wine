@@ -73,6 +73,58 @@ static void test_signal_exception(void)
     ok( RemoveVectoredExceptionHandler( handler ), "failed to remove handler\n" );
 }
 
+#ifdef __x86_64__
+static unsigned int translated_segv_count, translated_trap_count;
+static unsigned int translation_mode;
+
+static LONG WINAPI translation_handler( EXCEPTION_POINTERS *exception )
+{
+    EXCEPTION_RECORD *record = exception->ExceptionRecord;
+    CONTEXT *context = exception->ContextRecord;
+
+    if (translation_mode == 1 && record->ExceptionCode == EXCEPTION_ACCESS_VIOLATION)
+    {
+        ++translated_segv_count;
+        /* The faulting instruction is exactly: movb $1,(%rax). */
+        if (record->NumberParameters != 2 || record->ExceptionInformation[0] != 1 ||
+            record->ExceptionInformation[1] != 0)
+            return EXCEPTION_CONTINUE_SEARCH;
+        context->Rip += 3;
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
+    if (translation_mode == 2 && record->ExceptionCode == EXCEPTION_BREAKPOINT)
+    {
+        ++translated_trap_count;
+        /* Wine/Windows may report RIP at the int3 or just after it. */
+        if (*(const BYTE *)(ULONG_PTR)context->Rip == 0xcc) ++context->Rip;
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
+static void test_linux_signal_translation(void)
+{
+    PVOID handler = AddVectoredExceptionHandler( 1, translation_handler );
+
+    ok( !!handler, "failed to install translation handler\\n" );
+    if (!handler) return;
+
+    translation_mode = 1;
+    __asm__ volatile( "xor %%rax, %%rax\\n\\t.byte 0xc6,0x00,0x01" : : : "rax", "memory" );
+    translation_mode = 0;
+    ok( translated_segv_count == 1, "expected one translated SIGSEGV, got %u\\n",
+        translated_segv_count );
+
+    translation_mode = 2;
+    __asm__ volatile( "int3" ::: "memory" );
+    translation_mode = 0;
+    ok( translated_trap_count == 1, "expected one translated SIGTRAP, got %u\\n",
+        translated_trap_count );
+
+    ok( RemoveVectoredExceptionHandler( handler ), "failed to remove translation handler\\n" );
+}
+#endif
+
 static void test_capture_context(void)
 {
     CONTEXT context;
@@ -95,6 +147,9 @@ START_TEST(signal)
 #if defined(__x86_64__) || (defined(__riscv) && __riscv_xlen == 64)
     test_capture_context();
     test_signal_exception();
+#ifdef __x86_64__
+    test_linux_signal_translation();
+#endif
 #else
     win_skip( "native signal transition tests require x86-64 or RISC-V64\n" );
 #endif
