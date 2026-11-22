@@ -154,7 +154,7 @@ void set_process_instrumentation_callback( void *callback )
 NTSTATUS signal_set_full_context( CONTEXT *context )
 {
     struct thread_data *data = get_thread_data();
-    struct syscall_frame *frame = get_syscall_frame( data );
+    struct syscall_frame *frame = data ? get_syscall_frame( data ) : NULL;
     NTSTATUS status;
 
     if (!context || (context->ContextFlags & CONTEXT_RISCV64) != CONTEXT_RISCV64)
@@ -182,7 +182,7 @@ NTSTATUS signal_set_full_context( CONTEXT *context )
 NTSTATUS WINAPI NtGetContextThread( HANDLE handle, CONTEXT *context )
 {
     struct thread_data *data = get_thread_data();
-    struct syscall_frame *frame = get_syscall_frame( data );
+    struct syscall_frame *frame = data ? get_syscall_frame( data ) : NULL;
     DWORD flags;
 
     if (!context) return STATUS_INVALID_PARAMETER;
@@ -236,7 +236,7 @@ NTSTATUS WINAPI NtGetContextThread( HANDLE handle, CONTEXT *context )
 NTSTATUS WINAPI NtSetContextThread( HANDLE handle, const CONTEXT *context )
 {
     struct thread_data *data = get_thread_data();
-    struct syscall_frame *frame = get_syscall_frame( data );
+    struct syscall_frame *frame = data ? get_syscall_frame( data ) : NULL;
     DWORD flags;
 
     if (!context) return STATUS_INVALID_PARAMETER;
@@ -465,6 +465,8 @@ static void usr1_handler( int sig, siginfo_t *info, void *opaque )
     struct thread_data *data = get_thread_data();
     CONTEXT context;
 
+    /* Signals can arrive before the thread data/TEB is initialized. */
+    if (!data) return;
     if (!data->teb)
         server_select( NULL, 0, SELECT_INTERRUPTIBLE, 0, NULL, NULL );
     else if (is_inside_syscall( data, SP_sig( uc ) ))
