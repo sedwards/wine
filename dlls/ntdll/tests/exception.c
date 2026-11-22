@@ -13146,7 +13146,17 @@ static volatile LONG riscv64_exception_hits, riscv64_layout_hits;
 static DWORD riscv64_exception_code;
 static ULONG_PTR riscv64_exception_pc;
 static struct riscv64_dispatcher_hook riscv64_exception_hook;
-#define RISCV64_TEST_ARGUMENT ((ULONG_PTR)0x12345678aabbccddull)
+static const ULONG_PTR riscv64_expected_args[] =
+{
+    (ULONG_PTR)0x12345678aabbccddull,
+    (ULONG_PTR)0x1111222233334444ull,
+    (ULONG_PTR)0x2222333344445555ull,
+    (ULONG_PTR)0x3333444455556666ull,
+    (ULONG_PTR)0x4444555566667777ull,
+    (ULONG_PTR)0x5555666677778888ull,
+    (ULONG_PTR)0x6666777788889999ull,
+    (ULONG_PTR)0x777788889999aaaauLL
+};
 
 static LONG WINAPI riscv64_exception_handler( EXCEPTION_POINTERS *exception )
 {
@@ -13162,6 +13172,7 @@ static void *WINAPI riscv64_exception_layout_hook( struct riscv64_exception_layo
     CONTEXT *ctx = &stack->context;
     ULONG_PTR sp = ctx->Gpr.X[2];
     TEB *teb = NtCurrentTeb();
+    unsigned int i;
 
     ++riscv64_layout_hits;
     ok( !((ULONG_PTR)stack & 15), "unaligned exception stack %p\n", stack );
@@ -13181,8 +13192,10 @@ static void *WINAPI riscv64_exception_layout_hook( struct riscv64_exception_layo
         teb->Tib.StackLimit, teb->Tib.StackBase );
     ok( !(sp & 15), "saved SP %#Ix is not 16-byte aligned\n", sp );
     ok( ctx->Gpr.X[1] != 0, "saved return address is null\n" );
-    ok( ctx->Gpr.X[10] == RISCV64_TEST_ARGUMENT, "saved a0 %#Ix / %#Ix\n",
-        (ULONG_PTR)ctx->Gpr.X[10], RISCV64_TEST_ARGUMENT );
+    for (i = 0; i < ARRAY_SIZE(riscv64_expected_args); ++i)
+        ok( ctx->Gpr.X[10 + i] == riscv64_expected_args[i],
+            "saved a%u %#Ix / %#Ix\n", i,
+            (ULONG_PTR)ctx->Gpr.X[10 + i], riscv64_expected_args[i] );
     riscv64_unhook( &riscv64_exception_hook );
     return pKiUserExceptionDispatcher;
 }
@@ -13203,7 +13216,8 @@ static LONG WINAPI riscv64_breakpoint_continue( EXCEPTION_POINTERS *exception )
 static void test_KiUserExceptionDispatcher(void)
 {
     static const DWORD code[] = { 0x00100073, 0x00008067 }; /* ebreak; ret */
-    void (WINAPI *func)(ULONG_PTR) = code_mem;
+    void (WINAPI *func)(ULONG_PTR, ULONG_PTR, ULONG_PTR, ULONG_PTR,
+                        ULONG_PTR, ULONG_PTR, ULONG_PTR, ULONG_PTR) = code_mem;
     PVOID handler;
     BOOL hooked;
 
@@ -13225,7 +13239,10 @@ static void test_KiUserExceptionDispatcher(void)
     {
         riscv64_exception_hits = 0;
         riscv64_layout_hits = 0;
-        func( RISCV64_TEST_ARGUMENT );
+        func( riscv64_expected_args[0], riscv64_expected_args[1],
+              riscv64_expected_args[2], riscv64_expected_args[3],
+              riscv64_expected_args[4], riscv64_expected_args[5],
+              riscv64_expected_args[6], riscv64_expected_args[7] );
         ok( riscv64_exception_hits == 1, "expected one breakpoint, got %ld\n",
             riscv64_exception_hits );
         if (hooked)
@@ -13353,14 +13370,18 @@ static void test_KiUserCallbackDispatcher(void)
     if (!hooked)
     {
         win_skip( "cannot hook RISC-V64 callback dispatcher for exact frame check\n" );
+        riscv64_free_hook( &riscv64_callback_hook );
         return;
     }
     riscv64_callback_layout_hits = 0;
     hwnd = CreateWindowA( "Static", "riscv64 callback test", 0, 0, 0, 0, 0,
                           0, 0, 0, 0, 0 );
     if (hwnd) DestroyWindow( hwnd );
-    ok( riscv64_callback_layout_hits == 1, "expected callback dispatcher entry, got %ld\n",
-        riscv64_callback_layout_hits );
+    if (!hwnd && !riscv64_callback_layout_hits)
+        win_skip( "window creation unavailable; cannot exercise kernel callback\n" );
+    else
+        ok( riscv64_callback_layout_hits == 1, "expected callback dispatcher entry, got %ld\n",
+            riscv64_callback_layout_hits );
     riscv64_free_hook( &riscv64_callback_hook );
 }
 
