@@ -18,6 +18,17 @@
 #include "winternl.h"
 #include "wine/test.h"
 
+#if defined(__linux__) && defined(__x86_64__) && !defined(__WINE_PE_BUILD)
+#define _GNU_SOURCE
+#include <signal.h>
+#include <sys/syscall.h>
+#include <sys/wait.h>
+#include <ucontext.h>
+#include <unistd.h>
+#include <errno.h>
+#include <stdint.h>
+#endif
+
 #if defined(__x86_64__) || (defined(__riscv) && __riscv_xlen == 64)
 #define TEST_EXCEPTION_CODE 0xe0424242
 static unsigned int exception_count;
@@ -142,11 +153,194 @@ static void test_capture_context(void)
 }
 #endif
 
+
+#if defined(__linux__) && defined(__x86_64__) && !defined(__WINE_PE_BUILD)
+/* Run Linux signal probes in a forked child so Wine's handlers in the
+ * winetest process remain untouched.  Each bit reports one probe result. */
+enum native_probe
+{
+    PROBE_USR1 = 1, PROBE_CONTEXT = 2, PROBE_ALTSTACK = 4,
+    PROBE_MASK = 8, PROBE_NESTED = 16, PROBE_USR2 = 32,
+    PROBE_RESTORED = 64, PROBE_TRAP = 128, PROBE_SEGV = 256
+};
+static volatile sig_atomic_t native_usr1, native_usr2, native_nested;
+static volatile sig_atomic_t native_context, native_altstack, native_mask;
+static volatile sig_atomic_t native_trap, native_segv, native_mode;
+static uintptr_t native_alt_start, native_alt_end;
+
+static void native_signal_handler( int signo, siginfo_t *info, void *ptr )
+{
+    ucontext_t *uc = ptr;
+    sigset_t mask;
+    char local;
+    (void)info;
+
+    if (signo == SIGUSR1)
+    {
+        ++native_usr1;
+        if ((uintptr_t)&local >= native_alt_start && (uintptr_t)&local < native_alt_end)
+            native_altstack = 1;
+        if (!sigprocmask( SIG_SETMASK, NULL, &mask ) &&
+            sigismember( &mask, SIGUSR1 ) == 1 && sigismember( &mask, SIGUSR2 ) == 1)
+            native_mask = 1;
+        if (native_mode == 1 &&
+            (uint64_t)uc->uc_mcontext.gregs[REG_R12] == UINT64_C(0x12345678aabbccdd) &&
+            (uint64_t)uc->uc_mcontext.gregs[REG_R13] == UINT64_C(0x8877665544332211) &&
+            uc->uc_mcontext.gregs[REG_RIP] && uc->uc_mcontext.gregs[REG_RSP])
+            native_context = 1;
+        if (native_mode == 2)
+        {
+            syscall( SYS_tgkill, getpid(), syscall( SYS_gettid ), SIGUSR2 );
+            if (native_usr2) native_nested = 1;
+        }
+    }
+    else if (signo == SIGUSR2) ++native_usr2;
+    else if (signo == SIGTRAP) ++native_trap;
+    else if (signo == SIGSEGV)
+    {
+        ++native_segv;
+        uc->uc_mcontext.gregs[REG_RIP] += 3;
+    }
+}
+
+__attribute__((noinline)) static void native_register_delivery(void)
+{
+    __asm__ volatile(
+        "push %%r12\\n\\tpush %%r13\\n\\t"
+        "movabs $0x12345678aabbccdd, %%r12\\n\\t"
+        "movabs $0x8877665544332211, %%r13\\n\\t"
+        "mov $186, %%eax\\n\\tsyscall\\n\\t"
+        "mov %%eax, %%esi\\n\\t"
+        "mov $39, %%eax\\n\\tsyscall\\n\\t"
+        "mov %%eax, %%edi\\n\\t"
+        "mov $10, %%edx\\n\\t"
+        "mov $234, %%eax\\n\\tsyscall\\n\\t"
+        "pop %%r13\\n\\tpop %%r12"
+        : : : "rax", "rdi", "rsi", "rdx", "rcx", "r11", "memory", "cc" );
+}
+
+static unsigned int native_signal_probes(void)
+{
+    struct sigaction sa;
+    stack_t alt;
+    sigset_t mask, current;
+    unsigned int result = 0;
+    char stack[128 * 1024];
+
+    memset( &alt, 0, sizeof(alt) );
+    alt.ss_sp = stack;
+    alt.ss_size = sizeof(stack);
+    if (sigaltstack( &alt, NULL )) return 0;
+    native_alt_start = (uintptr_t)stack;
+    native_alt_end = native_alt_start + sizeof(stack);
+
+    memset( &sa, 0, sizeof(sa) );
+    sa.sa_sigaction = native_signal_handler;
+    sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
+    sigemptyset( &sa.sa_mask );
+    sigaddset( &sa.sa_mask, SIGUSR2 );
+    if (sigaction( SIGUSR1, &sa, NULL )) return 0;
+    sigemptyset( &sa.sa_mask );
+    if (sigaction( SIGUSR2, &sa, NULL ) ||
+        sigaction( SIGTRAP, &sa, NULL ) ||
+        sigaction( SIGSEGV, &sa, NULL )) return 0;
+
+    sigemptyset( &mask );
+    sigaddset( &mask, SIGUSR1 );
+    sigaddset( &mask, SIGUSR2 );
+    if (sigprocmask( SIG_UNBLOCK, &mask, NULL )) return 0;
+
+    native_mode = 1;
+    native_register_delivery();
+    if (native_usr1 == 1) result |= PROBE_USR1;
+    if (native_context) result |= PROBE_CONTEXT;
+    if (native_altstack) result |= PROBE_ALTSTACK;
+    if (native_mask) result |= PROBE_MASK;
+
+    sigemptyset( &sa.sa_mask );
+    if (sigaction( SIGUSR1, &sa, NULL )) return result;
+    native_mode = 2;
+    syscall( SYS_tgkill, getpid(), syscall( SYS_gettid ), SIGUSR1 );
+    if (native_nested && native_usr2 == 1) result |= PROBE_NESTED;
+    native_mode = 0;
+    syscall( SYS_tgkill, getpid(), syscall( SYS_gettid ), SIGUSR2 );
+    if (native_usr2 == 2) result |= PROBE_USR2;
+    if (!sigprocmask( SIG_SETMASK, NULL, &current ) &&
+        sigismember( &current, SIGUSR1 ) == 0 &&
+        sigismember( &current, SIGUSR2 ) == 0) result |= PROBE_RESTORED;
+
+    __asm__ volatile( "int3" ::: "memory" );
+    if (native_trap == 1) result |= PROBE_TRAP;
+    __asm__ volatile( "xor %%rax, %%rax\\n\\t.byte 0xc6,0x00,0x01"
+                      : : : "rax", "memory" );
+    if (native_segv == 1) result |= PROBE_SEGV;
+    return result;
+}
+
+static void test_native_linux_signals(void)
+{
+    static const struct { unsigned int bit; const char *name; } checks[] =
+    {
+        { PROBE_USR1, "SIGUSR1 delivery/return" },
+        { PROBE_CONTEXT, "R12/R13/RIP/RSP ucontext" },
+        { PROBE_ALTSTACK, "SA_ONSTACK" },
+        { PROBE_MASK, "handler signal mask" },
+        { PROBE_NESTED, "nested SIGUSR2" },
+        { PROBE_USR2, "SIGUSR2 delivery/return" },
+        { PROBE_RESTORED, "signal mask restoration" },
+        { PROBE_TRAP, "SIGTRAP int3 return" },
+        { PROBE_SEGV, "SIGSEGV ucontext recovery" }
+    };
+    int fd[2], status;
+    pid_t pid;
+    unsigned int result = 0, i;
+    ssize_t count;
+
+    if (pipe( fd ) == -1)
+    {
+        skip( "native signal pipe failed: %d\\n", errno );
+        return;
+    }
+    pid = fork();
+    if (pid == -1)
+    {
+        close( fd[0] );
+        close( fd[1] );
+        skip( "native signal fork failed: %d\\n", errno );
+        return;
+    }
+    if (!pid)
+    {
+        close( fd[0] );
+        result = native_signal_probes();
+        write( fd[1], &result, sizeof(result) );
+        _exit( 0 );
+    }
+    close( fd[1] );
+    count = read( fd[0], &result, sizeof(result) );
+    close( fd[0] );
+    if (waitpid( pid, &status, 0 ) != pid)
+    {
+        ok( 0, "waitpid failed for native signal probe\\n" );
+        return;
+    }
+    ok( WIFEXITED(status) && WEXITSTATUS(status) == 0 && count == sizeof(result),
+        "native signal probe terminated unexpectedly (status %#x, bytes %ld)\\n",
+        status, (long)count );
+    if (!WIFEXITED(status) || WEXITSTATUS(status) || count != sizeof(result)) return;
+    for (i = 0; i < ARRAY_SIZE(checks); ++i)
+        ok( result & checks[i].bit, "native Linux %s failed\\n", checks[i].name );
+}
+#endif
+
 START_TEST(signal)
 {
 #if defined(__x86_64__) || (defined(__riscv) && __riscv_xlen == 64)
     test_capture_context();
     test_signal_exception();
+#if defined(__linux__) && defined(__x86_64__) && !defined(__WINE_PE_BUILD)
+    test_native_linux_signals();
+#endif
 #ifdef __x86_64__
     test_linux_signal_translation();
 #endif
