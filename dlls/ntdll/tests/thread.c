@@ -805,10 +805,15 @@ START_TEST(thread)
     {
         char selection[64] = {0};
         DWORD length = GetEnvironmentVariableA( "WINE_RISCV_THREAD_SUITE", selection, sizeof(selection) );
-        if (length && length < sizeof(selection))
+        if (length)
         {
+            if (length >= sizeof(selection))
+            {
+                ok( 0, "WINE_RISCV_THREAD_SUITE is too long\n" );
+                return;
+            }
             if (!strcmp( selection, "smoke" )) test_riscv64_thread_smoke();
-            if (!strcmp( selection, "context" )) test_riscv64_thread_context();
+            else if (!strcmp( selection, "context" )) test_riscv64_thread_context();
             else if (!strcmp( selection, "hidden" )) test_dbg_hidden_thread_creation();
             else if (!strcmp( selection, "teb" )) test_unique_teb();
             else if (!strcmp( selection, "errno" )) test_errno();
