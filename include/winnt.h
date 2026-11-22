@@ -8921,6 +8921,11 @@ static FORCEINLINE DECLSPEC_NORETURN void __fastfail(unsigned int code)
 #elif defined(__arm__)
     register ULONG_PTR val __asm__("r0") = code;
     for (;;) __asm__ __volatile__( "udf #0xfb" :: "r" (val) : "memory" );
+#elif defined(__riscv) && (__riscv_xlen == 64)
+    /* No Windows-defined RISC-V fail-fast instruction exists yet.  Trap
+     * without returning, retaining the failure code in the a0 register. */
+    register ULONG_PTR val __asm__("a0") = code;
+    for (;;) __asm__ __volatile__( ".4byte 0x00100073" :: "r" (val) : "memory" );
 #endif
 }
 
