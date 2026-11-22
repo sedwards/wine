@@ -3501,7 +3501,8 @@ NTSTATUS WINAPI NtQuerySystemInformation( SYSTEM_INFORMATION_CLASS class,
         if (size >= (len = sizeof(SYSTEM_CPU_INFORMATION)))
         {
             SYSTEM_CPU_INFORMATION cpu = get_cpuinfo();
-            memcpy( info, &cpu, len );
+            if (!info) ret = STATUS_ACCESS_VIOLATION;
+            else memcpy( info, &cpu, len );
         }
         else ret = STATUS_INFO_LENGTH_MISMATCH;
         break;
@@ -3940,7 +3941,8 @@ NTSTATUS WINAPI NtQuerySystemInformation( SYSTEM_INFORMATION_CLASS class,
                 else if (cpu.ProcessorArchitecture == PROCESSOR_ARCHITECTURE_ARM64)
                     cpu.ProcessorArchitecture = PROCESSOR_ARCHITECTURE_ARM;
             }
-            memcpy(info, &cpu, len);
+            if (!info) ret = STATUS_ACCESS_VIOLATION;
+            else memcpy( info, &cpu, len );
         }
         else ret = STATUS_INFO_LENGTH_MISMATCH;
         break;
@@ -4186,7 +4188,8 @@ NTSTATUS WINAPI NtQuerySystemInformation( SYSTEM_INFORMATION_CLASS class,
         if (size >= len)
         {
             SYSTEM_PROCESSOR_FEATURES_INFORMATION features = { .ProcessorFeatureBits = get_cpu_features() };
-            memcpy( info, &features, len );
+            if (!info) ret = STATUS_ACCESS_VIOLATION;
+            else memcpy( info, &features, len );
         }
         else ret = STATUS_INFO_LENGTH_MISMATCH;
         break;
