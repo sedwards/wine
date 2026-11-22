@@ -339,7 +339,21 @@ static void test_query_cpu(void)
     ok( status == STATUS_SUCCESS, "Expected STATUS_SUCCESS, got %08lx\n", status);
     ok( sizeof(sci) == len, "Inconsistent length %ld\n", len);
 
-    memset(&sci2, 0xcc, sizeof(sci2));
+#if defined(__riscv) && __riscv_xlen == 64
+    /* Reject null CPU information buffers without dereferencing them. */
+    status = pNtQuerySystemInformation( SystemCpuInformation, NULL, sizeof(sci), &len );
+    ok( status == STATUS_ACCESS_VIOLATION,
+        "Expected STATUS_ACCESS_VIOLATION, got %08lx\n", status );
+    status = pNtQuerySystemInformation( SystemEmulationProcessorInformation, NULL, sizeof(sci), &len );
+    ok( status == STATUS_ACCESS_VIOLATION,
+        "Expected STATUS_ACCESS_VIOLATION, got %08lx\n", status );
+    status = pNtQuerySystemInformation( SystemProcessorFeaturesInformation, NULL,
+                                        sizeof(features), &len );
+    ok( status == STATUS_ACCESS_VIOLATION,
+        "Expected STATUS_ACCESS_VIOLATION, got %08lx\n", status );
+#endif
+
+        memset(&sci2, 0xcc, sizeof(sci2));
     status = pRtlGetNativeSystemInformation(SystemCpuInformation, &sci2, sizeof(sci2), &len);
     ok( status == STATUS_SUCCESS, "Expected STATUS_SUCCESS, got %08lx.\n", status);
     ok( sizeof(sci2) == len, "Unexpected length %lu.\n", len);
