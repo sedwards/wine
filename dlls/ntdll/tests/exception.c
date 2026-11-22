@@ -13384,7 +13384,7 @@ static void test_KiUserCallbackDispatcher(void)
     }
     riscv64_callback_layout_hits = 0;
     hwnd = CreateWindowA( "Static", "riscv64 callback test", 0, 0, 0, 0, 0,
-                          0, 0, 0, 0, 0 );
+                          NULL, NULL, NULL, NULL );
     if (hwnd) DestroyWindow( hwnd );
     if (!hwnd && !riscv64_callback_layout_hits)
         win_skip( "window creation unavailable; cannot exercise kernel callback\n" );
