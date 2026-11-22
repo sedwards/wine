@@ -20,6 +20,8 @@
  */
 
 #include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
 
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
@@ -572,6 +574,17 @@ static void test_arm64_skip_loader_init(void)
 }
 
 #if defined(__riscv) && __riscv_xlen == 64
+/* Opt-in checkpoints remain visible when winetest is redirected to a log,
+ * including when a server-side context request never returns. */
+static void rv64_thread_checkpoint( const char *phase )
+{
+    char enabled[2];
+
+    if (!GetEnvironmentVariableA( "WINE_RISCV_THREAD_DIAG", enabled, sizeof(enabled) )) return;
+    fprintf( stderr, "RV64-THREAD-TEST: %s\n", phase );
+    fflush( stderr );
+}
+
 struct riscv64_context_test
 {
     LONG ready, stop;
@@ -617,14 +630,17 @@ static void test_riscv64_thread_context(void)
     NTSTATUS status;
     DWORD start, ret;
 
+    rv64_thread_checkpoint( "CreateThread enter" );
     thread = CreateThread( NULL, 0, (LPTHREAD_START_ROUTINE)riscv64_context_thread,
                            &state, CREATE_SUSPENDED, NULL );
+    rv64_thread_checkpoint( "CreateThread returned" );
     ok( !!thread, "CreateThread failed: %lu\n", GetLastError() );
     if (!thread) return;
     ret = WaitForSingleObject( thread, 100 );
     ok( ret == WAIT_TIMEOUT, "Suspended thread wait returned %#lx\n", ret );
     ok( !state.ready, "Suspended thread executed its entry point\n" );
     context.ContextFlags = CONTEXT_FULL;
+    rv64_thread_checkpoint( "NtGetContextThread enter" );
     status = NtGetContextThread( thread, &context );
     ok( !status, "Initial NtGetContextThread returned %#lx\n", status );
     if (!status)
@@ -633,14 +649,18 @@ static void test_riscv64_thread_context(void)
         ok( context.Gpr.X[2] && !(context.Gpr.X[2] & 15),
             "Invalid initial SP %s\n", wine_dbgstr_longlong(context.Gpr.X[2]) );
     }
+    rv64_thread_checkpoint( "first ResumeThread enter" );
     ResumeThread( thread );
+    rv64_thread_checkpoint( "first ResumeThread returned" );
     start = GetTickCount();
     while (!InterlockedCompareExchange( &state.ready, 0, 0 ) && GetTickCount() - start < 5000)
         Sleep( 1 );
     ok( !!state.ready, "Thread did not reach its register loop\n" );
     if (!state.ready) goto done;
 
+    rv64_thread_checkpoint( "SuspendThread enter" );
     ret = SuspendThread( thread );
+    rv64_thread_checkpoint( "SuspendThread returned" );
     ok( ret == 0, "SuspendThread returned %#lx\n", ret );
     if (ret == ~0u) goto done;
     context.ContextFlags = CONTEXT_FULL | CONTEXT_EXCEPTION_REQUEST;
@@ -660,7 +680,9 @@ static void test_riscv64_thread_context(void)
         updated.Fcsr = 0x40; /* RDN, no accrued exception flags. */
         updated.Gpr.X[2] = 0xdeadbeef; /* Integer-only updates must preserve SP/PC. */
         updated.Pc = 0xdeadbeef;
+        rv64_thread_checkpoint( "NtSetContextThread enter" );
         status = NtSetContextThread( thread, &updated );
+        rv64_thread_checkpoint( "NtSetContextThread returned" );
         ok( !status, "NtSetContextThread returned %#lx\n", status );
         updated.ContextFlags = CONTEXT_FULL;
         status = NtGetContextThread( thread, &updated );
@@ -672,7 +694,9 @@ static void test_riscv64_thread_context(void)
         }
     }
     InterlockedExchange( &state.stop, 1 );
+    rv64_thread_checkpoint( "final ResumeThread enter" );
     ResumeThread( thread );
+    rv64_thread_checkpoint( "final ResumeThread returned" );
     ret = WaitForSingleObject( thread, 5000 );
     ok( ret == WAIT_OBJECT_0, "Thread wait returned %#lx\n", ret );
     if (!status && ret == WAIT_OBJECT_0)
@@ -685,6 +709,7 @@ static void test_riscv64_thread_context(void)
         ok( state.gp == context.Gpr.X[3], "Native global pointer changed\n" );
     }
  done:
+    rv64_thread_checkpoint( "cleanup enter" );
     InterlockedExchange( &state.stop, 1 );
     if (WaitForSingleObject( thread, 5000 ) == WAIT_TIMEOUT) TerminateThread( thread, 1 );
     CloseHandle( thread );
@@ -726,7 +751,29 @@ START_TEST(thread)
     }
 
 #if defined(__riscv) && __riscv_xlen == 64
+    /* Isolate an individual test group without changing normal test coverage.
+     * Useful when an early thread/context hang hides all later assertions. */
+    {
+        char selection[64] = {0};
+        DWORD length = GetEnvironmentVariableA( "WINE_RISCV_THREAD_SUITE", selection, sizeof(selection) );
+        if (length && length < sizeof(selection))
+        {
+            if (!strcmp( selection, "context" )) test_riscv64_thread_context();
+            else if (!strcmp( selection, "hidden" )) test_dbg_hidden_thread_creation();
+            else if (!strcmp( selection, "teb" )) test_unique_teb();
+            else if (!strcmp( selection, "errno" )) test_errno();
+            else if (!strcmp( selection, "process" )) test_NtCreateUserProcess();
+            else if (!strcmp( selection, "terminate" )) test_NtTerminateProcess();
+            else if (!strcmp( selection, "freeze" )) test_thread_bypass_process_freeze();
+            else if (!strcmp( selection, "apc" )) test_NtQueueApcThreadEx();
+            else if (!strcmp( selection, "attach" )) test_skip_thread_attach();
+            else ok( 0, "Unknown WINE_RISCV_THREAD_SUITE: %s\n", selection );
+            return;
+        }
+    }
+    rv64_thread_checkpoint( "context group enter" );
     test_riscv64_thread_context();
+    rv64_thread_checkpoint( "context group returned" );
 #endif
     test_dbg_hidden_thread_creation();
     test_unique_teb();
