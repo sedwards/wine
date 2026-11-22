@@ -1069,7 +1069,12 @@ static NTSTATUS context_from_server( void *dst, const struct context_data *from,
             to->Gpr.X[1] = from->integer.riscv64_regs.x[0];
             for (i = 3; i < 32; i++)
                 to->Gpr.X[i] = from->integer.riscv64_regs.x[i - 2];
-            /* Preserve x2: it is restored from SERVER_CTX_CONTROL, if present. */
+            /* The protocol stores x2/SP in the control union, not in the
+             * 240-byte integer register union.  Integer-only queries still
+             * need the architectural x2 register when control was requested
+             * internally by get_thread_context(). */
+            if (from->flags & SERVER_CTX_CONTROL)
+                to->Gpr.X[2] = from->ctl.riscv64_regs.sp;
         }
         if ((from->flags & SERVER_CTX_FLOATING_POINT) && (to_flags & CONTEXT_RISCV64_FLOATING_POINT))
         {
@@ -2082,6 +2087,12 @@ NTSTATUS get_thread_context( HANDLE handle, void *context, BOOL *self, USHORT ma
     struct context_data server_contexts[2];
     unsigned int count;
     unsigned int flags = get_server_context_flags( context, machine );
+
+    /* The RISC-V64 server context carries x2/SP only in its control
+     * union.  Request it also for integer-only queries so the returned
+     * register image contains a valid stack pointer. */
+    if (machine == IMAGE_FILE_MACHINE_RISCV64 && (flags & SERVER_CTX_INTEGER))
+        flags |= SERVER_CTX_CONTROL;
 
     SERVER_START_REQ( get_thread_context )
     {
