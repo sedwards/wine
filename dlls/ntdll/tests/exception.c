@@ -13401,11 +13401,11 @@ static void test_rtlraiseexception(void)
 
     if (!pRtlRaiseException)
     {
-        skip( "RtlRaiseException not exported\\n" );
+        skip( "RtlRaiseException not exported\n" );
         return;
     }
     handler = AddVectoredExceptionHandler( 1, riscv64_exception_handler );
-    ok( !!handler, "AddVectoredExceptionHandler failed\\n" );
+    ok( !!handler, "AddVectoredExceptionHandler failed\n" );
     if (!handler) return;
 
     memset( &record, 0, sizeof(record) );
@@ -13414,10 +13414,10 @@ static void test_rtlraiseexception(void)
     riscv64_exception_hits = 0;
     riscv64_exception_pc = 0;
     pRtlRaiseException( &record );
-    ok( riscv64_exception_hits == 1, "RtlRaiseException dispatched %ld times\\n",
+    ok( riscv64_exception_hits == 1, "RtlRaiseException dispatched %ld times\n",
         riscv64_exception_hits );
-    ok( !!riscv64_exception_pc, "RtlRaiseException context PC is null\\n" );
-    ok( RemoveVectoredExceptionHandler( handler ), "RemoveVectoredExceptionHandler failed\\n" );
+    ok( !!riscv64_exception_pc, "RtlRaiseException context PC is null\n" );
+    ok( RemoveVectoredExceptionHandler( handler ), "RemoveVectoredExceptionHandler failed\n" );
 }
 
 /*
@@ -13637,51 +13637,51 @@ static void test_thread_context(void)
 
     if (!pNtGetContextThread)
     {
-        skip( "NtGetContextThread unavailable\\n" );
+        skip( "NtGetContextThread unavailable\n" );
         return;
     }
     memset( &context, 0, sizeof(context) );
     context.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
     status = pNtGetContextThread( GetCurrentThread(), &context );
-    ok( status == STATUS_SUCCESS, "NtGetContextThread(current) returned %#lx\\n", status );
+    ok( status == STATUS_SUCCESS, "NtGetContextThread(current) returned %#lx\n", status );
     if (!status)
     {
-        ok( !!context.Pc, "current thread context PC is null\\n" );
-        ok( !!context.Gpr.X[2], "current thread context SP is null\\n" );
+        ok( !!context.Pc, "current thread context PC is null\n" );
+        ok( !!context.Gpr.X[2], "current thread context SP is null\n" );
     }
 
     ready = CreateEventW( NULL, TRUE, FALSE, NULL );
-    ok( !!ready, "CreateEvent failed\\n" );
+    ok( !!ready, "CreateEvent failed\n" );
     if (!ready) return;
     thread = CreateThread( NULL, 0, riscv64_context_thread, ready, 0, NULL );
-    ok( !!thread, "CreateThread failed\\n" );
+    ok( !!thread, "CreateThread failed\n" );
     if (!thread)
     {
         CloseHandle( ready );
         return;
     }
     result = WaitForSingleObject( ready, 3000 );
-    ok( result == WAIT_OBJECT_0, "worker startup wait returned %#lx\\n", result );
+    ok( result == WAIT_OBJECT_0, "worker startup wait returned %#lx\n", result );
     if (result == WAIT_OBJECT_0)
     {
         result = SuspendThread( thread );
-        ok( result != (DWORD)-1, "SuspendThread failed\\n" );
+        ok( result != (DWORD)-1, "SuspendThread failed\n" );
         if (result != (DWORD)-1)
         {
             memset( &context, 0, sizeof(context) );
             context.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
             status = pNtGetContextThread( thread, &context );
-            ok( status == STATUS_SUCCESS, "NtGetContextThread(worker) returned %#lx\\n", status );
+            ok( status == STATUS_SUCCESS, "NtGetContextThread(worker) returned %#lx\n", status );
             if (!status)
             {
-                ok( !!context.Pc, "worker PC is null\\n" );
-                ok( !!context.Gpr.X[2], "worker SP is null\\n" );
+                ok( !!context.Pc, "worker PC is null\n" );
+                ok( !!context.Gpr.X[2], "worker SP is null\n" );
             }
             ResumeThread( thread );
         }
     }
     result = WaitForSingleObject( thread, 5000 );
-    ok( result == WAIT_OBJECT_0, "worker completion wait returned %#lx\\n", result );
+    ok( result == WAIT_OBJECT_0, "worker completion wait returned %#lx\n", result );
     CloseHandle( thread );
     CloseHandle( ready );
 }
