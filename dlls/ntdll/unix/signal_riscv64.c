@@ -83,6 +83,9 @@ C_ASSERT( offsetof( struct syscall_frame, prev_frame ) == 552 );
 C_ASSERT( offsetof( struct syscall_frame, syscall_cfa ) == 560 );
 C_ASSERT( offsetof( struct syscall_frame, syscall_id ) == 568 );
 
+/* Used by startup diagnostics before its definition below. */
+static int riscv64_transition_diag_enabled(void);
+
 static struct syscall_frame *init_syscall_frame( PRTL_THREAD_START_ROUTINE entry,
                                                  void *arg, TEB *teb )
 {
