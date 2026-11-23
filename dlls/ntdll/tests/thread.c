@@ -630,12 +630,14 @@ static DWORD WINAPI rv64_thread_exit_proc( void *arg )
         rv64_thread_checkpoint( "rtl exit worker entered" );
         RtlExitUserThread( 0x1234abcd );
         rv64_thread_checkpoint( "rtl exit unexpectedly returned" );
+        ok( 0, "RtlExitUserThread unexpectedly returned to its caller\n" );
     }
     else
     {
         rv64_thread_checkpoint( "direct exit worker entered" );
         NtTerminateThread( GetCurrentThread(), 0x1234abcd );
         rv64_thread_checkpoint( "direct exit unexpectedly returned" );
+        ok( 0, "NtTerminateThread(current thread) unexpectedly returned to its caller\n" );
     }
     return 0;
 }
