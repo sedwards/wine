@@ -1848,12 +1848,20 @@ void riscv64_unregister_thread_data(void)
     long tid = riscv64_native_tid();
     unsigned int i;
     for (i = 0; i < RISCV64_THREAD_SLOTS; ++i)
-        if (__atomic_load_n( &riscv64_threads[i].tid, __ATOMIC_ACQUIRE ) == tid)
+    {
+        long expected = tid;
+
+        /* Claim the slot while clearing it.  Publishing tid=0 before
+         * clearing data allows a concurrent thread to reuse the slot and
+         * then have its newly registered pointer erased by this thread. */
+        if (__atomic_compare_exchange_n( &riscv64_threads[i].tid, &expected, -tid,
+                                         0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE ))
         {
-            __atomic_store_n( &riscv64_threads[i].tid, 0, __ATOMIC_RELEASE );
             __atomic_store_n( &riscv64_threads[i].data, NULL, __ATOMIC_RELEASE );
+            __atomic_store_n( &riscv64_threads[i].tid, 0, __ATOMIC_RELEASE );
             return;
         }
+    }
 }
 
 struct thread_data *riscv64_lookup_thread_data(void)
