@@ -361,3 +361,8 @@ git grep -n user_check_not_lock dlls/win32u
 For the USER assertion, record the full stack, `user_lock_thread`, `user_lock_rec`, current Wine thread ID, native TID, and `tp`. The USER mutex is configured recursive in `sysparams_init()`; the assertion is not evidence of a nonrecursive-mutex configuration mistake.
 
 For reproducible results always record `git rev-parse HEAD`, the exact command and environment, exit code, and whether the run used SSH, VNC, or Xvfb.
+
+# Run Wine Explorer Desktop
+wine explorer /desktop=shell,800x600 null.exe
+
+
