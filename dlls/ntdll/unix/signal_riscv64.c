@@ -1628,9 +1628,11 @@ __ASM_GLOBAL_FUNC( __wine_syscall_dispatcher,
                    "sw t1, 568(t0)\n\t"
                    "sw zero, 544(t0)\n\t" /* clear stale restore flags */
                    "ld t1, 0(sp)\n\t"     /* return address */
+                   "sd t1, 8(t0)\n\t"    /* x1 mirrors ra */
                    "sd t1, 272(t0)\n\t"
                    "sd t1, 256(t0)\n\t"
                    "addi t1, sp, 368\n\t"
+                   "sd t1, 16(t0)\n\t"   /* x2 mirrors sp */
                    "sd t1, 264(t0)\n\t"
                    "ld t1, 8(sp)\n\t"
                    "sd t1, 64(t0)\n\t"
@@ -2117,9 +2119,11 @@ __ASM_GLOBAL_FUNC( __wine_unix_call_dispatcher,
                     * context request behind. */
                    "sw zero, 544(t0)\n\t"
                    "ld t1, 0(sp)\n\t"
+                   "sd t1, 8(t0)\n\t"    /* x1 mirrors ra */
                    "sd t1, 272(t0)\n\t"
                    "sd t1, 256(t0)\n\t"
                    "addi t1, sp, 400\n\t"
+                   "sd t1, 16(t0)\n\t"   /* x2 mirrors sp */
                    "sd t1, 264(t0)\n\t"
                    "ld t1, 8(sp)\n\t"
                    "sd t1, 64(t0)\n\t"
