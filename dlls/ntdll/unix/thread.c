@@ -1223,11 +1223,31 @@ static DECLSPEC_NORETURN void pthread_exit_wrapper( int status )
      * before retiring the native-TID fallback entry. */
     TRACE( "RV64-EXIT pthread_exit_wrapper calling pthread_exit status=%#x\n", status );
 #endif
-    /* On RISC-V64 the native-TID lookup must survive into pthread_exit().
-     * That call invokes libc cleanup and DWARF unwinding, which can reenter
-     * Wine's syscall/continuation path.  The thread-data key destructor
-     * retires the fallback only after those cleanup handlers have run. */
+    /*
+     * Wine's RV64 NT syscall bridge switches from the Windows stack to
+     * the Unix stack without providing a native unwind chain across the
+     * assembly dispatcher.  glibc pthread_exit() forces a DWARF unwind;
+     * the resulting nonlocal transition has resumed the Windows caller
+     * instead of terminating the native worker.
+     *
+     * Wine server termination and descriptor cleanup are already complete
+     * here.  Exit only this Linux task (not exit_group); the kernel clears
+     * CLONE_CHILD_CLEARTID for the parent pthread_join().  RISC-V native
+     * thread registry cleanup must precede the syscall because libc TLS
+     * destructors are intentionally bypassed by this emergency path.
+     */
+#if defined(__linux__) && defined(__riscv) && __riscv_xlen == 64
+    TRACE( "RV64-EXIT native Linux thread exit status=%#x\n", status );
+    riscv64_unregister_thread_data();
+    {
+        register long a0 __asm__("a0") = status;
+        register long a7 __asm__("a7") = 93; /* Linux RV64 __NR_exit */
+        __asm__ volatile ("ecall" : "+r"(a0) : "r"(a7) : "memory");
+    }
+    __builtin_trap(); /* SYS_exit must never return. */
+#else
     pthread_exit( UIntToPtr(status) );
+#endif
 }
 
 
