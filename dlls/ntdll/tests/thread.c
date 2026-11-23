@@ -864,7 +864,13 @@ START_TEST(thread)
     char **argv;
     int argc;
 
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "START_TEST entered; initializing function pointers" );
+#endif
     init_function_pointers();
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "function pointers initialized" );
+#endif
 
     if (!pIsWow64Process || !pIsWow64Process( GetCurrentProcess(), &is_wow64 )) is_wow64 = FALSE;
     if (is_wow64)
@@ -893,14 +899,62 @@ START_TEST(thread)
         return;
     }
 
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "hidden thread enter" );
+#endif
     test_dbg_hidden_thread_creation();
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "hidden thread returned" );
+#endif
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "unique TEB enter" );
+#endif
     test_unique_teb();
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "unique TEB returned" );
+#endif
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "errno enter" );
+#endif
     test_errno();
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "errno returned" );
+#endif
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "NtCreateUserProcess enter" );
+#endif
     test_NtCreateUserProcess();
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "NtCreateUserProcess returned" );
+#endif
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "NtTerminateProcess enter" );
+#endif
     test_NtTerminateProcess();
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "NtTerminateProcess returned" );
+#endif
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "bypass process freeze enter" );
+#endif
     test_thread_bypass_process_freeze();
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "bypass process freeze returned" );
+#endif
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "NtQueueApcThreadEx enter" );
+#endif
     test_NtQueueApcThreadEx();
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "NtQueueApcThreadEx returned" );
+#endif
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "skip thread attach enter" );
+#endif
     test_skip_thread_attach();
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "skip thread attach returned" );
+#endif
 
 #if defined(__riscv) && __riscv_xlen == 64
     /* Run every test by default, as on the other architectures.  Keep
