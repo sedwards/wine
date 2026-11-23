@@ -801,6 +801,44 @@ static void riscv64_fault_handler( int sig, siginfo_t *info, void *opaque )
             _exit( 128 + sig );
         }
     }
+    /* Capture the interrupted architectural state before TLS lookup or
+     * Wine's exception machinery can cause a recursive fault.  Keep this
+     * async-signal-safe: no logging macros, allocation, locks or printf.
+     * A callback which crashes never reaches the trampoline's post-call
+     * ABI verifier, so compare this dump with RV64-ABI DLL pre-call. */
+    if (sig == SIGSEGV)
+    {
+        static unsigned int reports;
+        if (__atomic_fetch_add( &reports, 1, __ATOMIC_RELAXED ) < 8)
+        {
+            static const unsigned int saved_regs[] = { 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27 };
+            static const char *const reg_names[] =
+            { " s0=", " s1=", " s2=", " s3=", " s4=", " s5=", " s6=",
+              " s7=", " s8=", " s9=", " s10=", " s11=" };
+            char buf[768], *p = buf;
+            unsigned int i;
+
+            p = riscv64_diag_text( p, "RV64-ABI fault pc=" );
+            p = riscv64_diag_hex( p, PC_sig( uc ) );
+            p = riscv64_diag_text( p, " addr=" );
+            p = riscv64_diag_hex( p, (ULONG_PTR)(info ? info->si_addr : NULL) );
+            p = riscv64_diag_text( p, " sp=" );
+            p = riscv64_diag_hex( p, SP_sig( uc ) );
+            p = riscv64_diag_text( p, " ra=" );
+            p = riscv64_diag_hex( p, RA_sig( uc ) );
+            p = riscv64_diag_text( p, " gp=" );
+            p = riscv64_diag_hex( p, REGn_sig( 3, uc ) );
+            p = riscv64_diag_text( p, " tp=" );
+            p = riscv64_diag_hex( p, REGn_sig( 4, uc ) );
+            for (i = 0; i < ARRAY_SIZE(saved_regs); ++i)
+            {
+                p = riscv64_diag_text( p, reg_names[i] );
+                p = riscv64_diag_hex( p, REGn_sig( saved_regs[i], uc ) );
+            }
+            *p++ = '\n';
+            write( 2, buf, p - buf );
+        }
+    }
     data = riscv64_signal_thread_data();
     RV64_CHECKPOINT( "fault AFTER signal stack thread lookup" );
 
