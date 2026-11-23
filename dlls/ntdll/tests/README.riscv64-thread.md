@@ -37,11 +37,11 @@ syscall against the full RTL shutdown path:
 
 ```sh
 for suite in directexit rtlexit smoke; do
-    timeout -k 3s 30s env WINEDEBUG=+thread,+seh \\
-        WINE_RISCV_THREAD_DIAG=1 WINE_RISCV_THREAD_SUITE="$suite" \\
-        ./wine dlls/ntdll/tests/ntdll_test.exe.so thread \\
+    timeout -k 3s 30s env WINEDEBUG=+thread,+seh \
+        WINE_RISCV_THREAD_DIAG=1 WINE_RISCV_THREAD_SUITE="$suite" \
+        ./wine dlls/ntdll/tests/ntdll_test.exe.so thread \
         > "/tmp/rv64-$suite.log" 2>&1
-    printf '%s exit=%s\\n' "$suite" "$?"
+    printf '%s exit=%s\n' "$suite" "$?"
     grep -E 'RV64-EXIT|RV64-THREAD-TEST|BaseThreadInitThunk' "/tmp/rv64-$suite.log" | tail -50
 done
 ```
