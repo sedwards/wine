@@ -1826,6 +1826,31 @@ __ASM_GLOBAL_FUNC( __wine_syscall_dispatcher,
                    "li t3, 8388608\n\t"
                    "or t2, t2, t3\n\t"
                    "8:\n\t"
+                   "ld t1, 24(t0)\n\t"
+                   "beq gp, t1, 8f\n\t"
+                   "li t3, 16777216\n\t"
+                   "or t2, t2, t3\n\t"
+                   "8:\n\t"
+                   "ld t1, 32(t0)\n\t"
+                   "beq tp, t1, 8f\n\t"
+                   "li t3, 33554432\n\t"
+                   "or t2, t2, t3\n\t"
+                   "8:\n\t"
+                   "ld gp, 24(t0)\n\t"
+                   "ld tp, 32(t0)\n\t"
+                   "ld t1, 264(t0)\n\t"
+                   "andi t1, t1, 15\n\t"
+                   "beqz t1, 8f\n\t"
+                   "li t3, 67108864\n\t"
+                   "or t2, t2, t3\n\t"
+                   "8:\n\t"
+                   "ld t1, 272(t0)\n\t"
+                   "beqz t1, 8f\n\t"
+                   "andi t1, t1, 1\n\t"
+                   "beqz t1, 8f\n\t"
+                   "li t3, 134217728\n\t"
+                   "or t2, t2, t3\n\t"
+                   "8:\n\t"
                    "beqz t2, 9f\n\t"
                    "addi sp, sp, -16\n\t"
                    "sd a0, 0(sp)\n\t"
@@ -1862,6 +1887,8 @@ __ASM_GLOBAL_FUNC( __wine_syscall_dispatcher,
                    "fld f27, 496(t0)\n\t"
                    "ld t1, 536(t0)\n\t"
                    "fscsr t1\n\t"
+                   "ld gp, 24(t0)\n\t"
+                   "ld tp, 32(t0)\n\t"
                    "ld ra, 272(t0)\n\t"
                    "ld sp, 264(t0)\n\t"
                    "ret\n"
@@ -1893,7 +1920,7 @@ static void __attribute__((used,noinline)) riscv64_report_syscall_nonvolatiles(
 {
     static unsigned int reports;
     if (reports++ < 32)
-        ERR( "RV64-ABI syscall=%#x frame=%p nonvolatile mismatch mask=%#lx (bits 0..11=s0..s11, 12..23=fs0..fs11)\n",
+        ERR( "RV64-ABI syscall=%#x frame=%p nonvolatile mismatch mask=%#lx (0..11=s0..s11, 12..23=fs0..fs11, 24=gp, 25=tp, 26=sp, 27=ra)\n",
              frame->syscall_id, frame, (unsigned long)mask );
 }
 
@@ -2162,6 +2189,8 @@ __ASM_GLOBAL_FUNC( __wine_unix_call_dispatcher,
                    "fld f27, 496(t0)\n\t"
                    "ld t1, 536(t0)\n\t"
                    "fscsr t1\n\t"
+                   "ld gp, 24(t0)\n\t"
+                   "ld tp, 32(t0)\n\t"
                    "ld ra, 272(t0)\n\t"
                    "ld sp, 264(t0)\n\t"
                    "ret\n"
