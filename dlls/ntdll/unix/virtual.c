@@ -3444,6 +3444,16 @@ done:
 }
 
 
+#ifdef __riscv
+/* pthread_exit() performs libc cleanup and stack unwinding before the
+ * thread-specific-data destructors.  Keep the native-TID fallback alive
+ * through that entire phase and retire it only after cleanup has finished. */
+static void riscv64_thread_data_destructor( void *ptr )
+{
+    if (ptr) riscv64_unregister_thread_data();
+}
+#endif
+
 /***********************************************************************
  *           virtual_init
  */
@@ -3454,7 +3464,11 @@ void virtual_init(void)
     const struct preload_info *preload_info = preload_info_ptr ? *preload_info_ptr : NULL;
     pthread_mutexattr_t attr;
 
+#ifdef __riscv
+    pthread_key_create( &thread_data_key, riscv64_thread_data_destructor );
+#else
     pthread_key_create( &thread_data_key, NULL );
+#endif
     pthread_mutexattr_init( &attr );
     pthread_mutexattr_settype( &attr, PTHREAD_MUTEX_RECURSIVE );
     pthread_mutex_init( &virtual_mutex, &attr );
