@@ -42,6 +42,9 @@ WINE_DECLARE_DEBUG_CHANNEL(relay);
 WINE_DECLARE_DEBUG_CHANNEL(snoop);
 WINE_DECLARE_DEBUG_CHANNEL(loaddll);
 WINE_DECLARE_DEBUG_CHANNEL(imports);
+#if defined(__riscv) && __riscv_xlen == 64
+WINE_DECLARE_DEBUG_CHANNEL(thread);
+#endif
 
 #ifdef _WIN64
 #define DEFAULT_SECURITY_COOKIE_64  (((ULONGLONG)0x00002b99 << 32) | 0x2ddfa232)
@@ -4002,59 +4005,95 @@ void WINAPI LdrShutdownThread(void)
     PLIST_ENTRY mark, entry;
     LDR_DATA_TABLE_ENTRY *mod;
     WINE_MODREF *wm;
+    TEB *teb = NtCurrentTeb();
     UINT i;
     void **pointers;
 
     TRACE("()\n");
 
-    /* don't do any detach calls if process is exiting */
+    /* Do not send thread detach notifications while the process exits. */
     if (process_detaching) return;
 
-    RtlProcessFlsData( NtCurrentTeb()->FlsSlots, 1 );
+#if defined(__riscv) && __riscv_xlen == 64
+    TRACE_(thread)( "RV64-SHUTDOWN enter teb=%p peb=%p ldr=%p skip=%u\n", teb,
+                    teb ? teb->Peb : NULL, teb && teb->Peb ? teb->Peb->LdrData : NULL,
+                    teb ? teb->SkipThreadAttach : 0 );
+#endif
+    if (!teb) return;
 
+    RtlProcessFlsData( teb->FlsSlots, 1 );
+#if defined(__riscv) && __riscv_xlen == 64
+    TRACE_(thread)( "RV64-SHUTDOWN FLS callbacks finished; locking loader\n" );
+#endif
     RtlEnterCriticalSection( &loader_section );
+#if defined(__riscv) && __riscv_xlen == 64
+    TRACE_(thread)( "RV64-SHUTDOWN loader lock acquired\n" );
+#endif
 
-    if (!NtCurrentTeb()->SkipThreadAttach)
+    /* Winelib/RV64 worker threads may not have their image represented
+     * in the loader's module index.  A null get_modref() result is not
+     * evidence that DLL thread-detach callbacks must be skipped.  Only
+     * the image-specific TLS callbacks require its module record. */
+    if (!teb->SkipThreadAttach && teb->Peb && teb->Peb->LdrData)
     {
-        wm = get_modref( NtCurrentTeb()->Peb->ImageBaseAddress );
-        mark = &NtCurrentTeb()->Peb->LdrData->InInitializationOrderModuleList;
+        wm = get_modref( teb->Peb->ImageBaseAddress );
+        mark = &teb->Peb->LdrData->InInitializationOrderModuleList;
+#if defined(__riscv) && __riscv_xlen == 64
+        TRACE_(thread)( "RV64-SHUTDOWN detach image=%p image_modref=%p list=%p\n",
+                        teb->Peb->ImageBaseAddress, wm, mark );
+#endif
         for (entry = mark->Blink; entry != mark; entry = entry->Blink)
         {
-            mod = CONTAINING_RECORD(entry, LDR_DATA_TABLE_ENTRY,
-                                    InInitializationOrderLinks);
-            if ( !(mod->Flags & LDR_PROCESS_ATTACHED) )
-                continue;
-            if ( mod->Flags & LDR_NO_DLL_CALLS )
-                continue;
-
-            MODULE_InitDLL( CONTAINING_RECORD(mod, WINE_MODREF, ldr),
-                            DLL_THREAD_DETACH, NULL );
+            mod = CONTAINING_RECORD(entry, LDR_DATA_TABLE_ENTRY, InInitializationOrderLinks);
+            if (!(mod->Flags & LDR_PROCESS_ATTACHED)) continue;
+            if (mod->Flags & LDR_NO_DLL_CALLS) continue;
+#if defined(__riscv) && __riscv_xlen == 64
+            TRACE_(thread)( "RV64-SHUTDOWN DLL_THREAD_DETACH module=%p base=%p\n",
+                            mod, mod->DllBase );
+#endif
+            MODULE_InitDLL( CONTAINING_RECORD(mod, WINE_MODREF, ldr), DLL_THREAD_DETACH, NULL );
         }
 
-        if (wm->ldr.TlsIndex == -1) call_tls_callbacks( wm->ldr.DllBase, DLL_THREAD_DETACH );
+#if defined(__riscv) && __riscv_xlen == 64
+        TRACE_(thread)( "RV64-SHUTDOWN image TLS callbacks image_modref=%p\n", wm );
+#endif
+        if (wm && wm->ldr.TlsIndex == -1)
+            call_tls_callbacks( wm->ldr.DllBase, DLL_THREAD_DETACH );
     }
+    else if (!teb->SkipThreadAttach)
+        WARN( "Thread exit has no initialized PEB loader data, skipping DLL detach notifications\n" );
 
+#if defined(__riscv) && __riscv_xlen == 64
+    TRACE_(thread)( "RV64-SHUTDOWN acquiring PEB lock\n" );
+#endif
     RtlAcquirePebLock();
-    if ((pointers = NtCurrentTeb()->ThreadLocalStoragePointer))
+    if ((pointers = teb->ThreadLocalStoragePointer))
     {
-        NtCurrentTeb()->ThreadLocalStoragePointer = NULL;
+        teb->ThreadLocalStoragePointer = NULL;
         for (i = 0; i < tls_module_count; i++) RtlFreeHeap( GetProcessHeap(), 0, pointers[i] );
         RtlFreeHeap( GetProcessHeap(), 0, pointers );
     }
-    RtlProcessFlsData( NtCurrentTeb()->FlsSlots, 2 );
-    NtCurrentTeb()->FlsSlots = NULL;
-    RtlFreeHeap( GetProcessHeap(), 0, NtCurrentTeb()->TlsExpansionSlots );
-    NtCurrentTeb()->TlsExpansionSlots = NULL;
+#if defined(__riscv) && __riscv_xlen == 64
+    TRACE_(thread)( "RV64-SHUTDOWN freeing FLS data and TLS expansion\n" );
+#endif
+    RtlProcessFlsData( teb->FlsSlots, 2 );
+    teb->FlsSlots = NULL;
+    RtlFreeHeap( GetProcessHeap(), 0, teb->TlsExpansionSlots );
+    teb->TlsExpansionSlots = NULL;
     RtlReleasePebLock();
 
     RtlLeaveCriticalSection( &loader_section );
-    /* don't call DbgUiGetThreadDebugObject as some apps hook it and terminate if called */
-    if (NtCurrentTeb()->DbgSsReserved[1]) NtClose( NtCurrentTeb()->DbgSsReserved[1] );
+#if defined(__riscv) && __riscv_xlen == 64
+    TRACE_(thread)( "RV64-SHUTDOWN loader/PEB locks released\n" );
+#endif
+    if (teb->DbgSsReserved[1]) NtClose( teb->DbgSsReserved[1] );
     RtlFreeThreadActivationContextStack();
 
     heap_thread_detach();
+#if defined(__riscv) && __riscv_xlen == 64
+    TRACE_(thread)( "RV64-SHUTDOWN finished\n" );
+#endif
 }
-
 
 /***********************************************************************
  *           free_modref
