@@ -891,46 +891,6 @@ START_TEST(thread)
         return;
     }
 
-#if defined(__riscv) && __riscv_xlen == 64
-    /* Isolate an individual test group without changing normal test coverage.
-     * Useful when an early thread/context hang hides all later assertions. */
-    {
-        char selection[64] = {0};
-        DWORD length = GetEnvironmentVariableA( "WINE_RISCV_THREAD_SUITE", selection, sizeof(selection) );
-        if (length)
-        {
-            if (length >= sizeof(selection))
-            {
-                ok( 0, "WINE_RISCV_THREAD_SUITE is too long\n" );
-                return;
-            }
-            if (!strcmp( selection, "smoke" )) test_riscv64_thread_smoke();
-            else if (!strcmp( selection, "directexit" )) test_riscv64_thread_exit_path( FALSE );
-            else if (!strcmp( selection, "rtlexit" )) test_riscv64_thread_exit_path( TRUE );
-            else if (!strcmp( selection, "startup" )) test_riscv64_thread_startup();
-            else if (!strcmp( selection, "context" )) test_riscv64_thread_context();
-            else if (!strcmp( selection, "hidden" )) test_dbg_hidden_thread_creation();
-            else if (!strcmp( selection, "teb" )) test_unique_teb();
-            else if (!strcmp( selection, "errno" )) test_errno();
-            else if (!strcmp( selection, "process" )) test_NtCreateUserProcess();
-            else if (!strcmp( selection, "terminate" )) test_NtTerminateProcess();
-            else if (!strcmp( selection, "freeze" )) test_thread_bypass_process_freeze();
-            else if (!strcmp( selection, "apc" )) test_NtQueueApcThreadEx();
-            else if (!strcmp( selection, "attach" )) test_skip_thread_attach();
-            else ok( 0, "Unknown WINE_RISCV_THREAD_SUITE: %s\n", selection );
-            return;
-        }
-    }
-    rv64_thread_checkpoint( "smoke group enter" );
-    test_riscv64_thread_smoke();
-    rv64_thread_checkpoint( "smoke group returned" );
-    rv64_thread_checkpoint( "startup group enter" );
-    test_riscv64_thread_startup();
-    rv64_thread_checkpoint( "startup group returned" );
-    rv64_thread_checkpoint( "context group enter" );
-    test_riscv64_thread_context();
-    rv64_thread_checkpoint( "context group returned" );
-#endif
     test_dbg_hidden_thread_creation();
     test_unique_teb();
     test_errno();
@@ -939,4 +899,22 @@ START_TEST(thread)
     test_thread_bypass_process_freeze();
     test_NtQueueApcThreadEx();
     test_skip_thread_attach();
+
+#if defined(__riscv) && __riscv_xlen == 64
+    /* Run every test by default, as on the other architectures.  Keep
+     * RV64-specific lifecycle regressions after the existing Wine tests
+     * so failures in a new port do not mask unrelated test coverage. */
+    rv64_thread_checkpoint( "native groups finished; RV64 smoke enter" );
+    test_riscv64_thread_smoke();
+    rv64_thread_checkpoint( "RV64 directexit enter" );
+    test_riscv64_thread_exit_path( FALSE );
+    rv64_thread_checkpoint( "RV64 rtlexit enter" );
+    test_riscv64_thread_exit_path( TRUE );
+    rv64_thread_checkpoint( "RV64 startup enter" );
+    test_riscv64_thread_startup();
+    rv64_thread_checkpoint( "RV64 context enter" );
+    test_riscv64_thread_context();
+    rv64_thread_checkpoint( "all RV64 groups finished" );
+#endif
+
 }
