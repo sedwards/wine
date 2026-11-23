@@ -1215,6 +1215,12 @@ static DECLSPEC_NORETURN void pthread_exit_wrapper( int status )
     close( data->wait_fd[1] );
     close( data->reply_fd );
     close( data->request_fd );
+#ifdef __riscv
+    /* Keep the native-TID fallback available until all uses of thread_data
+     * above have finished.  Removing it in abort_thread() was too early;
+     * neglecting it on the normal path leaked a slot on every thread exit. */
+    riscv64_unregister_thread_data();
+#endif
     pthread_exit( UIntToPtr(status) );
 }
 
@@ -1611,9 +1617,6 @@ void abort_thread( int status )
 {
     pthread_sigmask( SIG_BLOCK, &server_block_set, NULL );
     if (InterlockedDecrement( &nb_threads ) <= 0) abort_process( status );
-#ifdef __riscv
-    riscv64_unregister_thread_data();
-#endif
     pthread_exit_wrapper( status );
 }
 
