@@ -709,13 +709,26 @@ void WINAPI DECLSPEC_HOTPATCH RtlProcessFlsData( void *teb_fls_data, ULONG flags
 
     if (flags & 1)
     {
+#if defined(__riscv) && __riscv_xlen == 64
+        TRACE_(thread)( "RV64-FLS before lock fls=%p flags=%#lx\n", fls, flags );
+#endif
         lock_fls_data();
+#if defined(__riscv) && __riscv_xlen == 64
+        TRACE_(thread)( "RV64-FLS lock acquired fls=%p\n", fls );
+#endif
         for (i = 0; i < ARRAY_SIZE(fls->fls_data_chunks); ++i)
         {
+#if defined(__riscv) && __riscv_xlen == 64
+            TRACE_(thread)( "RV64-FLS examine chunk=%u fls=%p\n", i, fls );
+#endif
             if (!fls->fls_data_chunks[i] || !fls_data.fls_callback_chunks[i]
                     || !fls_data.fls_callback_chunks[i]->count)
                 continue;
 
+#if defined(__riscv) && __riscv_xlen == 64
+            TRACE_(thread)( "RV64-FLS active chunk=%u data=%p callbacks=%p\n",
+                            i, fls->fls_data_chunks[i], fls_data.fls_callback_chunks[i] );
+#endif
             for (index = 0; index < fls_chunk_size( i ); ++index)
             {
                 PFLS_CALLBACK_FUNCTION callback = fls_data.fls_callback_chunks[i]->callbacks[index].callback;
@@ -728,15 +741,29 @@ void WINAPI DECLSPEC_HOTPATCH RtlProcessFlsData( void *teb_fls_data, ULONG flags
                     TRACE_(relay)("Calling FLS callback %p, arg %p.\n", callback,
                             fls->fls_data_chunks[i][index + 1]);
 
+#if defined(__riscv) && __riscv_xlen == 64
+                    TRACE_(thread)( "RV64-FLS callback enter chunk=%u index=%u fn=%p arg=%p\n",
+                                    i, index, callback, fls->fls_data_chunks[i][index + 1] );
+#endif
                     callback( fls->fls_data_chunks[i][index + 1] );
+#if defined(__riscv) && __riscv_xlen == 64
+                    TRACE_(thread)( "RV64-FLS callback returned chunk=%u index=%u\n", i, index );
+#endif
                 }
                 fls->fls_data_chunks[i][index + 1] = NULL;
             }
         }
         /* Not using RemoveEntryList() as Windows does not zero list entry here. */
+#if defined(__riscv) && __riscv_xlen == 64
+        TRACE_(thread)( "RV64-FLS before unlink fls=%p flink=%p blink=%p\n",
+                        fls, fls->fls_list_entry.Flink, fls->fls_list_entry.Blink );
+#endif
         fls->fls_list_entry.Flink->Blink = fls->fls_list_entry.Blink;
         fls->fls_list_entry.Blink->Flink = fls->fls_list_entry.Flink;
         unlock_fls_data();
+#if defined(__riscv) && __riscv_xlen == 64
+        TRACE_(thread)( "RV64-FLS unlink complete fls=%p\n", fls );
+#endif
     }
 
     if (flags & 2)
