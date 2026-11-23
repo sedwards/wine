@@ -68,11 +68,16 @@ The hexadecimal mismatch mask uses these bits:
 - `27`: DLL wrapper return address changed or the saved syscall return
   address was null/misaligned.
 
-A missing `RV64-ABI` error does not prove the registers are correct if a
-callback crashes before returning to the verifier.  In that case, inspect
-the first `RV64-DLL entry-point call begin` and the signal exception's
-register dump.  The signal tests validate signal handling separately from
-callee-saved ABI conformance.
+A missing `RV64-ABI` mismatch error does not prove the registers are
+correct if a callback crashes before returning to the verifier.  During
+`DLL_THREAD_DETACH`, `RV64-ABI DLL pre-call` records `s0/sp/gp/tp/ra`
+on the calling side; the first eight SIGSEGVs per process also emit a
+signal-safe `RV64-ABI fault` line showing `s0-s11/sp/gp/tp/ra`
+from the kernel's interrupted ucontext.  These two snapshots can be
+compared even if the callback never returns.  Note that `ra` normally
+changes during nested calls, and `s0` is not required to contain a
+frame pointer at every instruction.  The signal tests validate signal
+handling separately from callee-saved ABI conformance.
 
 A focused test without GDB:
 
