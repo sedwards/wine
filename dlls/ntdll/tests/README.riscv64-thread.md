@@ -1,70 +1,50 @@
-# RISC-V64 NTDLL thread regression isolation
+# RISC-V64 NTDLL thread regression tests
 
-The normal `ntdll_test.exe.so thread` run executes all thread tests.  On
-RISC-V64 it starts with a basic thread smoke test and a suspended-context
-round trip.  When an early test hangs, opt in to a single group with
-`WINE_RISCV_THREAD_SUITE` to test later groups independently.
+The RISC-V64 build runs the normal NTDLL thread test groups, followed by
+native RISC-V64 smoke, direct thread exit, RTL thread exit, suspended-startup,
+and register-context regression tests.  No environment variable is required
+to select or enable the complete suite.
 
 From the Wine build directory:
 
 ```sh
-timeout 60 env WINEDEBUG=-all WINE_RISCV_THREAD_DIAG=1 \
-    WINE_RISCV_THREAD_SUITE=smoke \
-    ./wine dlls/ntdll/tests/ntdll_test.exe.so thread
-timeout 60 env WINEDEBUG=-all WINE_RISCV_THREAD_DIAG=1 \
-    WINE_RISCV_THREAD_SUITE=context \
-    ./wine dlls/ntdll/tests/ntdll_test.exe.so thread
+timeout -k 3s 120s env WINEDEBUG=-all WINE_RISCV_THREAD_DIAG=1 \
+    ./wine dlls/ntdll/tests/ntdll_test.exe.so thread \
+    > /tmp/rv64-thread-full.log 2>&1
+printf 'exit status: %s\n' "$?"
+grep -E 'RV64-THREAD-TEST|tests executed|failures|skipped' /tmp/rv64-thread-full.log
 ```
 
-Valid group selectors: `smoke`, `directexit`, `rtlexit`, `startup`, `context`, `hidden`, `teb`,
-`errno`, `process`, `terminate`, `freeze`, `apc`, and `attach`.
-An unset selector runs the full suite. An unknown selector fails the
-test rather than silently claiming success.
+`WINE_RISCV_THREAD_DIAG=1` enables stderr checkpoints; it does **not**
+change test selection.  To trace the RISC-V64 termination and loader cleanup,
+use `WINEDEBUG=+thread,+seh` and inspect the `RV64-EXIT`,
+`RV64-SHUTDOWN`, and `RV64-FLS` messages.
 
-`WINE_RISCV_THREAD_DIAG=1` enables unbuffered stderr checkpoints in
-the RISC-V64 context and smoke tests.  The last printed checkpoint
-helps identify a blocking Wine server operation, even when the harness
-does not reach its final summary.
+The RISC-V64 tests exercise:
 
-Exit code 124 from `timeout` indicates the test did not finish within
-the specified interval. This does **not** prove which API is defective.
-Use `WINEDEBUG=+thread,+sync,+server,+seh` or attach GDB to the
-stalled process to inspect all native threads.
+- `smoke`: CreateThread, worker return through BaseThreadInitThunk, wait,
+  and the expected 0x1234abcd exit code.
+- `directexit`: worker calls NtTerminateThread on itself, without entering
+  RtlExitUserThread or loader shutdown.
+- `rtlexit`: worker calls RtlExitUserThread directly.
+- `startup`: suspended creation, resume, and successful completion.
+- `context`: x0, x2/SP, s2, fs0, FCSR, and native gp/tp preservation
+  across context updates and resumption.
 
-When the smoke-test worker prints `smoke worker returning` and the process
-then exits with signal status 139, compare the raw Windows thread-termination
-syscall against the full RTL shutdown path:
+An unexpected return from either thread-termination function is a test
+failure, rather than a diagnostic message followed by false success.
 
-```sh
-for suite in directexit rtlexit smoke; do
-    timeout -k 3s 30s env WINEDEBUG=+thread,+seh \
-        WINE_RISCV_THREAD_DIAG=1 WINE_RISCV_THREAD_SUITE="$suite" \
-        ./wine dlls/ntdll/tests/ntdll_test.exe.so thread \
-        > "/tmp/rv64-$suite.log" 2>&1
-    printf '%s exit=%s\n' "$suite" "$?"
-    grep -E 'RV64-EXIT|RV64-THREAD-TEST|BaseThreadInitThunk' "/tmp/rv64-$suite.log" | tail -50
-done
-```
+On Linux RISC-V64, the Unix termination path currently uses the native
+`exit` syscall to end a single task after Wine server cleanup, because
+glibc `pthread_exit()` forces an unwind across the port's hand-written
+Windows-to-Unix syscall stack switch.  This is a targeted workaround, not
+a complete libc-unwinder integration: pthread TLS destructors and other
+libc cleanup callbacks do not run on this path.  The RISC-V native
+thread-data registry is unregistered explicitly.  A long-term solution
+should add unwinding-safe stack-switch integration and restore normal
+pthread exit semantics.
 
-`directexit` calls `NtTerminateThread` from the worker itself and bypasses
-`RtlExitUserThread` and loader shutdown. `rtlexit` calls
-`RtlExitUserThread` directly, while `smoke` returns normally through
-`BaseThreadInitThunk`. These selectors are opt-in; normal thread semantics
-are unchanged. If direct exit succeeds but RTL exit fails, inspect the
-`RV64-EXIT` checkpoints around the last-thread query and
-`LdrShutdownThread`. A status of 139 indicates SIGSEGV and must not be
-interpreted as a successful test.
-
-The `startup` group verifies that a suspended RISC-V64 thread stays suspended,
-resumes, executes its entry point, and terminates successfully without
-calling `NtGetContextThread` or `NtSetContextThread`. It should be run after
-`smoke` and before `context` when diagnosing startup hangs.
-
-The RISC-V64 context regression checks x0, integer register x2/SP,
-s2, fs0, FCSR and native gp/tp preservation across thread
-suspension, context updates and resumption.  It is not a substitute
-for on-device validation of the syscall dispatcher or signal-return
-assembly.
-
-All fixes must be compiled and tested on a RISC-V64 Linux host; the
-source-only checks do not establish runtime correctness.
+An exit code of 124 from `timeout` means the suite did not complete.
+Status 139 indicates SIGSEGV, and status 134 indicates SIGABRT; none
+indicates a completed passing test suite.  Source changes must be built
+and tested on an actual RV64 Linux host.
