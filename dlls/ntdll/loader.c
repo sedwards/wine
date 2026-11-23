@@ -1683,8 +1683,29 @@ static NTSTATUS MODULE_InitDLL( WINE_MODREF *wm, UINT reason, LPVOID lpReserved 
     /* Skip calls for modules loaded with special load flags */
 
     if (wm->ldr.Flags & LDR_DONT_RESOLVE_REFS) return STATUS_SUCCESS;
-    if (wm->ldr.TlsIndex == -1) call_tls_callbacks( wm->ldr.DllBase, reason );
+#if defined(__riscv) && __riscv_xlen == 64
+    if (reason == DLL_THREAD_DETACH)
+        TRACE_(thread)( "RV64-DLL detach begin wm=%p base=%p entry=%p tls_index=%d flags=%#x name=%s\n",
+                        wm, module, entry, wm->ldr.TlsIndex, wm->ldr.Flags,
+                        debugstr_w(wm->ldr.BaseDllName.Buffer) );
+#endif
+    if (wm->ldr.TlsIndex == -1)
+    {
+#if defined(__riscv) && __riscv_xlen == 64
+        if (reason == DLL_THREAD_DETACH)
+            TRACE_(thread)( "RV64-DLL TLS callbacks enter base=%p\n", module );
+#endif
+        call_tls_callbacks( wm->ldr.DllBase, reason );
+#if defined(__riscv) && __riscv_xlen == 64
+        if (reason == DLL_THREAD_DETACH)
+            TRACE_(thread)( "RV64-DLL TLS callbacks returned base=%p\n", module );
+#endif
+    }
     if (!entry) return STATUS_SUCCESS;
+#if defined(__riscv) && __riscv_xlen == 64
+    if (reason == DLL_THREAD_DETACH)
+        TRACE_(thread)( "RV64-DLL entry-point call begin proc=%p base=%p\n", entry, module );
+#endif
 
     if (TRACE_ON(relay))
     {
@@ -1700,6 +1721,10 @@ static NTSTATUS MODULE_InitDLL( WINE_MODREF *wm, UINT reason, LPVOID lpReserved 
     __TRY
     {
         retv = call_dll_entry_point( entry, module, reason, lpReserved );
+#if defined(__riscv) && __riscv_xlen == 64
+        if (reason == DLL_THREAD_DETACH)
+            TRACE_(thread)( "RV64-DLL entry-point returned proc=%p result=%d\n", entry, retv );
+#endif
         if (!retv)
             status = STATUS_DLL_INIT_FAILED;
     }
