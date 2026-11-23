@@ -590,6 +590,7 @@ static void rv64_thread_checkpoint( const char *phase )
 static DWORD WINAPI rv64_thread_smoke_proc( void *arg )
 {
     rv64_thread_checkpoint( "smoke worker entered" );
+    rv64_thread_checkpoint( "smoke worker returning" );
     return 0x1234abcd;
 }
 
@@ -614,6 +615,51 @@ static void test_riscv64_thread_smoke(void)
         ok( GetExitCodeThread( thread, &exit_code ), "Smoke GetExitCodeThread failed: %lu\n",
             GetLastError() );
         ok( exit_code == 0x1234abcd, "Smoke thread exit code %#lx\n", exit_code );
+    }
+    else if (ret == WAIT_TIMEOUT) TerminateThread( thread, 1 );
+    CloseHandle( thread );
+}
+
+/* Compare raw NtTerminateThread with the full RtlExitUserThread shutdown.
+ * Both execute after the worker entry point, without returning through
+ * BaseThreadInitThunk.  Keep these opt-in until the normal smoke test passes. */
+static DWORD WINAPI rv64_thread_exit_proc( void *arg )
+{
+    if (arg)
+    {
+        rv64_thread_checkpoint( "rtl exit worker entered" );
+        RtlExitUserThread( 0x1234abcd );
+        rv64_thread_checkpoint( "rtl exit unexpectedly returned" );
+    }
+    else
+    {
+        rv64_thread_checkpoint( "direct exit worker entered" );
+        NtTerminateThread( GetCurrentThread(), 0x1234abcd );
+        rv64_thread_checkpoint( "direct exit unexpectedly returned" );
+    }
+    return 0;
+}
+
+static void test_riscv64_thread_exit_path( BOOL rtl_exit )
+{
+    DWORD ret, exit_code = 0;
+    HANDLE thread;
+
+    rv64_thread_checkpoint( rtl_exit ? "rtl exit CreateThread enter" : "direct exit CreateThread enter" );
+    thread = CreateThread( NULL, 0, rv64_thread_exit_proc, (void *)(ULONG_PTR)rtl_exit, 0, NULL );
+    rv64_thread_checkpoint( rtl_exit ? "rtl exit CreateThread returned" : "direct exit CreateThread returned" );
+    ok( !!thread, "Exit-path CreateThread failed: %lu\n", GetLastError() );
+    if (!thread) return;
+
+    rv64_thread_checkpoint( rtl_exit ? "rtl exit wait enter" : "direct exit wait enter" );
+    ret = WaitForSingleObject( thread, 5000 );
+    rv64_thread_checkpoint( rtl_exit ? "rtl exit wait returned" : "direct exit wait returned" );
+    ok( ret == WAIT_OBJECT_0, "Exit-path thread wait returned %#lx\n", ret );
+    if (ret == WAIT_OBJECT_0)
+    {
+        ok( GetExitCodeThread( thread, &exit_code ),
+            "Exit-path GetExitCodeThread failed: %lu\n", GetLastError() );
+        ok( exit_code == 0x1234abcd, "Exit-path thread exit code %#lx\n", exit_code );
     }
     else if (ret == WAIT_TIMEOUT) TerminateThread( thread, 1 );
     CloseHandle( thread );
@@ -859,6 +905,8 @@ START_TEST(thread)
                 return;
             }
             if (!strcmp( selection, "smoke" )) test_riscv64_thread_smoke();
+            else if (!strcmp( selection, "directexit" )) test_riscv64_thread_exit_path( FALSE );
+            else if (!strcmp( selection, "rtlexit" )) test_riscv64_thread_exit_path( TRUE );
             else if (!strcmp( selection, "startup" )) test_riscv64_thread_startup();
             else if (!strcmp( selection, "context" )) test_riscv64_thread_context();
             else if (!strcmp( selection, "hidden" )) test_dbg_hidden_thread_creation();
