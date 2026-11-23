@@ -1210,6 +1210,9 @@ static void contexts_from_server( CONTEXT *context, struct context_data server_c
 static DECLSPEC_NORETURN void pthread_exit_wrapper( int status )
 {
     struct thread_data *data = get_thread_data();
+#if defined(__riscv) && __riscv_xlen == 64
+    TRACE( "RV64-EXIT pthread_exit_wrapper enter status=%#x data=%p\n", status, data );
+#endif
     close( data->alert_fd );
     close( data->wait_fd[0] );
     close( data->wait_fd[1] );
@@ -1220,6 +1223,9 @@ static DECLSPEC_NORETURN void pthread_exit_wrapper( int status )
      * above have finished.  Removing it in abort_thread() was too early;
      * neglecting it on the normal path leaked a slot on every thread exit. */
     riscv64_unregister_thread_data();
+#endif
+#if defined(__riscv) && __riscv_xlen == 64
+    TRACE( "RV64-EXIT pthread_exit_wrapper calling pthread_exit status=%#x\n", status );
 #endif
     pthread_exit( UIntToPtr(status) );
 }
@@ -1638,6 +1644,9 @@ static DECLSPEC_NORETURN void exit_thread( int status )
     static void *prev_data;
     struct thread_data *data;
 
+#if defined(__riscv) && __riscv_xlen == 64
+    TRACE( "RV64-EXIT exit_thread enter status=%#x data=%p\n", status, get_thread_data() );
+#endif
     pthread_sigmask( SIG_BLOCK, &server_block_set, NULL );
 
     if (InterlockedDecrement( &nb_threads ) <= 0) exit_process( status );
@@ -1650,6 +1659,9 @@ static DECLSPEC_NORETURN void exit_thread( int status )
             virtual_free_thread_data( data );
         }
     }
+#if defined(__riscv) && __riscv_xlen == 64
+    TRACE( "RV64-EXIT exit_thread calling pthread_exit_wrapper\n" );
+#endif
     pthread_exit_wrapper( status );
 }
 
@@ -1976,6 +1988,9 @@ NTSTATUS WINAPI NtTerminateThread( HANDLE handle, LONG exit_code )
     unsigned int ret;
     BOOL self;
 
+#if defined(__riscv) && __riscv_xlen == 64
+    TRACE( "RV64-EXIT NtTerminateThread enter handle=%p code=%#x\n", handle, exit_code );
+#endif
     SERVER_START_REQ( terminate_thread )
     {
         req->handle    = wine_server_obj_handle( handle );
@@ -1985,9 +2000,18 @@ NTSTATUS WINAPI NtTerminateThread( HANDLE handle, LONG exit_code )
     }
     SERVER_END_REQ;
 
+#if defined(__riscv) && __riscv_xlen == 64
+    TRACE( "RV64-EXIT NtTerminateThread server status=%#x self=%d\n", ret, self );
+#endif
     if (self)
     {
+#if defined(__riscv) && __riscv_xlen == 64
+        TRACE( "RV64-EXIT NtTerminateThread server_select enter\n" );
+#endif
         server_select( NULL, 0, SELECT_INTERRUPTIBLE, 0, NULL, NULL );
+#if defined(__riscv) && __riscv_xlen == 64
+        TRACE( "RV64-EXIT NtTerminateThread server_select returned\n" );
+#endif
         exit_thread( exit_code );
     }
     return ret;
