@@ -237,11 +237,28 @@ void set_native_thread_name( DWORD tid, const char *name )
  */
 void WINAPI RtlExitUserThread( ULONG status )
 {
-    ULONG last;
+    ULONG last = FALSE;
+    NTSTATUS query_status;
 
-    NtQueryInformationThread( GetCurrentThread(), ThreadAmILastThread, &last, sizeof(last), NULL );
-    if (last) RtlExitUserProcess( status );
+#if defined(__riscv) && __riscv_xlen == 64
+    TRACE( "RV64-EXIT RtlExitUserThread enter status=%#lx\n", (unsigned long)status );
+#endif
+    /* A failed ThreadAmILastThread query must not leave an uninitialized
+     * value deciding whether to terminate the entire process. */
+    query_status = NtQueryInformationThread( GetCurrentThread(), ThreadAmILastThread,
+                                             &last, sizeof(last), NULL );
+#if defined(__riscv) && __riscv_xlen == 64
+    TRACE( "RV64-EXIT last-thread query status=%#lx last=%lu\n",
+           (unsigned long)query_status, (unsigned long)last );
+#endif
+    if (!query_status && last) RtlExitUserProcess( status );
+#if defined(__riscv) && __riscv_xlen == 64
+    TRACE( "RV64-EXIT LdrShutdownThread enter\n" );
+#endif
     LdrShutdownThread();
+#if defined(__riscv) && __riscv_xlen == 64
+    TRACE( "RV64-EXIT LdrShutdownThread returned; terminating thread\n" );
+#endif
     for (;;) NtTerminateThread( GetCurrentThread(), status );
 }
 
