@@ -1218,14 +1218,16 @@ static DECLSPEC_NORETURN void pthread_exit_wrapper( int status )
     close( data->wait_fd[1] );
     close( data->reply_fd );
     close( data->request_fd );
+#if defined(__riscv) && __riscv_xlen == 64
+    /* Debug logging may itself require get_thread_data(), so do it
+     * before retiring the native-TID fallback entry. */
+    TRACE( "RV64-EXIT pthread_exit_wrapper calling pthread_exit status=%#x\n", status );
+#endif
 #ifdef __riscv
     /* Keep the native-TID fallback available until all uses of thread_data
      * above have finished.  Removing it in abort_thread() was too early;
      * neglecting it on the normal path leaked a slot on every thread exit. */
     riscv64_unregister_thread_data();
-#endif
-#if defined(__riscv) && __riscv_xlen == 64
-    TRACE( "RV64-EXIT pthread_exit_wrapper calling pthread_exit status=%#x\n", status );
 #endif
     pthread_exit( UIntToPtr(status) );
 }
