@@ -2004,7 +2004,22 @@ static NTSTATUS MODULE_InitDLL( WINE_MODREF *wm, UINT reason, LPVOID lpReserved 
     if (!entry) return STATUS_SUCCESS;
 #if defined(__riscv) && __riscv_xlen == 64
     if (reason == DLL_THREAD_DETACH)
+    {
+        ULONG_PTR saved_s0, saved_sp, saved_gp, saved_tp, saved_ra;
+
+        /* The DLL callback may fault before our assembly trampoline can
+         * compare its saved registers.  Record the caller-side state so
+         * the signal ucontext can be compared without attaching GDB. */
+        __asm__ volatile ( "mv %0, s0" : "=r"(saved_s0) );
+        __asm__ volatile ( "mv %0, sp" : "=r"(saved_sp) );
+        __asm__ volatile ( "mv %0, gp" : "=r"(saved_gp) );
+        __asm__ volatile ( "mv %0, tp" : "=r"(saved_tp) );
+        __asm__ volatile ( "mv %0, ra" : "=r"(saved_ra) );
+        TRACE_(thread)( "RV64-ABI DLL pre-call entry=%p base=%p s0=%p sp=%p gp=%p tp=%p ra=%p\n",
+                        entry, module, (void *)saved_s0, (void *)saved_sp, (void *)saved_gp,
+                        (void *)saved_tp, (void *)saved_ra );
         TRACE_(thread)( "RV64-DLL entry-point call begin proc=%p base=%p\n", entry, module );
+    }
 #endif
 
     if (TRACE_ON(relay))
