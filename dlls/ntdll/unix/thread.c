@@ -1223,12 +1223,10 @@ static DECLSPEC_NORETURN void pthread_exit_wrapper( int status )
      * before retiring the native-TID fallback entry. */
     TRACE( "RV64-EXIT pthread_exit_wrapper calling pthread_exit status=%#x\n", status );
 #endif
-#ifdef __riscv
-    /* Keep the native-TID fallback available until all uses of thread_data
-     * above have finished.  Removing it in abort_thread() was too early;
-     * neglecting it on the normal path leaked a slot on every thread exit. */
-    riscv64_unregister_thread_data();
-#endif
+    /* On RISC-V64 the native-TID lookup must survive into pthread_exit().
+     * That call invokes libc cleanup and DWARF unwinding, which can reenter
+     * Wine's syscall/continuation path.  The thread-data key destructor
+     * retires the fallback only after those cleanup handlers have run. */
     pthread_exit( UIntToPtr(status) );
 }
 
