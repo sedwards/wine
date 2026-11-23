@@ -1218,11 +1218,6 @@ static DECLSPEC_NORETURN void pthread_exit_wrapper( int status )
     close( data->wait_fd[1] );
     close( data->reply_fd );
     close( data->request_fd );
-#if defined(__riscv) && __riscv_xlen == 64
-    /* Debug logging may itself require get_thread_data(), so do it
-     * before retiring the native-TID fallback entry. */
-    TRACE( "RV64-EXIT pthread_exit_wrapper calling pthread_exit status=%#x\n", status );
-#endif
     /*
      * Wine's RV64 NT syscall bridge switches from the Windows stack to
      * the Unix stack without providing a native unwind chain across the
