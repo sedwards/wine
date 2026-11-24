@@ -2532,6 +2532,28 @@ NTSTATUS WINAPI NtQueryInformationThread( HANDLE handle, THREADINFOCLASS class,
     case ThreadAmILastThread:
     {
         if (length != sizeof(ULONG)) return STATUS_INFO_LENGTH_MISMATCH;
+#if defined(__riscv) && __riscv_xlen == 64
+        /* RtlExitUserThread queries this class on every worker exit.
+         * Wine's own native thread count includes this worker and all
+         * other not-yet-reaped Wine threads.  More than one means that
+         * this worker is certainly not the final native thread, so
+         * avoid a synchronous wineserver round trip while thread
+         * shutdown and unrelated worker startup overlap.
+         *
+         * Keep the server query for the last native thread, where the
+         * process-level shutdown decision must remain authoritative.
+         * If another thread exits after this observation, the native
+         * nb_threads decrement in exit_thread() still ensures that
+         * the final thread calls exit_process(). */
+        if (handle == GetCurrentThread() && InterlockedCompareExchange( &nb_threads, 0, 0 ) > 1)
+        {
+            ULONG last = FALSE;
+            if (data) memcpy( data, &last, sizeof(last) );
+            if (ret_len) *ret_len = sizeof(last);
+            TRACE( "RV64-EXIT ThreadAmILastThread local=0 (multiple native threads)\n" );
+            return STATUS_SUCCESS;
+        }
+#endif
         SERVER_START_REQ( get_thread_info )
         {
             req->handle = wine_server_obj_handle( handle );
