@@ -2373,11 +2373,11 @@ static void riscv64_reexec_without_malloc_tcache( char *argv[] )
             p = *end ? end + 1 : end;
         }
 
-        fprintf( stderr, "wine: RV64 tcache diagnostic pid=%ld loader=%s enabled_in_env=%d glibc_tunables=%s\\n",
+        fprintf( stderr, "wine: RV64 tcache diagnostic pid=%ld loader=%s enabled_in_env=%d glibc_tunables=%s\n",
                  (long)getpid(), argv && argv[0] ? argv[0] : "(unknown)",
                  disabled, existing ? existing : "(unset)" );
         if (!disabled)
-            fprintf( stderr, "wine: RV64 WARNING: re-exec marker present but glibc tcache tunable missing\\n" );
+            fprintf( stderr, "wine: RV64 WARNING: re-exec marker present but glibc tcache tunable missing\n" );
         return;
     }
 
