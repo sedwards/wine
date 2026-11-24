@@ -187,9 +187,17 @@ NTSTATUS __wine_unix_lib_init(void)
     return STATUS_SUCCESS;
 }
 
+/* Unlike get_user_thread_info(), this lookup is safe for teardown
+ * queries: it never allocates or publishes new GUI state for a thread
+ * which may already be executing DLL_THREAD_DETACH. */
+struct user_thread_info *get_existing_user_thread_info(void)
+{
+    return pthread_getspecific( user_thread_info_key );
+}
+
 struct user_thread_info *get_user_thread_info(void)
 {
-    struct user_thread_info *info = pthread_getspecific( user_thread_info_key );
+    struct user_thread_info *info = get_existing_user_thread_info();
 
     if (!info)
     {
