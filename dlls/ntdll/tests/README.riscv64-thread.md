@@ -126,7 +126,31 @@ grep -E 'RV64 diagnostic|unaligned tcache|malloc\\(\\)|RV64-EXIT|RV64-THREAD-TES
 
 The one-time loader message
 `wine: RV64 diagnostic: re-exec with glibc malloc tcache disabled`
-confirms the re-exec was requested.  No-tcache mode is diagnostic only:
+confirms the re-exec was requested.
+When `WINE_RISCV_DISABLE_TCACHE=1` is enabled, the Wine loader now also
+prints one `wine: RV64 tcache diagnostic pid=... enabled_in_env=... glibc_tunables=...`
+line per Wine process.  Check that `enabled_in_env=1` is present for
+`services.exe` as well as the test runner.  This reports the environment
+available at Wine loader entry, not the internal state of the already
+initialized glibc malloc implementation.  A
+`RV64 WARNING: re-exec marker present but glibc tcache tunable missing`
+line identifies lost environment propagation.
+
+For an independent baseline, put the tunable in the shell environment
+before the original Wine process starts, instead of relying only on the
+loader re-exec:
+
+```sh
+timeout -k 3s 120s env GLIBC_TUNABLES=glibc.malloc.tcache_count=0 \
+    WINE_RISCV_DISABLE_TCACHE=1 WINEDEBUG=+thread,+seh \
+    WINE_RISCV_THREAD_DIAG=1 \
+    ./wine dlls/ntdll/tests/ntdll_test.exe.so thread \
+    > /tmp/rv64-tcache-preexported.log 2>&1
+printf 'exit=%s\\n' "$?"
+grep -E 'RV64 tcache diagnostic|RV64 WARNING|unaligned tcache|malloc\\(\\)' \
+    /tmp/rv64-tcache-preexported.log | head -80
+```
+  No-tcache mode is diagnostic only:
 if the heap-corruption symptoms disappear or change, it is evidence that
 native allocation/free lifetime needs investigation, not evidence the
 underlying bug is fixed.  Expect an allocation-performance penalty.
