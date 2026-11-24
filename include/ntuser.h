@@ -752,7 +752,10 @@ typedef enum _USERTHREADSTATECLASS
     UserThreadStateExtraInfo,
     UserThreadStateInSendMessage,
     UserThreadStateMessageTime,
-    UserThreadStateIsForeground
+    UserThreadStateIsForeground,
+    /* Wine-internal: query an already-existing IME context during thread
+     * teardown, without initializing Win32u/IME state on the dying thread. */
+    UserThreadStateDefaultInputContextNoCreate = 0x1000
 } USERTHREADSTATECLASS;
 
 W32KAPI HKL     WINAPI NtUserActivateKeyboardLayout( HKL layout, UINT flags );
