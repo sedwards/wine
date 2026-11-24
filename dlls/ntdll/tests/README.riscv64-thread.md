@@ -120,7 +120,7 @@ timeout -k 3s 120s env WINE_RISCV_DISABLE_TCACHE=1 \
     > /tmp/rv64-tcache-disabled.log 2>&1
 printf 'no-tcache exit=%s\n' "$?"
 
-grep -E 'RV64 diagnostic|unaligned tcache|malloc\\(\\)|RV64-EXIT|RV64-THREAD-TEST|tests executed' \
+grep -E 'RV64 diagnostic|unaligned tcache|malloc\(\)|RV64-EXIT|RV64-THREAD-TEST|tests executed' \
     /tmp/rv64-tcache-disabled.log | tail -100
 ```
 
@@ -146,11 +146,11 @@ timeout -k 3s 120s env GLIBC_TUNABLES=glibc.malloc.tcache_count=0 \
     WINE_RISCV_THREAD_DIAG=1 \
     ./wine dlls/ntdll/tests/ntdll_test.exe.so thread \
     > /tmp/rv64-tcache-preexported.log 2>&1
-printf 'exit=%s\\n' "$?"
-grep -E 'RV64 tcache diagnostic|RV64 WARNING|unaligned tcache|malloc\\(\\)' \
+printf 'exit=%s\n' "$?"
+grep -E 'RV64 tcache diagnostic|RV64 WARNING|unaligned tcache|malloc\(\)' \
     /tmp/rv64-tcache-preexported.log | head -80
 ```
-  No-tcache mode is diagnostic only:
-if the heap-corruption symptoms disappear or change, it is evidence that
+
+No-tcache mode is diagnostic only: if the heap-corruption symptoms disappear or change, it is evidence that
 native allocation/free lifetime needs investigation, not evidence the
 underlying bug is fixed.  Expect an allocation-performance penalty.
