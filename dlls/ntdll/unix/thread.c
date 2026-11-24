@@ -2296,17 +2296,31 @@ static void set_native_thread_name( HANDLE handle, const UNICODE_STRING *name )
     char path[64], nameA[64];
     int unix_pid, unix_tid, len, fd;
 
-    SERVER_START_REQ( get_thread_times )
+#if defined(__riscv) && __riscv_xlen == 64
+    /* Current-thread naming does not need a synchronous get_thread_times
+     * request.  Avoid the extra RPC during early Wine worker startup;
+     * the Windows description has already been stored by set_thread_info. */
+    if (handle == GetCurrentThread())
     {
-        req->handle = wine_server_obj_handle( handle );
-        status = wine_server_call( req );
-        if (status == STATUS_SUCCESS)
-        {
-            unix_pid = reply->unix_pid;
-            unix_tid = reply->unix_tid;
-        }
+        unix_pid = getpid();
+        unix_tid = get_unix_tid();
+        status = STATUS_SUCCESS;
     }
-    SERVER_END_REQ;
+    else
+#endif
+    {
+        SERVER_START_REQ( get_thread_times )
+        {
+            req->handle = wine_server_obj_handle( handle );
+            status = wine_server_call( req );
+            if (status == STATUS_SUCCESS)
+            {
+                unix_pid = reply->unix_pid;
+                unix_tid = reply->unix_tid;
+            }
+        }
+        SERVER_END_REQ;
+    }
 
     if (status != STATUS_SUCCESS || unix_pid == -1 || unix_tid == -1)
         return;
