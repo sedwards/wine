@@ -90,3 +90,43 @@ grep -E 'RV64-ABI|RV64-DLL|RV64-SHUTDOWN|RV64-THREAD-TEST|err:' \
     /tmp/rv64-thread-abi.log | head -160
 ```
 
+
+## Opt-in glibc malloc tcache isolation (RISC-V64)
+
+The default Wine allocator behavior is unchanged.  On glibc/Linux RV64,
+`WINE_RISCV_DISABLE_TCACHE=1` makes the NTDLL loader re-execute the current
+Wine loader once with `GLIBC_TUNABLES=glibc.malloc.tcache_count=0`.  This
+is necessary because glibc reads the tunable before `main()`; calling
+`setenv()` alone after startup would **not** disable malloc tcache.
+
+Other entries in `GLIBC_TUNABLES` are preserved.  An existing
+`glibc.malloc.tcache_count=...` entry is replaced.  The setting is inherited
+by child Wine processes (including `services.exe`).  A
+`WINE_RISCV_TCACHE_REEXECED` marker prevents the re-exec from looping.
+Do not set that marker yourself.
+
+From the build directory, run the same test with and without the
+diagnostic, using distinct log paths:
+
+```sh
+timeout -k 3s 120s env WINEDEBUG=+thread,+seh WINE_RISCV_THREAD_DIAG=1 \
+    ./wine dlls/ntdll/tests/ntdll_test.exe.so thread \
+    > /tmp/rv64-tcache-default.log 2>&1
+printf 'normal exit=%s\n' "$?"
+
+timeout -k 3s 120s env WINE_RISCV_DISABLE_TCACHE=1 \
+    WINEDEBUG=+thread,+seh WINE_RISCV_THREAD_DIAG=1 \
+    ./wine dlls/ntdll/tests/ntdll_test.exe.so thread \
+    > /tmp/rv64-tcache-disabled.log 2>&1
+printf 'no-tcache exit=%s\n' "$?"
+
+grep -E 'RV64 diagnostic|unaligned tcache|malloc\\(\\)|RV64-EXIT|RV64-THREAD-TEST|tests executed' \
+    /tmp/rv64-tcache-disabled.log | tail -100
+```
+
+The one-time loader message
+`wine: RV64 diagnostic: re-exec with glibc malloc tcache disabled`
+confirms the re-exec was requested.  No-tcache mode is diagnostic only:
+if the heap-corruption symptoms disappear or change, it is evidence that
+native allocation/free lifetime needs investigation, not evidence the
+underlying bug is fixed.  Expect an allocation-performance penalty.
