@@ -136,6 +136,7 @@ struct user_thread_info
 };
 
 extern struct user_thread_info *get_user_thread_info(void);
+extern struct user_thread_info *get_existing_user_thread_info(void);
 
 struct hook_extra_info
 {
