@@ -2351,9 +2351,36 @@ static void riscv64_reexec_without_malloc_tcache( char *argv[] )
     char *tunables, *out;
 
     if (!enabled || strcmp( enabled, "1" )) return;
-    if (getenv( "WINE_RISCV_TCACHE_REEXECED" )) return;
 
     existing = getenv( "GLIBC_TUNABLES" );
+    if (getenv( "WINE_RISCV_TCACHE_REEXECED" ))
+    {
+        const char *p = existing ? existing : "";
+        int disabled = 0;
+
+        /* Diagnose each new Wine process independently.  This marker is
+         * inherited by children, but does NOT prove that GLIBC_TUNABLES
+         * survived Windows/Unix environment propagation and was present
+         * when that child's dynamic linker initialized glibc. */
+        while (*p)
+        {
+            const char *end = strchr( p, ':' );
+            size_t n;
+            if (!end) end = p + strlen( p );
+            n = end - p;
+            if (n == sizeof(option) - 1 && !memcmp( p, option, n ))
+                disabled = 1;
+            p = *end ? end + 1 : end;
+        }
+
+        fprintf( stderr, "wine: RV64 tcache diagnostic pid=%ld loader=%s enabled_in_env=%d glibc_tunables=%s\\n",
+                 (long)getpid(), argv && argv[0] ? argv[0] : "(unknown)",
+                 disabled, existing ? existing : "(unset)" );
+        if (!disabled)
+            fprintf( stderr, "wine: RV64 WARNING: re-exec marker present but glibc tcache tunable missing\\n" );
+        return;
+    }
+
     /* Leave the other glibc tunables intact.  Remove any existing
      * tcache_count assignment so there are no conflicting duplicates. */
     len = strlen( existing ? existing : "" );
