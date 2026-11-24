@@ -2303,7 +2303,8 @@ static void set_native_thread_name( HANDLE handle, const UNICODE_STRING *name )
     if (handle == GetCurrentThread())
     {
         unix_pid = getpid();
-        unix_tid = get_unix_tid();
+        /* get_unix_tid() is private to server.c; query Linux directly. */
+        unix_tid = syscall( __NR_gettid );
         status = STATUS_SUCCESS;
     }
     else
