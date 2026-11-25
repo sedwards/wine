@@ -232,6 +232,56 @@ re-exec; glibc reads the tunable before startup in each directly launched
 Wine process. If malloc's tcache error persists, investigate whether the
 specific crashing process received and applied the setting.
 
+### Native startup/exit location probes (after the failed tcache0 A/B)
+
+The reproducible pair of runs on 2026-11-25 still returned 134,
+even with `GLIBC_TUNABLES=glibc.malloc.tcache_count=0` pre-exported:
+the hidden-thread test reached its entry checkpoint, both logs
+showed `malloc(): unaligned tcache chunk detected`, and neither
+emitted the join-quarantine marker. Native SIGSEGV reports occurred
+on another Linux TID before the test's startup messages. It remains
+unproven whether that signal is causally related to the malloc abort.
+
+Use opt-in `WINE_RISCV_TLS_DIAG=1` to locate the failure *without*
+changing the thread-join decision:
+
+- `RV64-TLS-ENV pid=... tid=... process enter ...` records the
+  incoming `GLIBC_TUNABLES` and `WINE_RISCV_SKIP_PTHREAD_JOIN`
+  environment in each Wine process.
+- `RV64-TLS-ENV ... thread enter ...` marks each native Wine worker
+  before `pthread_setspecific` and Wine thread registration.
+- `RV64-TLS-EXIT ... exit_thread enter` precedes decrementing the
+  native thread count and any thread-join attempt.
+- `RV64-TLS-EXIT ... previous thread available`, `before
+  pthread_join`, `after pthread_join`, `skipping pthread_join`, and
+  `exit_thread native exit` identify the subsequent branches.
+
+These opt-in markers use a direct `write(2,...)` instead of Wine's
+formatter. `GLIBC_TUNABLES` appearing in this trace only confirms
+environment propagation; it **does not** confirm glibc's internal tcache
+state.
+
+```sh
+timeout -k 3s 45s env -u WINE_RISCV_SKIP_PTHREAD_JOIN \
+    GLIBC_TUNABLES=glibc.malloc.tcache_count=0 \
+    WINE_RISCV_TLS_DIAG=1 WINE_RISCV_THREAD_DIAG=1 WINEDEBUG=-all \
+    ./wine dlls/ntdll/tests/ntdll_test.exe.so thread \
+    > /tmp/rv64-tls-location.log 2>&1
+printf 'exit=%s\n' "$?"
+grep -E 'RV64-TLS-ENV|RV64-TLS-EXIT|RV64-ABI fault|RV64-THREAD-TEST|malloc\(\)' \
+    /tmp/rv64-tls-location.log | tail -150
+```
+
+Match `pid=` and `tid=` from the raw startup/exit probes to the
+`RV64-ABI fault` report. glibc itself does not include PID in the
+`malloc(): ...` error, so process attribution of that message still
+requires a debugger or process-specific tracing.
+
+If the failed process has no `RV64-TLS-EXIT` marker, the opt-in
+`pthread_join` bypass cannot help that failure. Prefer localizing
+the invalid pointer in thread initialization or native TLS allocation,
+rather than intercepting arbitrary glibc `free()` calls.
+
 ### Workarounds removed; preserved differences
 
 Removed from `risc-v` because the experiments did not resolve the fault:
