@@ -374,9 +374,15 @@ unsigned int CDECL wine_server_call( void *req_ptr )
 
     if (probe) rv64_server_mask_checkpoint( "before pthread_sigmask BLOCK" );
     mask_result = pthread_sigmask( SIG_BLOCK, &server_block_set, &old_set );
-    if (probe)
-        rv64_server_mask_checkpoint( mask_result ? "pthread_sigmask BLOCK FAILED" :
-                                     "after pthread_sigmask BLOCK" );
+    if (mask_result)
+    {
+        if (probe) rv64_server_mask_checkpoint( "pthread_sigmask BLOCK FAILED; aborting request" );
+        /* Without an initialized old_set, restoring the prior signal
+         * mask would read uninitialized stack memory.  Never issue the
+         * request with signals unexpectedly unblocked. */
+        return STATUS_UNSUCCESSFUL;
+    }
+    if (probe) rv64_server_mask_checkpoint( "after pthread_sigmask BLOCK" );
     if (probe) rv64_server_mask_checkpoint( "before server_call_unlocked" );
 #else
     pthread_sigmask( SIG_BLOCK, &server_block_set, &old_set );
