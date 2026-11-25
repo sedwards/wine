@@ -184,7 +184,7 @@ timeout -k 3s 120s env WINE_RISCV_EXIT_DIAG=1 \
     ./wine dlls/ntdll/tests/ntdll_test.exe.so thread \
     > /tmp/rv64-lastthread-atomic.log 2>&1
 printf 'exit=%s\n' "$?"
-grep -E 'RV64-LAST|RV64-SERVER-MASK|RV64-EXIT|malloc\\(\\)|RV64-THREAD-TEST' \
+grep -E 'RV64-LAST|RV64-SERVER-MASK|RV64-EXIT|malloc\(\)|RV64-THREAD-TEST' \
     /tmp/rv64-lastthread-atomic.log | tail -150
 ```
 
@@ -217,7 +217,7 @@ timeout -k 3s 120s env WINE_RISCV_EXIT_DIAG=1 \
     ./wine dlls/ntdll/tests/ntdll_test.exe.so thread \
     > /tmp/rv64-lastthread-forced.log 2>&1
 printf 'exit=%s\n' "$?"
-grep -E 'RV64-LAST|RV64-SERVER-MASK|RV64-EXIT|RV64-DLL|RV64-THREAD-TEST|malloc\\(\\)' \
+grep -E 'RV64-LAST|RV64-SERVER-MASK|RV64-EXIT|RV64-DLL|RV64-THREAD-TEST|malloc\(\)' \
     /tmp/rv64-lastthread-forced.log | tail -150
 ```
 
