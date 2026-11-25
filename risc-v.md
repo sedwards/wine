@@ -139,7 +139,7 @@ Only enable a debug channel if it exists in the current source. In particular, `
 
 ## 4. Current implementation status
 
-Status as of **November 25, 2026**: the native ELF port builds and executes substantial portions of NTDLL on Orange Pi RV (glibc 2.36). Distinguish source implementation, observed runtime progress and full conformance. The latest callback fixes are source-verified but have not yet been built or run on the target.
+Status as of **November 25, 2026**: the native ELF port builds and executes substantial portions of NTDLL on Orange Pi RV (glibc 2.36). Distinguish source implementation, observed runtime progress and full conformance. The callback return correction has now been runtime-validated by a successful native Notepad launch in X11/TigerVNC; broader GUI and callback conformance remains unverified.
 
 | Area | Status / next validation |
 | --- | --- |
@@ -148,7 +148,7 @@ Status as of **November 25, 2026**: the native ELF port builds and executes subs
 | Syscall and Unix-call dispatch | Implemented; thread and sync suites reach summaries. Audit argument counts, output parameters, return values, last-error handling and nested/cross-stack transitions. |
 | Native Unix protected exception recovery | `3838dfcedf0d` adds native libc longjmp recovery via data->jmp_buf. No protected recovery was observed in the supplied Notepad diagnostic run; exercise it explicitly. |
 | Unprotected syscall fault recovery | `24517db42f6f` restores SP to the saved syscall frame. This fallback may abandon native cleanup and leave locks held; it does not establish correct exception recovery. |
-| User-mode callbacks | `KeUserModeCallback` and `NtCallbackReturn` implemented experimentally. `9000c5b1ef3b` corrects a confirmed 768-byte return-frame displacement and adds C layout assertions; hardware validation pending, including nested callbacks and USER-lock behavior. |
+| User-mode callbacks | `KeUserModeCallback` and `NtCallbackReturn` implemented experimentally. `9000c5b1ef3b` corrects a confirmed 768-byte return-frame displacement and adds C layout assertions; the corrected path enabled Notepad to open under X11/VNC. Nested callbacks and broader USER-lock behavior still require validation. |
 | Stack layout documentation | Completed in `b2af3b3eb1c2`; see [NTDLL RISC-V64 stack layout](dlls/ntdll/RISCV64-stack-layout.md). |
 | Context capture and restoration | RtlCaptureContext, RtlRestoreContext, NtContinue and SIGUSR2/rt_sigreturn transitions implemented experimentally. Latest signal test loops on a continuable software exception (0xe0424242); verify PC/RA/SP and progress after continuation. |
 | Floating-point context | LP64D syscall/Unix-call entry captures all 32 FP registers and FCSR; normal returns restore callee-saved FP state and FCSR. Full hardware register-preservation coverage pending. |
@@ -157,9 +157,9 @@ Status as of **November 25, 2026**: the native ELF port builds and executes subs
 | Windows RtlVirtualUnwind / RtlUnwindEx / SEH | Incomplete; ELF unwind support does not establish full Windows SEH. |
 | APC and remote thread context | SIGUSR1 suspension and remote context exchange implemented; dispatcher-boundary races and APC integration still require validation. |
 | Windows-side setjmp / longjmp | Initial RV64 implementation; validate jump-buffer layout and nonlocal transfers separately from native libc longjmp. |
-| Native Winelib child process creation | Outstanding: thread and sync tests report CreateProcess error 2. Verify child executable resolution and launch. |
+| Native Winelib child process creation | Outstanding: thread and sync tests report CreateProcess error 2; the developer confirms native executables require explicit Unix paths for reliable launching. Notepad logs also show start.exe's bare-name GetBinaryTypeW and CreateProcessW attempts failing with error 2. Verify path resolution and child launch separately from ELF image recognition. |
 | Named pipes and RPC | Pipe suite executes many sections but has numerous failures; audit I/O arguments, output parameters, status conversion and APC/completion paths before rewriting shared pipe logic. |
-| GUI / Common-Controls | Notepad reached GUI initialization but failed before the callback correction; retest. Common-Controls v6 manifests and COMDLG activation context error 14001 remain unresolved. |
+| GUI / Common-Controls | Notepad now opens under X11/VNC after the callback correction. The latest log has no USER-lock assertion or Common-Controls error, but contains EGL warnings, a separate SIGSEGV and bare-name launch errors. Common-Controls v6 and broader GUI functionality still require validation. |
 | RISC-V vector extension, native Windows PE/COFF and x86 translation | Future/exploratory; not prerequisites for native ELF bring-up. |
 
 ### Recent architectural fixes
@@ -233,10 +233,10 @@ This does not complete `RtlUnwindEx`, language-specific handlers, or collided un
 
 ### Development priorities
 
-1. Rebuild the latest callback fix; verify its disassembly and retest Notepad under X11/VNC, including menus and file dialogs.
-2. Resolve the signal exception continuation loop; compare RtlRaiseException/RtlCaptureContext and NtContinue PC, RA and SP handling against established architectures.
-3. Validate nested callbacks, callback output pointers, syscall frame ownership and native protected fault recovery.
-4. Correct native Winelib child process creation and executable resolution; rerun thread and sync tests with a consistent prefix and build.
+1. Resolve the signal exception continuation loop; compare RtlRaiseException/RtlCaptureContext and NtContinue PC, RA and SP handling against established architectures.
+2. Correct native Winelib executable resolution and child process creation; rerun thread and sync tests with a consistent prefix and build.
+3. Symbolize the remaining GUI access violation and investigate possible 64-bit pointer truncation before changing pointer arithmetic.
+4. Validate nested callbacks, callback output pointers, syscall frame ownership and native protected fault recovery; expand GUI coverage beyond the successful Notepad launch (menus, file dialogs and other programs).
 5. Audit syscall argument marshalling, return/status conversion, TEB last-error values, named pipes, APCs and asynchronous I/O completion.
 6. Restore safe native pthread termination and validate pthread_join, TLS destructors and resource reclamation; retire diagnostic bypasses only after verification.
 7. Resolve Common-Controls activation contexts and remaining GUI/graphics issues.
@@ -303,7 +303,7 @@ This guide reflects the development branch as of **November 25, 2026**. Record s
 
 ## 7. Current hardware smoke-test results (November 25, 2026)
 
-Target: Orange Pi RV, native Linux RISC-V64 ELF/Winelib build, glibc 2.36. Results below are from runs before the callback offset fix `9000c5b1ef3b`; they are not a certification of the latest branch.
+Target: Orange Pi RV, native Linux RISC-V64 ELF/Winelib build, glibc 2.36. Regression summaries below predate callback fix `9000c5b1ef3b`; the Notepad result includes the subsequent hardware retest. These are not a certification of the latest branch.
 
 | Test | Observed result |
 | --- | --- |
@@ -313,12 +313,45 @@ Target: Orange Pi RV, native Linux RISC-V64 ELF/Winelib build, glibc 2.36. Resul
 | sync | 433 assertions, 2 failures, 1 todo, 0 skipped. Both ordinary failures concern child creation/wait; not full synchronization conformance. |
 | pipe | Many test sections executed, with numerous failures in creation, writes, cancellation and completion. No final summary supplied. |
 | signal | Initially empty output; diagnostic rerun repeatedly delivered software exception 0xe0424242 and resumed via NtContinue/SIGUSR2 without reaching a summary. Treat as a continuation loop, not a pass. Earlier reported successful signal runs do not establish the current result. |
-| Notepad / GUI | Pre-callback-fix runs report missing Common-Controls v6, activation context error 14001, repeated invalid pointer stores and USER-lock assertions. Disassembly identified the callback return offset error; correction committed, retest pending. |
+| Notepad / GUI | Successfully opened under X11/TigerVNC after the callback offset correction. Earlier repeated callback result-store faults and USER-lock assertions are absent from the new log. Remaining EGL warnings, one different SIGSEGV and bare-name launch failures require investigation. |
 | Native thread shutdown | Observed FLS cleanup, DLL_THREAD_DETACH, NtTerminateThread and raw native exit. Complete process shutdown, pthread join and reclamation are not established. |
 
 No direct x86-64 comparison is available for these runs. Do not infer parity from assertion counts or presume every failure is architecture-specific. Exit status was not supplied for all runs; reaching a summary does not prove clean process shutdown.
 
 A TigerVNC/Openbox/xterm session and glxgears previously worked on the target. This does not prove Wine GUI correctness. Test using a known initialized prefix to separate application startup from wineboot and service initialization.
+
+### Native GUI milestone and executable lookup limitation
+
+The developer confirmed that Notepad ran in the X11/VNC session after the
+callback correction. A fresh prefix was created in that run. No successful
+menu/file-dialog test or clean exit status was supplied.
+
+The developer also confirms that native Winelib binaries are not reliably
+found unless an explicit Unix path is supplied. From the configured build
+directory, use the actual built ELF path when bare Windows names fail:
+
+```sh
+./wine programs/notepad/notepad.exe.so
+```
+
+The latest log contains:
+
+```text
+RV64-LAUNCH start: file=notepad.exe recognized=0 type=0 error=2
+RV64-LAUNCH start: CreateProcessW failed file=notepad.exe error=2
+```
+
+The current start.exe fallback attempts CreateProcessW after GetBinaryTypeW
+fails, then allows ShellExecuteEx to run. The log alone does not establish
+which path ultimately opened Notepad. Audit executable search, DOS/Unix path
+conversion, builtin ELF discovery and child process launch. Do not assume
+that changing image recognition alone will fix path resolution.
+
+A separate SIGSEGV accessed 0x750b2d2b while nearby registers contained
+addresses such as 0x5750b2cd0 and 0x5750b2cf4. Possible loss of upper pointer
+bits is a hypothesis, not a confirmed cause; symbolize the faulting PC and
+inspect its instruction before changing code. The EGL hardware-device/software
+rendering warnings are also unresolved but did not prevent the observed launch.
 
 ### Repeatable native regression runs
 
@@ -349,7 +382,7 @@ timeout -k 5s 120s env WINEDEBUG=-all ./wine notepad.exe \
 printf 'exit status: %s\n' "$?"
 ```
 
-Verify the subtraction of 768 before restoring SP. Run the GUI command from a working X11/VNC session. Close Notepad normally to assess process exit; a timeout while a working window remains open is not itself a GUI failure.
+Verify the subtraction of 768 before restoring SP. Run the GUI command from a working X11/VNC session. If bare-name lookup fails, use the explicit built ELF path shown above. Close Notepad normally to assess process exit; a timeout while a working window remains open is not itself a GUI failure.
 
 ## 8. RISC-V64 syscall-frame lifecycle tracing
 
