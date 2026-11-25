@@ -72,7 +72,8 @@ A missing `RV64-ABI` mismatch error does not prove the registers are
 correct if a callback crashes before returning to the verifier.  During
 `DLL_THREAD_DETACH`, `RV64-ABI DLL pre-call` records `s0/sp/gp/tp/ra`
 on the calling side; the first eight SIGSEGVs per process also emit a
-signal-safe `RV64-ABI fault` line showing `s0-s11/sp/gp/tp/ra`
+signal-safe `RV64-ABI fault` line showing PID/TID, `s0-s11`, argument
+and temporary registers, and `sp/gp/tp/ra`
 from the kernel's interrupted ucontext.  These two snapshots can be
 compared even if the callback never returns.  Note that `ra` normally
 changes during nested calls, and `s0` is not required to contain a
@@ -91,135 +92,129 @@ grep -E 'RV64-ABI|RV64-DLL|RV64-SHUTDOWN|RV64-THREAD-TEST|err:' \
 ```
 
 
-## Opt-in glibc malloc tcache isolation (RISC-V64)
+## Native glibc TLS teardown fault: current investigation (2026-11-25)
 
-The default Wine allocator behavior is unchanged.  On glibc/Linux RV64,
-`WINE_RISCV_DISABLE_TCACHE=1` makes the NTDLL loader re-execute the current
-Wine loader once with `GLIBC_TUNABLES=glibc.malloc.tcache_count=0`.  This
-is necessary because glibc reads the tunable before `main()`; calling
-`setenv()` alone after startup would **not** disable malloc tcache.
+**This is not yet established to be a glibc bug.** GDB caught a fault in
+`free()` while the ELF dynamic linker was walking a native TLS/DTV cleanup
+array. The pointer passed to `free()` was `0x133c`, and the first metadata
+read, `ld a5,-8(a0)`, faulted at `0x1334`. The containing executable
+mappings identified glibc `libc.so.6` for the fault PC and
+`ld-linux-riscv64-lp64d.so.1` for the return address. The suspected
+`_dl_deallocate_tls` call chain is **consistent with** the loop in glibc
+that frees DTV `pointer.to_free` entries; the initiating Wine caller is
+not yet definitively established.
 
-Other entries in `GLIBC_TUNABLES` are preserved.  An existing
-`glibc.malloc.tcache_count=...` entry is replaced.  The setting is inherited
-by child Wine processes (including `services.exe`).  A
-`WINE_RISCV_TCACHE_REEXECED` marker prevents the re-exec from looping.
-Do not set that marker yourself.
+Reproduction during `ntdll_test.exe.so thread`:
+- Normal `WINEDEBUG=-all` test runs reach the `hidden thread enter`
+  checkpoint but exit with code 1 after the SIGSEGV.
+- The original heavy `WINEDEBUG=+thread,+seh` runs sometimes hung
+  (timeout 124); debug traffic changes timing and should not be confused
+  with the native TLS invalid-pointer fault.
+- Setting `GLIBC_TUNABLES=glibc.malloc.tcache_count=0` did not solve the
+  earlier allocator failure. A disabled tcache does not validate glibc
+  internal TLS pointers and is not an appropriate workaround.
+- The native `ThreadAmILastThread` short-circuit and last-thread server
+  bypass did not resolve the root cause; the last-thread query has been
+  restored to upstream Wine behavior.
+- The RISC-V-only thread-name query/logging shortcut was removed and
+  upstream `ThreadNameInformation` handling restored. The temporary
+  signal-mask probes were removed. The one-time malloc-tcache loader
+  re-exec was removed.
 
-From the build directory, run the same test with and without the
-diagnostic, using distinct log paths:
+### Experimental RISC-V64 native TLS quarantine
 
-```sh
-timeout -k 3s 120s env WINEDEBUG=+thread,+seh WINE_RISCV_THREAD_DIAG=1 \
-    ./wine dlls/ntdll/tests/ntdll_test.exe.so thread \
-    > /tmp/rv64-tcache-default.log 2>&1
-printf 'normal exit=%s\n' "$?"
+The only new bypass is `WINE_RISCV_SKIP_PTHREAD_JOIN=1`, enabled explicitly
+in the environment of the Wine process. On Linux RISC-V64, when
+`exit_thread()` would normally join a **previously retired** native
+pthread, the opt-in path skips `pthread_join()` **and** skips
+`virtual_free_thread_data()` for that pthread. It prints
+`RV64-TLS-QUARANTINE skipped pthread_join; retaining native TLS and Wine thread_data`
+to stderr.
 
-timeout -k 3s 120s env WINE_RISCV_DISABLE_TCACHE=1 \
-    WINEDEBUG=+thread,+seh WINE_RISCV_THREAD_DIAG=1 \
-    ./wine dlls/ntdll/tests/ntdll_test.exe.so thread \
-    > /tmp/rv64-tcache-disabled.log 2>&1
-printf 'no-tcache exit=%s\n' "$?"
+The normal implementation still performs the standard
+`pthread_join()` and `virtual_free_thread_data()`; other
+architectures are unchanged. The quarantine path does not call
+`pthread_detach()`, because that may release the same glibc TLS
+resources we are trying to preserve for this experiment. No
+interception of `free()` is performed: glibc's internal allocator calls
+must not be silently suppressed.
 
-grep -E 'RV64 diagnostic|unaligned tcache|malloc\(\)|RV64-EXIT|RV64-THREAD-TEST|tests executed' \
-    /tmp/rv64-tcache-disabled.log | tail -100
-```
+**WARNING: This is strictly a short-lived diagnosis.** Joinable pthread
+resources, native TLS, Wine thread stacks, and thread_data are deliberately
+not reclaimed. Repeated thread creation can exhaust memory and thread
+resources, especially on an Orange Pi with limited RAM. Do not use it in
+services, production applications, unattended workloads, or long stress
+tests. It does not synchronize with a terminating thread, and can only
+establish whether avoiding the suspected join/reclamation phase changes
+the observed fault. It does not fix TLS corruption.
 
-The one-time loader message
-`wine: RV64 diagnostic: re-exec with glibc malloc tcache disabled`
-confirms the re-exec was requested.
-When `WINE_RISCV_DISABLE_TCACHE=1` is enabled, the Wine loader now also
-prints one `wine: RV64 tcache diagnostic pid=... enabled_in_env=... glibc_tunables=...`
-line per Wine process.  Check that `enabled_in_env=1` is present for
-`services.exe` as well as the test runner.  This reports the environment
-available at Wine loader entry, not the internal state of the already
-initialized glibc malloc implementation.  A
-`RV64 WARNING: re-exec marker present but glibc tcache tunable missing`
-line identifies lost environment propagation.
-
-For an independent baseline, put the tunable in the shell environment
-before the original Wine process starts, instead of relying only on the
-loader re-exec:
-
-```sh
-timeout -k 3s 120s env GLIBC_TUNABLES=glibc.malloc.tcache_count=0 \
-    WINE_RISCV_DISABLE_TCACHE=1 WINEDEBUG=+thread,+seh \
-    WINE_RISCV_THREAD_DIAG=1 \
-    ./wine dlls/ntdll/tests/ntdll_test.exe.so thread \
-    > /tmp/rv64-tcache-preexported.log 2>&1
-printf 'exit=%s\n' "$?"
-grep -E 'RV64 tcache diagnostic|RV64 WARNING|unaligned tcache|malloc\(\)' \
-    /tmp/rv64-tcache-preexported.log | head -80
-```
-
-No-tcache mode is diagnostic only: if the heap-corruption symptoms disappear or change, it is evidence that
-native allocation/free lifetime needs investigation, not evidence the
-underlying bug is fixed.  Expect an allocation-performance penalty.
-
-## RISC-V64 last-thread shutdown atomic-load and signal-mask probe
-
-The first hidden-thread test can time out after
-`NtQueryInformationThread(GetCurrentThread(), ThreadAmILastThread)`
-enters the Unix NTDLL implementation but before the associated
-`get_thread_info` request is transmitted to wineserver.
-
-On RISC-V64, the read-only `nb_threads` query now uses an acquire atomic
-load instead of `InterlockedCompareExchange(&nb_threads, 0, 0)`.
-If the native count is greater than one, the existing safe fast path
-returns "not last" without calling the server. The normal path still
-uses wineserver for the authoritative last-thread decision.
-
-Set `WINE_RISCV_EXIT_DIAG=1` to enable **raw**, native-TID-tagged
-`write(2, ...)` checkpoints that do not use Wine debug formatting:
-`RV64-LAST tid=...` records entry, atomic load, count, local return,
-and the server request boundary. `RV64-SERVER-MASK tid=...` records
-signal-mask BLOCK, the unlocked server call, and signal-mask RESTORE
-for `get_thread_info` requests. The runtime now fails the request if
-blocking signals fails, instead of restoring an uninitialized mask.
-
-### First run: diagnostics, no additional bypass
+First rebuild and run a baseline without the switch:
 
 ```sh
-timeout -k 3s 120s env WINE_RISCV_EXIT_DIAG=1 \
-    WINEDEBUG=+thread,+seh \
+git pull --ff-only origin risc-v
+make -j4
+
+timeout -k 3s 120s env -u WINE_RISCV_SKIP_PTHREAD_JOIN \
+    -u WINE_RISCV_LASTTHREAD_NO_SERVER -u WINE_RISCV_EXIT_DIAG \
+    WINEDEBUG=-all WINE_RISCV_THREAD_DIAG=1 \
     ./wine dlls/ntdll/tests/ntdll_test.exe.so thread \
-    > /tmp/rv64-lastthread-atomic.log 2>&1
-printf 'exit=%s\n' "$?"
-grep -E 'RV64-LAST|RV64-SERVER-MASK|RV64-EXIT|malloc\(\)|RV64-THREAD-TEST' \
-    /tmp/rv64-lastthread-atomic.log | tail -150
+    > /tmp/rv64-thread-baseline.log 2>&1
+printf 'baseline exit=%s\n' "$?"
+grep -E 'RV64-ABI fault|RV64-THREAD-TEST|malloc\(\)|tests executed|failures' \
+    /tmp/rv64-thread-baseline.log | tail -120
 ```
 
-If no `after atomic load` appears, investigate the atomic operation or
-the earlier path. If `local return` appears without the
-`RtlExitUserThread last-thread query` result, investigate the RISC-V64
-service return/stack restoration. If `before pthread_sigmask BLOCK`
-appears without `after pthread_sigmask BLOCK`, investigate signal
-masks and glibc TLS. If `before server_call_unlocked` appears but
-no `RV64-DIAG server SEND`, then the problem lies inside the
-unlocked send path; add `WINE_RISCV_DIAG=1 WINEDEBUG=+server,+thread,+seh`
-to get ordinary server request/reply diagnostics.
-
-### Optional second run: presumptive workaround experiment
-
-Only if the first run still stalls, set
-`WINE_RISCV_LASTTHREAD_NO_SERVER=1`.  This is *experimental* and
-RISC-V64-only; it forces the current-thread `ThreadAmILastThread`
-query to return `FALSE` without wineserver even when Wine's native
-thread counter is one. This may allow a worker to proceed to
-`LdrShutdownThread()` and `NtTerminateThread()`. It deliberately
-does not change other thread handles or architectures. It is **not**
-a safe production setting: a truly last Windows thread may need
-`RtlExitUserProcess()` behavior that this shortcut skips.
+Then run the **short-lived** quarantine experiment:
 
 ```sh
-timeout -k 3s 120s env WINE_RISCV_EXIT_DIAG=1 \
-    WINE_RISCV_LASTTHREAD_NO_SERVER=1 \
-    WINEDEBUG=+thread,+seh \
+timeout -k 3s 120s env WINE_RISCV_SKIP_PTHREAD_JOIN=1 \
+    -u WINE_RISCV_LASTTHREAD_NO_SERVER -u WINE_RISCV_EXIT_DIAG \
+    WINEDEBUG=-all WINE_RISCV_THREAD_DIAG=1 \
     ./wine dlls/ntdll/tests/ntdll_test.exe.so thread \
-    > /tmp/rv64-lastthread-forced.log 2>&1
-printf 'exit=%s\n' "$?"
-grep -E 'RV64-LAST|RV64-SERVER-MASK|RV64-EXIT|RV64-DLL|RV64-THREAD-TEST|malloc\(\)' \
-    /tmp/rv64-lastthread-forced.log | tail -150
+    > /tmp/rv64-thread-quarantine.log 2>&1
+printf 'quarantine exit=%s\n' "$?"
+grep -E 'RV64-TLS-QUARANTINE|RV64-ABI fault|RV64-THREAD-TEST|malloc\(\)|tests executed|failures' \
+    /tmp/rv64-thread-quarantine.log | tail -120
 ```
 
-The startup `services.exe` malloc corruption may be independent; this
-patch intentionally does not modify allocation, IME, or RPC behavior.
+The result is meaningful **only if** the quarantine marker appears. If
+the fault persists with no marker, the crashing `free()` may be reached
+through another cleanup path, or may occur before this join site.
+If the fault disappears and execution proceeds, the skipped join is a
+stronger candidate for the *trigger*, not proof that glibc is at fault.
+Test-suite failures still count as failures even if the process exits
+without a signal.
+
+### Workarounds removed; preserved differences
+
+Removed from `risc-v` because the experiments did not resolve the fault:
+
+- `WINE_RISCV_DISABLE_TCACHE` and `WINE_RISCV_TCACHE_REEXECED` handling
+  in the Wine loader. These switches no longer have any Wine effect.
+  Explicit shell `GLIBC_TUNABLES` is still a glibc feature, but not a
+  confirmed fix.
+- `WINE_RISCV_LASTTHREAD_NO_SERVER` and the native `nb_threads` shortcut
+  for `ThreadAmILastThread`, along with `WINE_RISCV_EXIT_DIAG` and its
+  `RV64-LAST` / `RV64-SERVER-MASK` checkpoints.
+- The early-thread-name special case that skipped an ordinary
+  `NtQueryInformationThread(ThreadBasicInformation)` request and
+  emitted unconditional `RV64-NAME` logs.
+
+Preserved pending separate regression tests:
+
+- The RISC-V64 direct Linux `SYS_exit` worker exit path is still in use.
+  It bypasses normal `pthread_exit()` unwinding across the current Wine
+  stack switch and therefore also bypasses usual pthread TLS destructors.
+  It is **not** equivalent to upstream Wine's pthread lifecycle. It may
+  be involved in DTV corruption; replacing it requires an unwind-safe
+  transition, not merely deleting the branch.
+- Optional `WINE_RISCV_DIAG` server and syscall diagnostics and the
+  `RV64-ABI fault` register snapshot remain available for investigation.
+  The signal snapshot records Linux PID/TID, signal/code, PC, fault
+  address, stack, GP/TP, preserved registers, temporaries, and
+  `a0`–`a7` before any Wine TLS lookup.
+
+The proper long-term correction is to establish who populates or damages
+the glibc DTV `pointer.to_free` value, then restore correct native TLS,
+stack, and pthread teardown. Never globally stub `free()` or turn
+this quarantine into the default.
