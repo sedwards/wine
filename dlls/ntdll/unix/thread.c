@@ -83,6 +83,58 @@ WINE_DECLARE_DEBUG_CHANNEL(threadname);
 
 static LONG nb_threads = 1;
 
+#if defined(__linux__) && defined(__riscv) && __riscv_xlen == 64
+/* Optional native lifecycle checkpoints for locating a fault *before* the
+ * first pthread_join(). No Wine logging, native allocation or TLS keys. */
+static char *rv64_tls_exit_hex( char *out, ULONG_PTR val )
+{
+    static const char digits[] = "0123456789abcdef";
+    int shift;
+
+    for (shift = sizeof(val) * 8 - 4; shift >= 0; shift -= 4)
+        *out++ = digits[(val >> shift) & 0xf];
+    return out;
+}
+
+static char *rv64_tls_exit_decimal( char *out, unsigned long val )
+{
+    char backwards[3 * sizeof(val) + 1];
+    unsigned int n = 0;
+
+    do { backwards[n++] = '0' + val % 10; val /= 10; } while (val);
+    while (n) *out++ = backwards[--n];
+    return out;
+}
+
+static void rv64_tls_exit_checkpoint( const char *phase, const void *ptr )
+{
+    const char *enabled = getenv( "WINE_RISCV_TLS_DIAG" );
+    static const char start[] = "RV64-TLS-EXIT pid=";
+    static const char tid_label[] = " tid=";
+    static const char ptr_label[] = " data=0x";
+    char buf[192], *p = buf;
+    size_t len;
+
+    if (!enabled || strcmp( enabled, "1" )) return;
+    memcpy( p, start, sizeof(start) - 1 );
+    p += sizeof(start) - 1;
+    p = rv64_tls_exit_decimal( p, (unsigned long)getpid() );
+    memcpy( p, tid_label, sizeof(tid_label) - 1 );
+    p += sizeof(tid_label) - 1;
+    p = rv64_tls_exit_decimal( p, (unsigned long)syscall( 178 /* RISC-V Linux gettid */ ) );
+    *p++ = ' ';
+    len = strlen( phase );
+    if (len > 48) return;
+    memcpy( p, phase, len );
+    p += len;
+    memcpy( p, ptr_label, sizeof(ptr_label) - 1 );
+    p += sizeof(ptr_label) - 1;
+    p = rv64_tls_exit_hex( p, (ULONG_PTR)ptr );
+    *p++ = '\n';
+    (void)write( 2, buf, p - buf );
+}
+#endif
+
 static inline int get_unix_exit_code( NTSTATUS status )
 {
     /* prevent a nonzero exit code to end up truncated to zero in unix */
@@ -1662,12 +1714,18 @@ static DECLSPEC_NORETURN void exit_thread( int status )
 #if defined(__riscv) && __riscv_xlen == 64
     TRACE( "RV64-EXIT exit_thread enter status=%#x data=%p\n", status, get_thread_data() );
 #endif
+#if defined(__linux__) && defined(__riscv) && __riscv_xlen == 64
+    rv64_tls_exit_checkpoint( "exit_thread enter", get_thread_data() );
+#endif
     pthread_sigmask( SIG_BLOCK, &server_block_set, NULL );
 
     if (InterlockedDecrement( &nb_threads ) <= 0) exit_process( status );
 
     if ((data = InterlockedExchangePointer( &prev_data, get_thread_data() )))
     {
+#if defined(__linux__) && defined(__riscv) && __riscv_xlen == 64
+        rv64_tls_exit_checkpoint( "previous thread available", data );
+#endif
         if (data->pthread_id)
         {
 #if defined(__linux__) && defined(__riscv) && __riscv_xlen == 64
@@ -1687,6 +1745,7 @@ static DECLSPEC_NORETURN void exit_thread( int status )
 
             if (quarantine && quarantine[0] == '1' && !quarantine[1])
             {
+                rv64_tls_exit_checkpoint( "skipping pthread_join", data );
                 static const char msg[] =
                     "RV64-TLS-QUARANTINE skipped pthread_join; retaining native TLS and Wine thread_data\n";
                 (void)write( 2, msg, sizeof(msg) - 1 );
@@ -1694,13 +1753,22 @@ static DECLSPEC_NORETURN void exit_thread( int status )
             else
 #endif
             {
+#if defined(__linux__) && defined(__riscv) && __riscv_xlen == 64
+                rv64_tls_exit_checkpoint( "before pthread_join", data );
+#endif
                 pthread_join( data->pthread_id, NULL );
+#if defined(__linux__) && defined(__riscv) && __riscv_xlen == 64
+                rv64_tls_exit_checkpoint( "after pthread_join", data );
+#endif
                 virtual_free_thread_data( data );
             }
         }
     }
 #if defined(__riscv) && __riscv_xlen == 64
     TRACE( "RV64-EXIT exit_thread calling pthread_exit_wrapper\n" );
+#endif
+#if defined(__linux__) && defined(__riscv) && __riscv_xlen == 64
+    rv64_tls_exit_checkpoint( "exit_thread native exit", get_thread_data() );
 #endif
     pthread_exit_wrapper( status );
 }
