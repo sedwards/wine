@@ -317,48 +317,6 @@ unsigned int server_call_unlocked( void *req_ptr )
 }
 
 
-#if defined(__linux__) && defined(__riscv) && __riscv_xlen == 64
-/* Trace get_thread_info requests without Wine's debug layer or allocation.
- * The last-thread query is one of these calls.  Numeric TIDs let us
- * correlate these raw checkpoints with RV64-LAST and RV64-DIAG records.
- */
-static char *rv64_server_append_tid( char *out, unsigned long number )
-{
-    char digits[3 * sizeof(number) + 1];
-    unsigned int count = 0;
-
-    do { digits[count++] = '0' + number % 10; number /= 10; } while (number);
-    while (count) *out++ = digits[--count];
-    return out;
-}
-
-static void rv64_server_mask_checkpoint( const char *stage )
-{
-    static const char prefix[] = "RV64-SERVER-MASK tid=";
-    char buf[160], *out = buf;
-    size_t len = strlen( stage );
-
-    if (len > 80) return;
-    memcpy( out, prefix, sizeof(prefix) - 1 );
-    out += sizeof(prefix) - 1;
-    out = rv64_server_append_tid( out, (unsigned long)get_unix_tid() );
-    *out++ = ' ';
-    memcpy( out, stage, len );
-    out += len;
-    *out++ = '\n';
-    (void)write( STDERR_FILENO, buf, out - buf );
-}
-
-static int rv64_server_mask_probe_enabled( void *req_ptr )
-{
-    const char *diag = getenv( "WINE_RISCV_EXIT_DIAG" );
-    struct __server_request_info *req = req_ptr;
-
-    return diag && !strcmp( diag, "1" ) && req &&
-           req->u.req.request_header.req == REQ_get_thread_info;
-}
-#endif
-
 /***********************************************************************
  *           wine_server_call
  *
@@ -368,36 +326,10 @@ unsigned int CDECL wine_server_call( void *req_ptr )
 {
     sigset_t old_set;
     unsigned int ret;
-#if defined(__linux__) && defined(__riscv) && __riscv_xlen == 64
-    int mask_result;
-    int probe = rv64_server_mask_probe_enabled( req_ptr );
 
-    if (probe) rv64_server_mask_checkpoint( "before pthread_sigmask BLOCK" );
-    mask_result = pthread_sigmask( SIG_BLOCK, &server_block_set, &old_set );
-    if (mask_result)
-    {
-        if (probe) rv64_server_mask_checkpoint( "pthread_sigmask BLOCK FAILED; aborting request" );
-        /* Without an initialized old_set, restoring the prior signal
-         * mask would read uninitialized stack memory.  Never issue the
-         * request with signals unexpectedly unblocked. */
-        return STATUS_UNSUCCESSFUL;
-    }
-    if (probe) rv64_server_mask_checkpoint( "after pthread_sigmask BLOCK" );
-    if (probe) rv64_server_mask_checkpoint( "before server_call_unlocked" );
-#else
     pthread_sigmask( SIG_BLOCK, &server_block_set, &old_set );
-#endif
     ret = server_call_unlocked( req_ptr );
-#if defined(__linux__) && defined(__riscv) && __riscv_xlen == 64
-    if (probe) rv64_server_mask_checkpoint( "after server_call_unlocked" );
-    if (probe) rv64_server_mask_checkpoint( "before pthread_sigmask RESTORE" );
-    mask_result = pthread_sigmask( SIG_SETMASK, &old_set, NULL );
-    if (probe)
-        rv64_server_mask_checkpoint( mask_result ? "pthread_sigmask RESTORE FAILED" :
-                                     "after pthread_sigmask RESTORE" );
-#else
     pthread_sigmask( SIG_SETMASK, &old_set, NULL );
-#endif
     return ret;
 }
 
