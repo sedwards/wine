@@ -282,6 +282,49 @@ If the failed process has no `RV64-TLS-EXIT` marker, the opt-in
 the invalid pointer in thread initialization or native TLS allocation,
 rather than intercepting arbitrary glibc `free()` calls.
 
+### Follow-up: native TLS entry precedes the fault; no exit marker (2026-11-25)
+
+With `WINE_RISCV_TLS_DIAG=1` and `GLIBC_TUNABLES=glibc.malloc.tcache_count=0`,
+the run logged `process enter` for Linux PIDs 309776, 309780, 309782, and
+309786. The `thread enter` checkpoint for PID 309782 / TID 309783 was
+followed by two `RV64-ABI fault` reports for that TID; PID 309782 later
+logged a separate native thread entry (TID 309784). A different process
+(PID 309776) logged a native thread entry (TID 309787) after the test's
+`hidden thread enter` checkpoint. Two
+`malloc(): unaligned tcache chunk detected` errors followed.
+
+All those native process-entry checkpoints showed the correct tunable
+**string** in the environment. No `RV64-TLS-EXIT` checkpoint or
+`RV64-TLS-QUARANTINE` marker appeared. The join bypass therefore has
+not been exercised at the point of the observed failure. No assertion
+is yet possible about the effect of bypassing a join when that code
+actually runs.
+
+Do not assume the preceding SIGSEGV caused glibc's abort: Wine's signal
+handler logs `RV64-ABI fault` before determining whether a fault is
+handled as an emulated Windows exception. Likewise, the combined stderr
+file interleaves messages from distinct Linux processes. First identify
+**which process writes** the malloc fatal error:
+
+```sh
+timeout -k 3s 45s env GLIBC_TUNABLES=glibc.malloc.tcache_count=0 \
+    WINE_RISCV_TLS_DIAG=1 WINE_RISCV_THREAD_DIAG=1 WINEDEBUG=-all \
+    strace -ff -s 160 -e trace=execve,write,writev,exit_group \
+    -o /tmp/rv64-malloc-trace \
+    ./wine dlls/ntdll/tests/ntdll_test.exe.so thread \
+    > /tmp/rv64-malloc-traced.log 2>&1
+printf 'exit=%s\n' "$?"
+grep -l 'unaligned tcache chunk' /tmp/rv64-malloc-trace.* 2>/dev/null
+grep -H 'execve(' /tmp/rv64-malloc-trace.* | tail -40
+```
+
+The trace filenames carry native Linux PIDs. Inspect the offending
+process' trace, `execve` chain, and earlier `RV64-TLS-ENV` records to
+separate service-worker allocator failures from the NTDLL thread test.
+`strace` can alter scheduling and may not reproduce a timing-sensitive
+fault. If it does, locate the same `SIGABRT` in GDB using that process
+and inspect the aborting thread's backtrace.
+
 ### Workarounds removed; preserved differences
 
 Removed from `risc-v` because the experiments did not resolve the fault:
