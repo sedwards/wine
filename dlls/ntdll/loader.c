@@ -1983,44 +1983,11 @@ static NTSTATUS MODULE_InitDLL( WINE_MODREF *wm, UINT reason, LPVOID lpReserved 
     /* Skip calls for modules loaded with special load flags */
 
     if (wm->ldr.Flags & LDR_DONT_RESOLVE_REFS) return STATUS_SUCCESS;
-#if defined(__riscv) && __riscv_xlen == 64
-    if (reason == DLL_THREAD_DETACH)
-        TRACE_(thread)( "RV64-DLL detach begin wm=%p base=%p entry=%p tls_index=%d flags=%#x name=%s\n",
-                        wm, module, entry, wm->ldr.TlsIndex, wm->ldr.Flags,
-                        debugstr_w(wm->ldr.BaseDllName.Buffer) );
-#endif
     if (wm->ldr.TlsIndex == -1)
     {
-#if defined(__riscv) && __riscv_xlen == 64
-        if (reason == DLL_THREAD_DETACH)
-            TRACE_(thread)( "RV64-DLL TLS callbacks enter base=%p\n", module );
-#endif
         call_tls_callbacks( wm->ldr.DllBase, reason );
-#if defined(__riscv) && __riscv_xlen == 64
-        if (reason == DLL_THREAD_DETACH)
-            TRACE_(thread)( "RV64-DLL TLS callbacks returned base=%p\n", module );
-#endif
     }
     if (!entry) return STATUS_SUCCESS;
-#if defined(__riscv) && __riscv_xlen == 64
-    if (reason == DLL_THREAD_DETACH)
-    {
-        ULONG_PTR saved_s0, saved_sp, saved_gp, saved_tp, saved_ra;
-
-        /* The DLL callback may fault before our assembly trampoline can
-         * compare its saved registers.  Record the caller-side state so
-         * the signal ucontext can be compared without attaching GDB. */
-        __asm__ volatile ( "mv %0, s0" : "=r"(saved_s0) );
-        __asm__ volatile ( "mv %0, sp" : "=r"(saved_sp) );
-        __asm__ volatile ( "mv %0, gp" : "=r"(saved_gp) );
-        __asm__ volatile ( "mv %0, tp" : "=r"(saved_tp) );
-        __asm__ volatile ( "mv %0, ra" : "=r"(saved_ra) );
-        TRACE_(thread)( "RV64-ABI DLL pre-call entry=%p base=%p s0=%p sp=%p gp=%p tp=%p ra=%p\n",
-                        entry, module, (void *)saved_s0, (void *)saved_sp, (void *)saved_gp,
-                        (void *)saved_tp, (void *)saved_ra );
-        TRACE_(thread)( "RV64-DLL entry-point call begin proc=%p base=%p\n", entry, module );
-    }
-#endif
 
     if (TRACE_ON(relay))
     {
@@ -2036,10 +2003,6 @@ static NTSTATUS MODULE_InitDLL( WINE_MODREF *wm, UINT reason, LPVOID lpReserved 
     __TRY
     {
         retv = call_dll_entry_point( entry, module, reason, lpReserved );
-#if defined(__riscv) && __riscv_xlen == 64
-        if (reason == DLL_THREAD_DETACH)
-            TRACE_(thread)( "RV64-DLL entry-point returned proc=%p result=%d\n", entry, retv );
-#endif
         if (!retv)
             status = STATUS_DLL_INIT_FAILED;
     }
@@ -4354,21 +4317,10 @@ void WINAPI LdrShutdownThread(void)
     /* Do not send thread detach notifications while the process exits. */
     if (process_detaching) return;
 
-#if defined(__riscv) && __riscv_xlen == 64
-    TRACE_(thread)( "RV64-SHUTDOWN enter teb=%p peb=%p ldr=%p skip=%u\n", teb,
-                    teb ? teb->Peb : NULL, teb && teb->Peb ? teb->Peb->LdrData : NULL,
-                    teb ? teb->SkipThreadAttach : 0 );
-#endif
     if (!teb) return;
 
     RtlProcessFlsData( teb->FlsSlots, 1 );
-#if defined(__riscv) && __riscv_xlen == 64
-    TRACE_(thread)( "RV64-SHUTDOWN FLS callbacks finished; locking loader\n" );
-#endif
     RtlEnterCriticalSection( &loader_section );
-#if defined(__riscv) && __riscv_xlen == 64
-    TRACE_(thread)( "RV64-SHUTDOWN loader lock acquired\n" );
-#endif
 
     /* Winelib/RV64 worker threads may not have their image represented
      * in the loader's module index.  A null get_modref() result is not
@@ -4378,34 +4330,20 @@ void WINAPI LdrShutdownThread(void)
     {
         wm = get_modref( teb->Peb->ImageBaseAddress );
         mark = &teb->Peb->LdrData->InInitializationOrderModuleList;
-#if defined(__riscv) && __riscv_xlen == 64
-        TRACE_(thread)( "RV64-SHUTDOWN detach image=%p image_modref=%p list=%p\n",
-                        teb->Peb->ImageBaseAddress, wm, mark );
-#endif
         for (entry = mark->Blink; entry != mark; entry = entry->Blink)
         {
             mod = CONTAINING_RECORD(entry, LDR_DATA_TABLE_ENTRY, InInitializationOrderLinks);
             if (!(mod->Flags & LDR_PROCESS_ATTACHED)) continue;
             if (mod->Flags & LDR_NO_DLL_CALLS) continue;
-#if defined(__riscv) && __riscv_xlen == 64
-            TRACE_(thread)( "RV64-SHUTDOWN DLL_THREAD_DETACH module=%p base=%p\n",
-                            mod, mod->DllBase );
-#endif
             MODULE_InitDLL( CONTAINING_RECORD(mod, WINE_MODREF, ldr), DLL_THREAD_DETACH, NULL );
         }
 
-#if defined(__riscv) && __riscv_xlen == 64
-        TRACE_(thread)( "RV64-SHUTDOWN image TLS callbacks image_modref=%p\n", wm );
-#endif
         if (wm && wm->ldr.TlsIndex == -1)
             call_tls_callbacks( wm->ldr.DllBase, DLL_THREAD_DETACH );
     }
     else if (!teb->SkipThreadAttach)
         WARN( "Thread exit has no initialized PEB loader data, skipping DLL detach notifications\n" );
 
-#if defined(__riscv) && __riscv_xlen == 64
-    TRACE_(thread)( "RV64-SHUTDOWN acquiring PEB lock\n" );
-#endif
     RtlAcquirePebLock();
     if ((pointers = teb->ThreadLocalStoragePointer))
     {
@@ -4413,9 +4351,6 @@ void WINAPI LdrShutdownThread(void)
         for (i = 0; i < tls_module_count; i++) RtlFreeHeap( GetProcessHeap(), 0, pointers[i] );
         RtlFreeHeap( GetProcessHeap(), 0, pointers );
     }
-#if defined(__riscv) && __riscv_xlen == 64
-    TRACE_(thread)( "RV64-SHUTDOWN freeing FLS data and TLS expansion\n" );
-#endif
     RtlProcessFlsData( teb->FlsSlots, 2 );
     teb->FlsSlots = NULL;
     RtlFreeHeap( GetProcessHeap(), 0, teb->TlsExpansionSlots );
@@ -4423,16 +4358,10 @@ void WINAPI LdrShutdownThread(void)
     RtlReleasePebLock();
 
     RtlLeaveCriticalSection( &loader_section );
-#if defined(__riscv) && __riscv_xlen == 64
-    TRACE_(thread)( "RV64-SHUTDOWN loader/PEB locks released\n" );
-#endif
     if (teb->DbgSsReserved[1]) NtClose( teb->DbgSsReserved[1] );
     RtlFreeThreadActivationContextStack();
 
     heap_thread_detach();
-#if defined(__riscv) && __riscv_xlen == 64
-    TRACE_(thread)( "RV64-SHUTDOWN finished\n" );
-#endif
 }
 
 /***********************************************************************
