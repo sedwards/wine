@@ -154,3 +154,72 @@ grep -E 'RV64 tcache diagnostic|RV64 WARNING|unaligned tcache|malloc\(\)' \
 No-tcache mode is diagnostic only: if the heap-corruption symptoms disappear or change, it is evidence that
 native allocation/free lifetime needs investigation, not evidence the
 underlying bug is fixed.  Expect an allocation-performance penalty.
+
+## RISC-V64 last-thread shutdown atomic-load and signal-mask probe
+
+The first hidden-thread test can time out after
+`NtQueryInformationThread(GetCurrentThread(), ThreadAmILastThread)`
+enters the Unix NTDLL implementation but before the associated
+`get_thread_info` request is transmitted to wineserver.
+
+On RISC-V64, the read-only `nb_threads` query now uses an acquire atomic
+load instead of `InterlockedCompareExchange(&nb_threads, 0, 0)`.
+If the native count is greater than one, the existing safe fast path
+returns "not last" without calling the server. The normal path still
+uses wineserver for the authoritative last-thread decision.
+
+Set `WINE_RISCV_EXIT_DIAG=1` to enable **raw**, native-TID-tagged
+`write(2, ...)` checkpoints that do not use Wine debug formatting:
+`RV64-LAST tid=...` records entry, atomic load, count, local return,
+and the server request boundary. `RV64-SERVER-MASK tid=...` records
+signal-mask BLOCK, the unlocked server call, and signal-mask RESTORE
+for `get_thread_info` requests. The runtime now fails the request if
+blocking signals fails, instead of restoring an uninitialized mask.
+
+### First run: diagnostics, no additional bypass
+
+```sh
+timeout -k 3s 120s env WINE_RISCV_EXIT_DIAG=1 \
+    WINEDEBUG=+thread,+seh \
+    ./wine dlls/ntdll/tests/ntdll_test.exe.so thread \
+    > /tmp/rv64-lastthread-atomic.log 2>&1
+printf 'exit=%s\n' "$?"
+grep -E 'RV64-LAST|RV64-SERVER-MASK|RV64-EXIT|malloc\\(\\)|RV64-THREAD-TEST' \
+    /tmp/rv64-lastthread-atomic.log | tail -150
+```
+
+If no `after atomic load` appears, investigate the atomic operation or
+the earlier path. If `local return` appears without the
+`RtlExitUserThread last-thread query` result, investigate the RISC-V64
+service return/stack restoration. If `before pthread_sigmask BLOCK`
+appears without `after pthread_sigmask BLOCK`, investigate signal
+masks and glibc TLS. If `before server_call_unlocked` appears but
+no `RV64-DIAG server SEND`, then the problem lies inside the
+unlocked send path; add `WINE_RISCV_DIAG=1 WINEDEBUG=+server,+thread,+seh`
+to get ordinary server request/reply diagnostics.
+
+### Optional second run: presumptive workaround experiment
+
+Only if the first run still stalls, set
+`WINE_RISCV_LASTTHREAD_NO_SERVER=1`.  This is *experimental* and
+RISC-V64-only; it forces the current-thread `ThreadAmILastThread`
+query to return `FALSE` without wineserver even when Wine's native
+thread counter is one. This may allow a worker to proceed to
+`LdrShutdownThread()` and `NtTerminateThread()`. It deliberately
+does not change other thread handles or architectures. It is **not**
+a safe production setting: a truly last Windows thread may need
+`RtlExitUserProcess()` behavior that this shortcut skips.
+
+```sh
+timeout -k 3s 120s env WINE_RISCV_EXIT_DIAG=1 \
+    WINE_RISCV_LASTTHREAD_NO_SERVER=1 \
+    WINEDEBUG=+thread,+seh \
+    ./wine dlls/ntdll/tests/ntdll_test.exe.so thread \
+    > /tmp/rv64-lastthread-forced.log 2>&1
+printf 'exit=%s\n' "$?"
+grep -E 'RV64-LAST|RV64-SERVER-MASK|RV64-EXIT|RV64-DLL|RV64-THREAD-TEST|malloc\\(\\)' \
+    /tmp/rv64-lastthread-forced.log | tail -150
+```
+
+The startup `services.exe` malloc corruption may be independent; this
+patch intentionally does not modify allocation, IME, or RPC behavior.
