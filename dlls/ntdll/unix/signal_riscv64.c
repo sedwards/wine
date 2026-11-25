@@ -815,10 +815,27 @@ static void riscv64_fault_handler( int sig, siginfo_t *info, void *opaque )
             static const char *const reg_names[] =
             { " s0=", " s1=", " s2=", " s3=", " s4=", " s5=", " s6=",
               " s7=", " s8=", " s9=", " s10=", " s11=" };
-            char buf[768], *p = buf;
+            static const unsigned int caller_regs[] = { 5, 6, 7, 28, 29, 30, 31,
+                                                        10, 11, 12, 13, 14, 15, 16, 17 };
+            static const char *const caller_names[] =
+            { " t0=", " t1=", " t2=", " t3=", " t4=", " t5=", " t6=",
+              " a0=", " a1=", " a2=", " a3=", " a4=", " a5=", " a6=", " a7=" };
+            char buf[1536], *p = buf;
             unsigned int i;
 
-            p = riscv64_diag_text( p, "RV64-ABI fault pc=" );
+            /* These fields identify which Wine process actually faulted.
+             * All register values come from the interrupted ucontext, not
+             * from the live registers of this C signal handler.  This
+             * checkpoint runs before any Wine TLS lookup. */
+            p = riscv64_diag_text( p, "RV64-ABI fault pid=" );
+            p = riscv64_diag_dec( p, (unsigned int)getpid() );
+            p = riscv64_diag_text( p, " tid=" );
+            p = riscv64_diag_dec( p, (unsigned int)syscall( 178 /* Linux RISC-V __NR_gettid */, 0 ) );
+            p = riscv64_diag_text( p, " sig=" );
+            p = riscv64_diag_dec( p, (unsigned int)sig );
+            p = riscv64_diag_text( p, " code=" );
+            p = riscv64_diag_hex( p, (ULONG_PTR)(info ? info->si_code : 0) );
+            p = riscv64_diag_text( p, " pc=" );
             p = riscv64_diag_hex( p, PC_sig( uc ) );
             p = riscv64_diag_text( p, " addr=" );
             p = riscv64_diag_hex( p, (ULONG_PTR)(info ? info->si_addr : NULL) );
@@ -834,6 +851,11 @@ static void riscv64_fault_handler( int sig, siginfo_t *info, void *opaque )
             {
                 p = riscv64_diag_text( p, reg_names[i] );
                 p = riscv64_diag_hex( p, REGn_sig( saved_regs[i], uc ) );
+            }
+            for (i = 0; i < ARRAY_SIZE(caller_regs); ++i)
+            {
+                p = riscv64_diag_text( p, caller_names[i] );
+                p = riscv64_diag_hex( p, REGn_sig( caller_regs[i], uc ) );
             }
             *p++ = '\n';
             write( 2, buf, p - buf );
