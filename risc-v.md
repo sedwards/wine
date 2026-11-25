@@ -8,7 +8,7 @@ The immediate goal is to build and run Wine's **native Linux RISC-V64 / Winelib 
 
 - **Current development branch:** `risc-v`. The historical `riscv64-context-experimental` branch was incorporated into it.
 - **Primary target:** a Linux RISC-V64 machine, such as the Orange Pi RV, with a native GCC toolchain.
-- **Near-term objective:** repeatable builds, startup and Winelib smoke tests, and architecture-specific tests for NTDLL.
+- **Near-term objective:** stabilize native Winelib process creation, NTDLL regression tests, exception continuation, callbacks and GUI startup on hardware.
 - **Future possibilities:** native RISC-V64 Windows PE/COFF binaries, RISC-V vector support, and x86/x86-64 translation. None is a prerequisite for the ELF bring-up.
 
 Prefer small, reviewable architecture-specific changes and preserve Wine's shared server protocol ABI. Do not disable assertions or assume a successful compile proves exception correctness.
@@ -117,11 +117,7 @@ a small temporary filesystem. `--disable-tests` can prioritize application bring
 but it also disables `winetest`; the audit reports that as `disabled-by-config`,
 not an exclusion. A test-enabled build is required for final acceptance.
 
-Current validation: native RISC-V loader and wineserver version commands run under
-QEMU user emulation; a full application build is in progress. A successful version
-command is not a startup pass. QEMU user emulation without binfmt integration cannot
-transparently execute RISC-V child loaders, so service/process acceptance requires
-a complete target environment. Local Unix sockets must be available to wineserver.
+Earlier validation established loader and wineserver version commands under QEMU user emulation. Native Orange Pi RV builds have since executed Wine initialization, command-line programs and NTDLL thread, synchronization and pipe tests (see section 7). Whole-program ELF build coverage and functional parity remain unverified; do not interpret the inventory or a successful version command as application acceptance. QEMU user emulation without binfmt integration cannot transparently execute RISC-V child loaders; service/process acceptance requires a complete target environment with local Unix sockets.
 
 ## 3. Smoke-test startup
 
@@ -143,22 +139,34 @@ Only enable a debug channel if it exists in the current source. In particular, `
 
 ## 4. Current implementation status
 
-The branch contains initial implementations in several areas. **Status here means code is present, not that it passed end-to-end hardware tests.** Hardware smoke-test observations and unresolved failures are documented in section 7. Earlier notes described some features as entirely absent; those descriptions are now outdated.
+Status as of **November 25, 2026**: the native ELF port builds and executes substantial portions of NTDLL on Orange Pi RV (glibc 2.36). Distinguish source implementation, observed runtime progress and full conformance. The latest callback fixes are source-verified but have not yet been built or run on the target.
 
-| Area | Branch status / next validation |
+| Area | Status / next validation |
 | --- | --- |
-| Native RISC-V64 thread initialization | Suspended startup now waits for wineserver and applies the initial context; verify TEB, stacks, and entry transitions on hardware. |
-| Syscall and Unix-call dispatch | Implemented paths under development; validate nested and cross-stack transitions. |
-| `RtlCaptureContext` / `RtlRestoreContext` / `NtContinue` | Initial and experimental; verify all integer and FP registers, PC, SP, and non-returning transfer. |
-| Linux signal-context transition | Experimental `rt_sigreturn`-based continuation; verify signal masks and context restoration. |
-| Floating-point context | LP64D syscall/Unix-call entry now captures all 32 FP registers and FCSR; normal returns restore callee-saved FP state and FCSR. Signal-context helpers share capture/restore code. Hardware integration remains unverified. |
-| Nested syscall frames | Frame-chain handling and nonlocal-continuation cleanup added; complex exception paths remain unverified. |
-| Native ELF/DWARF virtual unwind | Connected to native exception dispatch and frame walking. Isolated QEMU CFI tests pass for integer/FP recovery, leaf frames, exact PCs, call-site boundaries, and end-of-stack detection; full runtime/hardware validation remains pending. |
-| Windows `RtlVirtualUnwind` / `RtlUnwindEx` / SEH | Incomplete; do not infer full Windows SEH from ELF unwind work. |
-| APC, remote thread context, user-mode callbacks | SIGUSR1 suspension and remote context exchange implemented; regression coverage added for suspended startup and integer/FP updates. Dispatcher-boundary races and APC integration remain unverified; user-mode callbacks remain incomplete. |
-| `setjmp` / `longjmp` | Initial RISC-V64 implementation; verify jump-buffer layout and nonlocal transfers. |
-| RISC-V vector extension | Future work. |
-| Native Windows RISC-V PE/COFF and x86 translation | Exploratory / out of current scope. |
+| Native pthread/TLS stack separation | Implemented in `27f3efd05073`. Separate glibc-managed pthread and Wine syscall stacks eliminated the previously observed allocator errors in subsequent runs. Full lifecycle stress testing remains necessary. |
+| Native thread initialization and termination | Thread workers start, execute, detach and reach Linux thread exit in observed runs. Some CreateThread calls still fail; raw Linux thread exit bypasses normal pthread cleanup. Restore safe native pthread exit and validate join/reclamation. |
+| Syscall and Unix-call dispatch | Implemented; thread and sync suites reach summaries. Audit argument counts, output parameters, return values, last-error handling and nested/cross-stack transitions. |
+| Native Unix protected exception recovery | `3838dfcedf0d` adds native libc longjmp recovery via data->jmp_buf. No protected recovery was observed in the supplied Notepad diagnostic run; exercise it explicitly. |
+| Unprotected syscall fault recovery | `24517db42f6f` restores SP to the saved syscall frame. This fallback may abandon native cleanup and leave locks held; it does not establish correct exception recovery. |
+| User-mode callbacks | `KeUserModeCallback` and `NtCallbackReturn` implemented experimentally. `9000c5b1ef3b` corrects a confirmed 768-byte return-frame displacement and adds C layout assertions; hardware validation pending, including nested callbacks and USER-lock behavior. |
+| Stack layout documentation | Completed in `b2af3b3eb1c2`; see [NTDLL RISC-V64 stack layout](dlls/ntdll/RISCV64-stack-layout.md). |
+| Context capture and restoration | RtlCaptureContext, RtlRestoreContext, NtContinue and SIGUSR2/rt_sigreturn transitions implemented experimentally. Latest signal test loops on a continuable software exception (0xe0424242); verify PC/RA/SP and progress after continuation. |
+| Floating-point context | LP64D syscall/Unix-call entry captures all 32 FP registers and FCSR; normal returns restore callee-saved FP state and FCSR. Full hardware register-preservation coverage pending. |
+| Nested syscall frames | Frame chaining and nonlocal-continuation cleanup implemented; complex exception paths and nested callback ownership remain unverified. |
+| Native ELF/DWARF unwind | Connected to native exception dispatch and frame walking. Earlier isolated QEMU CFI tests passed; full runtime/hardware validation pending. |
+| Windows RtlVirtualUnwind / RtlUnwindEx / SEH | Incomplete; ELF unwind support does not establish full Windows SEH. |
+| APC and remote thread context | SIGUSR1 suspension and remote context exchange implemented; dispatcher-boundary races and APC integration still require validation. |
+| Windows-side setjmp / longjmp | Initial RV64 implementation; validate jump-buffer layout and nonlocal transfers separately from native libc longjmp. |
+| Native Winelib child process creation | Outstanding: thread and sync tests report CreateProcess error 2. Verify child executable resolution and launch. |
+| Named pipes and RPC | Pipe suite executes many sections but has numerous failures; audit I/O arguments, output parameters, status conversion and APC/completion paths before rewriting shared pipe logic. |
+| GUI / Common-Controls | Notepad reached GUI initialization but failed before the callback correction; retest. Common-Controls v6 manifests and COMDLG activation context error 14001 remain unresolved. |
+| RISC-V vector extension, native Windows PE/COFF and x86 translation | Future/exploratory; not prerequisites for native ELF bring-up. |
+
+### Recent architectural fixes
+
+The original pthread allocation overlapped the address range used for Wine's root syscall frame. Giving glibc its own native stack avoids that conflicting ownership. The callback return assembly had a separate confirmed error: syscall_cfa is the allocation base plus 768, while the return assembly had treated it as the base. The new return path subtracts 768 before restoring SP, retrieving callback outputs and restoring saved registers.
+
+Do not remove the USER-lock assertion to work around GUI failures. Validate the callback correction first; investigate any remaining faults at their first native instruction.
 
 ### RISC-V64 server-context layout
 
@@ -225,13 +233,14 @@ This does not complete `RtlUnwindEx`, language-specific handlers, or collided un
 
 ### Development priorities
 
-1. Obtain a clean, repeatable native build and basic Winelib startup.
-2. Verify syscall/Unix-call entry and return, including `t6`, `gp`, `tp`, and nested frame bookkeeping.
-3. Verify signal capture and `NtContinue` restoration of PC, SP, integer registers, and FP state.
-4. Test ELF CIE/FDE parsing, CFA computation, register recovery, and unwind progress across multiple frames.
-5. Complete Windows exception dispatch, `RtlVirtualUnwind`, `RtlUnwindEx`, and collided/nonlocal unwinding.
-6. Complete APCs, thread suspension and remote context handling, callbacks, and debugger integration.
-7. Add regression tests suitable for upstream review.
+1. Rebuild the latest callback fix; verify its disassembly and retest Notepad under X11/VNC, including menus and file dialogs.
+2. Resolve the signal exception continuation loop; compare RtlRaiseException/RtlCaptureContext and NtContinue PC, RA and SP handling against established architectures.
+3. Validate nested callbacks, callback output pointers, syscall frame ownership and native protected fault recovery.
+4. Correct native Winelib child process creation and executable resolution; rerun thread and sync tests with a consistent prefix and build.
+5. Audit syscall argument marshalling, return/status conversion, TEB last-error values, named pipes, APCs and asynchronous I/O completion.
+6. Restore safe native pthread termination and validate pthread_join, TLS destructors and resource reclamation; retire diagnostic bypasses only after verification.
+7. Resolve Common-Controls activation contexts and remaining GUI/graphics issues.
+8. Complete Windows SEH/unwind support and broader register, dispatcher-boundary and regression coverage. Preserve shared server protocol ABI.
 
 ## 6. Historical experiments and optional future work
 
@@ -290,19 +299,57 @@ None should block the native Linux/Winelib ELF milestone.
 
 Keep changes small, architecture-scoped, and consistent with existing x86-64/AArch64 Wine patterns. Prefer protocol-neutral solutions; include tests and explain ABI assumptions. For a useful bug report, record the commit (`git rev-parse HEAD`), toolchain versions, configure options, failing command, first error, and GDB trace where applicable.
 
-This guide reflects the development branch and its known experiments as of **November 2026**. Update the status table only after confirming the implementation and its tests on the target hardware.
+This guide reflects the development branch as of **November 25, 2026**. Record source changes separately from hardware validation; update observed results with the tested commit, environment and exit status.
 
-## 7. Current hardware smoke-test results (November 2026)
+## 7. Current hardware smoke-test results (November 25, 2026)
 
-On the Orange Pi RV native RISC-V64 ELF build:
+Target: Orange Pi RV, native Linux RISC-V64 ELF/Winelib build, glibc 2.36. Results below are from runs before the callback offset fix `9000c5b1ef3b`; they are not a certification of the latest branch.
 
-- `./wine programs/wineboot/wineboot.exe.so --init` returned status 0 and created `system.reg` and `user.reg`. The short name `./wine wineboot --init` is not yet reliably resolved in the build tree.
-- `./wine programs/cmd/cmd.exe.so` reached a Windows command prompt. Interactive console input remains under investigation; reaching a prompt is not proof of functioning console I/O.
-- The wineserver was observed blocked normally in `epoll_pwait2()` via GDB. A single backtrace does not exclude intermittent activity.
-- A headless TigerVNC/Openbox/xterm desktop works, and `glxgears` runs. Nevertheless, `setupapi,InstallHinfSection` still hit `user_check_not_lock()` while creating an `OleMainThreadWndClass` message-only window. Do not attribute this assertion to missing GLX alone; obtain the failing process's backtrace.
-- Thread-name diagnostics and RPC worker startup remain under investigation. `WINE_RISCV_SKIP_THREAD_TRACE` currently tests **environment variable presence**, not its string value; unset it to avoid changing the thread-name TRACE path.
+| Test | Observed result |
+| --- | --- |
+| wineboot | Explicit `./wine programs/wineboot/wineboot.exe.so --init` previously returned 0 and created system.reg and user.reg. Short-name resolution has not been consistently reliable. |
+| cmd | Native ELF command prompt reached; interactive console I/O remains unverified. |
+| thread | After stack separation, reached summary; subsequent jmp_buf build reported 63 assertions, 19 failures, 0 skipped. Failures include child process creation, process termination statuses and CreateThread error 203. No matched allocator-corruption diagnostics in the separate-stack run. |
+| sync | 433 assertions, 2 failures, 1 todo, 0 skipped. Both ordinary failures concern child creation/wait; not full synchronization conformance. |
+| pipe | Many test sections executed, with numerous failures in creation, writes, cancellation and completion. No final summary supplied. |
+| signal | Initially empty output; diagnostic rerun repeatedly delivered software exception 0xe0424242 and resumed via NtContinue/SIGUSR2 without reaching a summary. Treat as a continuation loop, not a pass. Earlier reported successful signal runs do not establish the current result. |
+| Notepad / GUI | Pre-callback-fix runs report missing Common-Controls v6, activation context error 14001, repeated invalid pointer stores and USER-lock assertions. Disassembly identified the callback return offset error; correction committed, retest pending. |
+| Native thread shutdown | Observed FLS cleanup, DLL_THREAD_DETACH, NtTerminateThread and raw native exit. Complete process shutdown, pthread join and reclamation are not established. |
 
-These are observations, not full conformance results.
+No direct x86-64 comparison is available for these runs. Do not infer parity from assertion counts or presume every failure is architecture-specific. Exit status was not supplied for all runs; reaching a summary does not prove clean process shutdown.
+
+A TigerVNC/Openbox/xterm session and glxgears previously worked on the target. This does not prove Wine GUI correctness. Test using a known initialized prefix to separate application startup from wineboot and service initialization.
+
+### Repeatable native regression runs
+
+From the configured build directory:
+
+```sh
+export WINEPREFIX="$HOME/.wine-riscv64"
+unset GLIBC_TUNABLES WINE_RISCV_SKIP_PTHREAD_JOIN WINE_RISCV_DIAG
+./server/wineserver -k
+./server/wineserver -w
+
+for test in thread sync pipe signal; do
+    timeout -k 5s 180s env WINEDEBUG=-all \
+        ./wine dlls/ntdll/tests/ntdll_test.exe.so "$test" \
+        > "/tmp/rv64-$test-results.log" 2> "/tmp/rv64-$test-diagnostics.log"
+    printf '%s exit status: %s\n' "$test" "$?"
+done
+```
+
+Use the same prefix and build revision when comparing results; isolate each test with a fresh wineserver if startup or shutdown contaminates subsequent runs. A timeout (124) or empty log is not a pass. Enable WINE_RISCV_DIAG only for targeted debugging: the per-syscall logging can generate millions of lines and affect scheduling.
+
+For callback validation:
+
+```sh
+objdump -d --disassemble=riscv64_user_mode_callback_return dlls/ntdll/ntdll.so
+timeout -k 5s 120s env WINEDEBUG=-all ./wine notepad.exe \
+    > /tmp/rv64-notepad.log 2>&1
+printf 'exit status: %s\n' "$?"
+```
+
+Verify the subtraction of 768 before restoring SP. Run the GUI command from a working X11/VNC session. Close Notepad normally to assess process exit; a timeout while a working window remains open is not itself a GUI failure.
 
 ## 8. RISC-V64 syscall-frame lifecycle tracing
 
@@ -330,7 +377,7 @@ Frame logs are diagnostic and **do not prove correct ownership**. In particular,
 
 ## 9. New NTDLL smoke tests
 
-The `dlls/ntdll/tests/Makefile.in` now registers two tests:
+The `dlls/ntdll/tests/Makefile.in` registers two architecture-focused smoke tests:
 
 - `signal.c` (`signal`): on RISC-V64, capture a CONTEXT and check nonzero PC/SP and stack alignment, then exercise vectored exception delivery with a continuable software exception. On other architectures it reports a Wine `win_skip`.
 - `syscall.c` (`syscall`): on RISC-V64, repeat `NtQueryInformationThread(ThreadBasicInformation)` and compare Wine thread identity; query `NtQueryInformationProcess(ProcessBasicInformation)` and compare process identity. On other architectures it reports `win_skip`.
@@ -341,7 +388,7 @@ make dlls/ntdll/tests/ntdll_test.exe.so
 ./wine dlls/ntdll/tests/ntdll_test.exe.so signal
 ```
 
-These are **initial smoke tests**, not complete syscall argument-count, nested callback, asynchronous signal, APC, register preservation, or nonlocal `NtContinue` tests. Run them on the target and record exit codes, failing assertions and the branch commit. Do not report them as passing until run.
+These are **initial smoke tests**, not complete syscall argument-count, nested callback, asynchronous signal, APC, register preservation, or nonlocal NtContinue tests. The latest signal diagnostic run loops on a continuable exception (section 7); current syscall smoke-test results have not been supplied. Record exit codes, assertions and branch commit.
 
 ## 10. Focused debugging commands
 
@@ -362,7 +409,12 @@ For the USER assertion, record the full stack, `user_lock_thread`, `user_lock_re
 
 For reproducible results always record `git rev-parse HEAD`, the exact command and environment, exit code, and whether the run used SSH, VNC, or Xvfb.
 
-# Run Wine Explorer Desktop
-wine explorer /desktop=shell,800x600 null.exe
+### Optional Explorer desktop diagnostic
 
+From the configured build directory in an X11 session:
 
+```sh
+./wine explorer /desktop=shell,800x600 null.exe
+```
+
+Explorer functionality remains unverified; use this only as a GUI diagnostic.
