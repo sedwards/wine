@@ -1623,6 +1623,64 @@ void process_exit_wrapper( int status )
 }
 
 
+#if defined(__linux__) && defined(__riscv) && __riscv_xlen == 64
+/* Diagnostic only. A native write keeps Wine's debug formatter and malloc
+ * out of the process/thread startup checkpoints. The environment value is
+ * evidence of propagation, not proof of glibc tunable initialization. */
+static char *rv64_tls_env_decimal( char *p, unsigned long value )
+{
+    char reverse[3 * sizeof(value) + 1];
+    unsigned int len = 0;
+
+    do { reverse[len++] = '0' + value % 10; value /= 10; } while (value);
+    while (len) *p++ = reverse[--len];
+    return p;
+}
+
+static void rv64_tls_env_checkpoint( const char *phase )
+{
+    const char *enabled = getenv( "WINE_RISCV_TLS_DIAG" );
+    const char *tunables, *quarantine;
+    static const char prefix[] = "RV64-TLS-ENV pid=";
+    static const char tid_text[] = " tid=";
+    static const char env_text[] = " GLIBC_TUNABLES=";
+    static const char skip_text[] = " SKIP_JOIN=";
+    char buffer[512], *p = buffer;
+    size_t n;
+
+    if (!enabled || strcmp( enabled, "1" )) return;
+    tunables = getenv( "GLIBC_TUNABLES" );
+    quarantine = getenv( "WINE_RISCV_SKIP_PTHREAD_JOIN" );
+    memcpy( p, prefix, sizeof(prefix) - 1 );
+    p += sizeof(prefix) - 1;
+    p = rv64_tls_env_decimal( p, (unsigned long)getpid() );
+    memcpy( p, tid_text, sizeof(tid_text) - 1 );
+    p += sizeof(tid_text) - 1;
+    p = rv64_tls_env_decimal( p, (unsigned long)get_unix_tid() );
+    *p++ = ' ';
+    n = strlen( phase );
+    if (n > 32) return;
+    memcpy( p, phase, n );
+    p += n;
+    memcpy( p, env_text, sizeof(env_text) - 1 );
+    p += sizeof(env_text) - 1;
+    if (!tunables) tunables = "(unset)";
+    n = strlen( tunables );
+    if (n > 192) n = 192;
+    memcpy( p, tunables, n );
+    p += n;
+    memcpy( p, skip_text, sizeof(skip_text) - 1 );
+    p += sizeof(skip_text) - 1;
+    if (!quarantine) quarantine = "(unset)";
+    n = strlen( quarantine );
+    if (n > 32) n = 32;
+    memcpy( p, quarantine, n );
+    p += n;
+    *p++ = '\n';
+    (void)write( 2, buffer, p - buffer );
+}
+#endif
+
 /***********************************************************************
  *           server_init_process
  *
@@ -1636,6 +1694,10 @@ void server_init_process( struct thread_data *data )
     unsigned int i;
     int ret, reply_pipe;
     struct sigaction sig_act;
+
+#if defined(__linux__) && defined(__riscv) && __riscv_xlen == 64
+    rv64_tls_env_checkpoint( "process enter" );
+#endif
 
     /* The first thread was already registered by virtual_alloc_first_thread_data().
      * Observe the original registration without silently replacing its value. */
@@ -1819,6 +1881,9 @@ void server_init_thread( struct thread_data *data )
     int reply_pipe;
     TEB64 *teb64 = get_teb64( data->teb );
 
+#if defined(__linux__) && defined(__riscv) && __riscv_xlen == 64
+    rv64_tls_env_checkpoint( "thread enter" );
+#endif
     data->pthread_id = pthread_self();
     {
         int err = pthread_setspecific( thread_data_key, data );
