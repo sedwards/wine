@@ -2901,23 +2901,12 @@ NTSTATUS WINAPI NtSetInformationThread( HANDLE handle, THREADINFOCLASS class,
     case ThreadNameInformation:
     {
         const THREAD_NAME_INFORMATION *info = data;
-#if defined(__riscv) && __riscv_xlen == 64
-        static const char entry_msg[] = "RV64-NAME NtSetInformationThread ENTER\n";
-        write( 2, entry_msg, sizeof(entry_msg) - 1 );
-#endif
-#if !defined(__riscv) || (__riscv_xlen != 64)
         THREAD_BASIC_INFORMATION tbi;
-#endif
 
         if (length != sizeof(*info)) return STATUS_INFO_LENGTH_MISMATCH;
         if (!info) return STATUS_ACCESS_VIOLATION;
         if (info->ThreadName.Length && !info->ThreadName.Buffer) return STATUS_ACCESS_VIOLATION;
 
-#if !defined(__riscv) || (__riscv_xlen != 64)
-        /* Preserve the existing descriptive thread-name logging on
-         * established architectures.  On RV64 the extra synchronous
-         * get_thread_info RPC and debug formatting can reenter the early
-         * thread startup path, so leave them out for now. */
         status = NtQueryInformationThread( handle, ThreadBasicInformation, &tbi, sizeof(tbi), NULL );
         if (handle == GetCurrentThread() || (!status && (HandleToULong(tbi.ClientId.UniqueThread) == GetCurrentThreadId())))
             WARN_(threadname)( "Thread renamed to %s\n", debugstr_us(&info->ThreadName) );
@@ -2925,16 +2914,7 @@ NTSTATUS WINAPI NtSetInformationThread( HANDLE handle, THREADINFOCLASS class,
             WARN_(threadname)( "Thread ID %04x renamed to %s\n", HandleToULong( tbi.ClientId.UniqueThread ), debugstr_us(&info->ThreadName) );
         else
             WARN_(threadname)( "Thread handle %p renamed to %s\n", handle, debugstr_us(&info->ThreadName) );
-#endif
 
-        /* The actual Windows thread description must still be committed to
-         * wineserver; only the optional query and logging are skipped. */
-#if defined(__riscv) && __riscv_xlen == 64
-        {
-            static const char msg[] = "RV64-NAME BEFORE wineserver set_thread_info\n";
-            write( 2, msg, sizeof(msg) - 1 );
-        }
-#endif
         SERVER_START_REQ( set_thread_info )
         {
             req->handle = wine_server_obj_handle( handle );
@@ -2944,19 +2924,8 @@ NTSTATUS WINAPI NtSetInformationThread( HANDLE handle, THREADINFOCLASS class,
         }
         SERVER_END_REQ;
 
-#if defined(__riscv) && __riscv_xlen == 64
-        {
-            static const char msg[] = "RV64-NAME AFTER wineserver set_thread_info\n";
-            write( 2, msg, sizeof(msg) - 1 );
-        }
-#endif
-        if (!status) set_native_thread_name( handle, &info->ThreadName );
-#if defined(__riscv) && __riscv_xlen == 64
-        {
-            static const char msg[] = "RV64-NAME AFTER native thread naming\n";
-            write( 2, msg, sizeof(msg) - 1 );
-        }
-#endif
+        set_native_thread_name( handle, &info->ThreadName );
+
         return status;
     }
 
