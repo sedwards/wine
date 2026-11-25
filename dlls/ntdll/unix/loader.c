@@ -2329,96 +2329,6 @@ static void check_command_line( int argc, char *argv[] )
 }
 
 
-#if defined(__linux__) && defined(__GLIBC__) && defined(__riscv) && (__riscv_xlen == 64)
-/* glibc reads GLIBC_TUNABLES before entering main(), not on setenv().
- *
- * Re-exec the same Wine loader once, before initializing the Wine prefix
- * or loading a Windows program, so the new process starts with tcache
- * disabled.  This is an opt-in diagnostic for RV64 heap corruption, not
- * a fix for corruption and not a change to other architectures.
- *
- * Child Wine processes inherit GLIBC_TUNABLES and the re-exec marker,
- * which avoids a repeat exec while keeping services.exe on the same
- * allocator settings as the original Wine process.
- */
-static void riscv64_reexec_without_malloc_tcache( char *argv[] )
-{
-    static const char option[] = "glibc.malloc.tcache_count=0";
-    static const char option_name[] = "glibc.malloc.tcache_count=";
-    const char *enabled = getenv( "WINE_RISCV_DISABLE_TCACHE" );
-    const char *existing, *begin, *end;
-    size_t len;
-    char *tunables, *out;
-
-    if (!enabled || strcmp( enabled, "1" )) return;
-
-    existing = getenv( "GLIBC_TUNABLES" );
-    if (getenv( "WINE_RISCV_TCACHE_REEXECED" ))
-    {
-        const char *p = existing ? existing : "";
-        int disabled = 0;
-
-        /* Diagnose each new Wine process independently.  This marker is
-         * inherited by children, but does NOT prove that GLIBC_TUNABLES
-         * survived Windows/Unix environment propagation and was present
-         * when that child's dynamic linker initialized glibc. */
-        while (*p)
-        {
-            const char *end = strchr( p, ':' );
-            size_t n;
-            if (!end) end = p + strlen( p );
-            n = end - p;
-            if (n == sizeof(option) - 1 && !memcmp( p, option, n ))
-                disabled = 1;
-            p = *end ? end + 1 : end;
-        }
-
-        fprintf( stderr, "wine: RV64 tcache diagnostic pid=%ld loader=%s enabled_in_env=%d glibc_tunables=%s\n",
-                 (long)getpid(), argv && argv[0] ? argv[0] : "(unknown)",
-                 disabled, existing ? existing : "(unset)" );
-        if (!disabled)
-            fprintf( stderr, "wine: RV64 WARNING: re-exec marker present but glibc tcache tunable missing\n" );
-        return;
-    }
-
-    /* Leave the other glibc tunables intact.  Remove any existing
-     * tcache_count assignment so there are no conflicting duplicates. */
-    len = strlen( existing ? existing : "" );
-    if (!(tunables = malloc( len + sizeof(option) + 1 )))
-        fatal_error( "out of memory preparing RV64 malloc diagnostic\n" );
-    out = tunables;
-    memcpy( out, option, sizeof(option) - 1 );
-    out += sizeof(option) - 1;
-
-    begin = existing ? existing : "";
-    while (*begin)
-    {
-        end = strchr( begin, ':' );
-        if (!end) end = begin + strlen( begin );
-        len = end - begin;
-        if (len && !(len >= sizeof(option_name) - 1 &&
-                     !memcmp( begin, option_name, sizeof(option_name) - 1 )))
-        {
-            *out++ = ':';
-            memcpy( out, begin, len );
-            out += len;
-        }
-        begin = *end ? end + 1 : end;
-    }
-    *out = 0;
-
-    if (setenv( "GLIBC_TUNABLES", tunables, 1 ) ||
-        setenv( "WINE_RISCV_TCACHE_REEXECED", "1", 1 ))
-        fatal_error( "could not enable RV64 malloc diagnostic: %s\n", strerror(errno) );
-    free( tunables );
-
-    fprintf( stderr, "wine: RV64 diagnostic: re-exec with glibc malloc tcache disabled\n" );
-    fflush( stderr );
-    execv( "/proc/self/exe", argv );
-    fatal_error( "RV64 malloc diagnostic loader re-exec failed: %s\n", strerror(errno) );
-}
-#endif
-
 /***********************************************************************
  *           __wine_main
  *
@@ -2429,9 +2339,6 @@ DECLSPEC_EXPORT void __wine_main( int argc, char *argv[] )
     main_argc = argc;
     main_argv = argv;
 
-#if defined(__linux__) && defined(__GLIBC__) && defined(__riscv) && (__riscv_xlen == 64)
-    riscv64_reexec_without_malloc_tcache( argv );
-#endif
     init_paths();
     if (!getenv( "WINELOADERNOEXEC" ) || argc <= 1) check_command_line( argc, argv );
     unsetenv( "WINELOADERNOEXEC" );
