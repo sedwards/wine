@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <stddef.h>
 #include <pthread.h>
+#include <setjmp.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -963,6 +964,23 @@ static void riscv64_fault_handler( int sig, siginfo_t *info, void *opaque )
     if (is_inside_syscall( data, sp ))
     {
         struct syscall_frame *frame = get_syscall_frame( data );
+
+        /* Protected Unix accesses use a native libc jump buffer.  Resume
+         * their local recovery path before abandoning the system call.
+         * The kernel restores the interrupted signal mask and host gp/tp
+         * before entering longjmp, just as on arm64 and x86-64. */
+        if (data->jmp_buf)
+        {
+            void *buf = data->jmp_buf;
+
+            data->jmp_buf = NULL;
+            REGn_sig( REG_A0, uc ) = (ULONG_PTR)buf;
+            REGn_sig( REG_A0 + 1, uc ) = 1;
+            PC_sig( uc ) = (ULONG_PTR)longjmp;
+            RV64_CHECKPOINT( "syscall-stack fault recovering through native longjmp" );
+            return;
+        }
+
         if (riscv64_transition_diag_enabled())
         {
             char buf[256], *p = buf;
