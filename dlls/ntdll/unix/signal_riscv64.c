@@ -7,7 +7,6 @@
 #include "config.h"
 
 #include <assert.h>
-#include <fcntl.h>
 #include <stddef.h>
 #include <pthread.h>
 #include <setjmp.h>
@@ -688,39 +687,6 @@ static void riscv64_report_missing_thread_data( int sig, const siginfo_t *info, 
 }
 
 static int riscv64_transition_diag;
-static int riscv64_services_trap_enabled;
-static unsigned int riscv64_services_continuations;
-
-/* Match an argv basename from /proc/self/cmdline, not Wine's ELF loader. */
-static int riscv64_is_services_process(void)
-{
-    char args[4096];
-    int fd;
-    ssize_t size;
-    size_t pos = 0;
-
-    fd = open( "/proc/self/cmdline", O_RDONLY );
-    if (fd == -1) return 0;
-    size = read( fd, args, sizeof(args) );
-    close( fd );
-    if (size <= 0) return 0;
-
-    while (pos < (size_t)size)
-    {
-        size_t end = pos;
-        const char *base = args + pos;
-        size_t i;
-        while (end < (size_t)size && args[end]) ++end;
-        for (i = pos; i < end; ++i)
-            if (args[i] == '/' || args[i] == '\\') base = args + i + 1;
-        if ((size_t)(args + end - base) == sizeof("services.exe") - 1 &&
-            !memcmp( base, "services.exe", sizeof("services.exe") - 1 ))
-            return 1;
-        pos = end + 1;
-    }
-    return 0;
-}
-
 
 static int riscv64_transition_diag_enabled(void)
 {
@@ -1432,13 +1398,6 @@ static void __attribute__((noreturn,used)) riscv64_sigreturn_continue( struct sy
         write( 2, buf, p - buf );
     }
     RV64_CHECKPOINT( "continuation BEFORE TLS mask write" );
-    if (riscv64_services_trap_enabled &&
-        __atomic_add_fetch( &riscv64_services_continuations, 1, __ATOMIC_RELAXED ) == 2)
-    {
-        static const char message[] = "RV64-DIAG services.exe second continuation: trap before TLS mask write\n";
-        write( 2, message, sizeof(message) - 1 );
-        __builtin_trap();
-    }
     continuation->ready = 0;
     frame->continuation_mask = oldmask;
     RV64_CHECKPOINT( "continuation AFTER TLS mask write" );
@@ -1462,11 +1421,6 @@ void signal_init_process( TEB *teb )
     struct sigaction action;
     const char *diag = getenv( "WINE_RISCV_DIAG" );
     riscv64_transition_diag = diag && *diag && strcmp( diag, "0" );
-    {
-        const char *trap = getenv( "WINE_RISCV_TRAP_SERVICES" );
-        riscv64_services_trap_enabled = trap && !strcmp( trap, "1" ) &&
-                                       riscv64_is_services_process();
-    }
 
     alloc_syscall_frame( sizeof(struct syscall_frame) );
     memset( &action, 0, sizeof(action) );
