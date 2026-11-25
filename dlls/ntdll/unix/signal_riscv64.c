@@ -2710,6 +2710,28 @@ struct riscv64_callback_stack
 
 #define RV64_CALLBACK_SAVE_SIZE 256
 #define RV64_CALLBACK_FRAME_SIZE 768
+/* Keep the assembly save/restore offsets tied to the host layout.
+ * syscall_cfa points to host_save, not the allocation base. */
+struct riscv64_callback_host_save
+{
+    ULONG64 s[12], fs[12], ra;
+    void **ret_ptr;
+    ULONG *ret_len;
+    ULONG_PTR user_sp;
+    void *dispatcher;
+    ULONG64 padding[3];
+};
+
+C_ASSERT( sizeof(struct riscv64_callback_host_save) == RV64_CALLBACK_SAVE_SIZE );
+C_ASSERT( RV64_CALLBACK_FRAME_SIZE == 768 );
+C_ASSERT( RV64_CALLBACK_FRAME_SIZE + RV64_CALLBACK_SAVE_SIZE == 1024 );
+C_ASSERT( RV64_CALLBACK_FRAME_SIZE + offsetof(struct riscv64_callback_host_save, s) == 768 );
+C_ASSERT( RV64_CALLBACK_FRAME_SIZE + offsetof(struct riscv64_callback_host_save, fs) == 864 );
+C_ASSERT( RV64_CALLBACK_FRAME_SIZE + offsetof(struct riscv64_callback_host_save, ra) == 960 );
+C_ASSERT( RV64_CALLBACK_FRAME_SIZE + offsetof(struct riscv64_callback_host_save, ret_ptr) == 968 );
+C_ASSERT( RV64_CALLBACK_FRAME_SIZE + offsetof(struct riscv64_callback_host_save, ret_len) == 976 );
+C_ASSERT( RV64_CALLBACK_FRAME_SIZE + offsetof(struct riscv64_callback_host_save, user_sp) == 984 );
+C_ASSERT( RV64_CALLBACK_FRAME_SIZE + offsetof(struct riscv64_callback_host_save, dispatcher) == 992 );
 C_ASSERT( sizeof(struct syscall_frame) <= RV64_CALLBACK_FRAME_SIZE );
 C_ASSERT( offsetof(struct riscv64_callback_stack, args_data) == 40 );
 
@@ -2773,7 +2795,8 @@ extern void DECLSPEC_NORETURN riscv64_user_mode_callback_return( void *ret_ptr,
                                                                  NTSTATUS status,
                                                                  struct syscall_frame *frame );
 __ASM_GLOBAL_FUNC( riscv64_user_mode_callback_return,
-                   "ld t0, 560(a3)\n\t" /* frame->syscall_cfa */
+                   "ld t0, 560(a3)\n\t" /* frame->syscall_cfa points at host save area */
+                   "addi t0, t0, -768\n\t" /* recover base of the 1024-byte allocation */
                    "mv sp, t0\n\t"
                    "ld t1, 968(sp)\n\t"
                    "sd a0, 0(t1)\n\t"
