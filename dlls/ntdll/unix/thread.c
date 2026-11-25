@@ -1506,8 +1506,21 @@ static NTSTATUS spawn_thread( struct thread_data *data )
 
     pthread_sigmask( SIG_BLOCK, &server_block_set, &sigset );
     pthread_attr_init( &attr );
+#if defined(__linux__) && defined(__riscv) && __riscv_xlen == 64
+    /* Experiment: let glibc own the native pthread stack and TLS storage.
+     * The RV64 syscall frame occupies the top of Wine's kernel stack,
+     * which must not overlap glibc's pthread descriptor or static TLS. */
+    if (pthread_attr_setstacksize( &attr, 1024 * 1024 ) ||
+        pthread_attr_setguardsize( &attr, 4096 ))
+    {
+        pthread_attr_destroy( &attr );
+        pthread_sigmask( SIG_SETMASK, &sigset, NULL );
+        return STATUS_NO_MEMORY;
+    }
+#else
     pthread_attr_setstack( &attr, get_kernel_stack( data ), kernel_stack_size );
     pthread_attr_setguardsize( &attr, 0 );
+#endif
     pthread_attr_setscope( &attr, PTHREAD_SCOPE_SYSTEM ); /* force creating a kernel thread */
     InterlockedIncrement( &nb_threads );
     if (pthread_create( &pthread_id, &attr, (void * (*)(void *))server_init_thread, data ))
