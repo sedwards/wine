@@ -185,6 +185,53 @@ stronger candidate for the *trigger*, not proof that glibc is at fault.
 Test-suite failures still count as failures even if the process exits
 without a signal.
 
+### First post-cleanup A/B result (2026-11-25)
+
+Both runs with `WINEDEBUG=-all WINE_RISCV_THREAD_DIAG=1` returned
+**134 (SIGABRT)**, whether `WINE_RISCV_SKIP_PTHREAD_JOIN=1` was set or
+not. Both reached `RV64-THREAD-TEST: hidden thread enter` and printed
+`malloc(): unaligned tcache chunk detected` twice; both included
+`RV64-ABI fault` reports from an early native thread. **Neither run
+showed the `RV64-TLS-QUARANTINE skipped pthread_join` marker.**
+
+These failures do **not** demonstrate a failure of the join-skip
+mechanism *once reached*. Its guard requires an earlier non-null
+`prev_data` with a non-zero `pthread_id`. The crash may occur before
+that branch, including on the first worker exit or in a different Wine
+process. We must identify the crashing PID/TID and call site rather than
+assuming `pthread_join()` ran.
+
+The post-cleanup commands did not set `GLIBC_TUNABLES`. Because the
+previous re-exec workaround was removed, this also changes the glibc
+allocator configuration relative to earlier tests. Compare baseline and
+quarantine *under identical, explicitly pre-exported*
+`GLIBC_TUNABLES=glibc.malloc.tcache_count=0` before drawing conclusions
+about the earlier `free(0x133c)` fault.
+
+```sh
+timeout -k 3s 60s env -u WINE_RISCV_SKIP_PTHREAD_JOIN \
+    GLIBC_TUNABLES=glibc.malloc.tcache_count=0 \
+    WINEDEBUG=-all WINE_RISCV_THREAD_DIAG=1 \
+    ./wine dlls/ntdll/tests/ntdll_test.exe.so thread \
+    > /tmp/rv64-tcache0-baseline.log 2>&1
+printf 'tcache0 baseline exit=%s\n' "$?"
+
+timeout -k 3s 45s env GLIBC_TUNABLES=glibc.malloc.tcache_count=0 \
+    WINE_RISCV_SKIP_PTHREAD_JOIN=1 \
+    WINEDEBUG=-all WINE_RISCV_THREAD_DIAG=1 \
+    ./wine dlls/ntdll/tests/ntdll_test.exe.so thread \
+    > /tmp/rv64-tcache0-quarantine.log 2>&1
+printf 'tcache0 quarantine exit=%s\n' "$?"
+
+grep -E 'RV64-TLS-QUARANTINE|RV64-ABI fault|RV64-THREAD-TEST|malloc\(\)|tests executed|failures' \
+    /tmp/rv64-tcache0-baseline.log /tmp/rv64-tcache0-quarantine.log | tail -120
+```
+
+This intentionally avoids recreating the removed loader-specific tcache
+re-exec; glibc reads the tunable before startup in each directly launched
+Wine process. If malloc's tcache error persists, investigate whether the
+specific crashing process received and applied the setting.
+
 ### Workarounds removed; preserved differences
 
 Removed from `risc-v` because the experiments did not resolve the fault:
