@@ -167,7 +167,7 @@ grep -E 'RV64-ABI fault|RV64-THREAD-TEST|malloc\(\)|tests executed|failures' \
 Then run the **short-lived** quarantine experiment:
 
 ```sh
-timeout -k 3s 120s env -u WINE_RISCV_LASTTHREAD_NO_SERVER \
+timeout -k 3s 45s env -u WINE_RISCV_LASTTHREAD_NO_SERVER \
     -u WINE_RISCV_EXIT_DIAG WINE_RISCV_SKIP_PTHREAD_JOIN=1 \
     WINEDEBUG=-all WINE_RISCV_THREAD_DIAG=1 \
     ./wine dlls/ntdll/tests/ntdll_test.exe.so thread \
