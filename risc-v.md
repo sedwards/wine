@@ -451,3 +451,44 @@ From the configured build directory in an X11 session:
 ```
 
 Explorer functionality remains unverified; use this only as a GUI diagnostic.
+
+## 11. Post-Notepad cleanup review against master
+
+Review baseline: master `274fcfa9691bf3b7f24c0833ad33e9d57c3df65f`,
+common ancestor `97027f879ba9a36dbe594720d4710818536e5433`.
+The comparison reported 413 branch commits ahead and 112 behind before
+this documentation update. Master integration is a separate task from
+cleanup; do not replace shared files wholesale with current master.
+
+Preserve the working Notepad source baseline (requested tag:
+`rv64-notepad`) before changing runtime code.
+
+### Low-risk diagnostic cleanup
+
+Remove temporary services.exe trap, kernel32 thread startup instrumentation,
+RPC wait/listen diagnostics, boot and TLS environment diagnostics,
+per-request server logging, FLS and DLL shutdown tracing, and obsolete TLS
+exit checkpoints. Consolidate signal/syscall tracing separately, keeping
+useful frame checks and signal-safe diagnostics for the outstanding
+continuation failure. Preserve regression assertions and executable lookup
+diagnostics until the associated defects are resolved.
+
+### Behavioral changes requiring separate validation
+
+| Area | Review recommendation |
+| --- | --- |
+| Virtual memory initialization | Compare with master's single protection-table allocation and write-execute probe. Branch appears to duplicate allocations on other 64-bit CPUs; verify RV64 address limits before changing. |
+| Executable lookup | Audit suppression of fake PE placeholders in tools/makedep.c and prefix installation, then SearchPathW/CreateFileW and builtin ELF discovery. Missing placeholders are a hypothesis, not a confirmed cause. Retain launch fallback until a replacement works. |
+| IMM32/Win32u detach | Test whether the no-create IME query is still needed; revert coordinated API changes together only after validation. |
+| DLL entry ABI wrapper | Retain required calling convention and CFI; reevaluate speculative register repair separately. |
+| Exception termination limits | Replace arbitrary repeat-count exits with validated stack/context handling after fixing the signal loop. |
+| Native thread termination | Restore normal pthread cleanup on the original native stack; do not blindly replace raw SYS_exit. |
+| TLS fallback registry | Test standard pthread lookup and signal-safe identity before removing the registry or join quarantine. |
+| Master integration | Merge separately and regenerate build artifacts; validate other architectures as well. |
+
+Retain the verified pthread stack separation and callback offset correction,
+native longjmp recovery, syscall frame restoration, architecture definitions,
+dispatchers, context handling, ELF unwind support and regression tests.
+After each cleanup group rebuild and test explicit-path CMD, thread, sync,
+pipe, signal and Notepad under X11. Compare against the recorded baseline;
+existing failures are not new regressions unless the result changes.
