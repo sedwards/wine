@@ -83,6 +83,51 @@ WINE_DECLARE_DEBUG_CHANNEL(threadname);
 
 static LONG nb_threads = 1;
 
+#if defined(__linux__) && defined(__riscv) && __riscv_xlen == 64
+/* These checkpoints deliberately avoid Wine's debug formatter, heap
+ * allocation and pthread TLS.  Interleaved processes/threads are identified
+ * using the native TID; the count is included when it is known.
+ *
+ * Enabled only by WINE_RISCV_EXIT_DIAG=1.
+ */
+static char *rv64_last_append_number( char *out, unsigned long n )
+{
+    char reversed[3 * sizeof(n) + 1];
+    unsigned int count = 0;
+
+    do { reversed[count++] = '0' + n % 10; n /= 10; } while (n);
+    while (count) *out++ = reversed[--count];
+    return out;
+}
+
+static void rv64_last_checkpoint( const char *step, LONG native_count )
+{
+    const char *diag = getenv( "WINE_RISCV_EXIT_DIAG" );
+    static const char prefix[] = "RV64-LAST tid=";
+    static const char count_prefix[] = " count=";
+    char buffer[160], *out = buffer;
+    size_t n;
+
+    if (!diag || strcmp( diag, "1" )) return;
+    memcpy( out, prefix, sizeof(prefix) - 1 );
+    out += sizeof(prefix) - 1;
+    out = rv64_last_append_number( out, (unsigned long)syscall( __NR_gettid ) );
+    *out++ = ' ';
+    n = strlen( step );
+    if (n > 60) return;
+    memcpy( out, step, n );
+    out += n;
+    if (native_count >= 0)
+    {
+        memcpy( out, count_prefix, sizeof(count_prefix) - 1 );
+        out += sizeof(count_prefix) - 1;
+        out = rv64_last_append_number( out, native_count );
+    }
+    *out++ = '\n';
+    (void)write( STDERR_FILENO, buffer, out - buffer );
+}
+#endif
+
 static inline int get_unix_exit_code( NTSTATUS status )
 {
     /* prevent a nonzero exit code to end up truncated to zero in unix */
@@ -2532,32 +2577,57 @@ NTSTATUS WINAPI NtQueryInformationThread( HANDLE handle, THREADINFOCLASS class,
     case ThreadAmILastThread:
     {
         if (length != sizeof(ULONG)) return STATUS_INFO_LENGTH_MISMATCH;
-#if defined(__riscv) && __riscv_xlen == 64
-        /* RtlExitUserThread queries this class on every worker exit.
-         * Wine's own native thread count includes this worker and all
-         * other not-yet-reaped Wine threads.  More than one means that
-         * this worker is certainly not the final native thread, so
-         * avoid a synchronous wineserver round trip while thread
-         * shutdown and unrelated worker startup overlap.
-         *
-         * Keep the server query for the last native thread, where the
-         * process-level shutdown decision must remain authoritative.
-         * If another thread exits after this observation, the native
-         * nb_threads decrement in exit_thread() still ensures that
-         * the final thread calls exit_process(). */
-        if (handle == GetCurrentThread() && InterlockedCompareExchange( &nb_threads, 0, 0 ) > 1)
+#if defined(__linux__) && defined(__riscv) && __riscv_xlen == 64
+        rv64_last_checkpoint( "enter", -1 );
+        if (handle == GetCurrentThread())
         {
-            ULONG last = FALSE;
-            if (data) memcpy( data, &last, sizeof(last) );
-            if (ret_len) *ret_len = sizeof(last);
-            TRACE( "RV64-EXIT ThreadAmILastThread local=0 (multiple native threads)\n" );
-            return STATUS_SUCCESS;
+            LONG count;
+            const char *skip_server;
+
+            rv64_last_checkpoint( "before atomic load", -1 );
+            /* This is only a read.  Using an acquire load instead of a
+             * compare-and-swap avoids an unnecessary AMO/RMW instruction
+             * in the worker's shutdown path.  It does not change the
+             * accounting performed by spawn_thread() or exit_thread(). */
+            count = __atomic_load_n( &nb_threads, __ATOMIC_ACQUIRE );
+            rv64_last_checkpoint( "after atomic load", count );
+
+            /* With another Wine pthread alive, this cannot be the final
+             * native thread.  exit_thread() will still perform the final
+             * decrement and process exit when the last worker terminates. */
+            skip_server = getenv( "WINE_RISCV_LASTTHREAD_NO_SERVER" );
+            if (count > 1 || (skip_server && !strcmp( skip_server, "1" )))
+            {
+                ULONG last = FALSE;
+                rv64_last_checkpoint( count > 1 ? "local not-last" : "FORCED local not-last", count );
+                if (data) memcpy( data, &last, sizeof(last) );
+                if (ret_len) *ret_len = sizeof(last);
+                rv64_last_checkpoint( "local return", count );
+                return STATUS_SUCCESS;
+            }
         }
+        /* If the counter indicates only one Wine native thread, preserve
+         * the server's authoritative last-Windows-thread decision.
+         *
+         * WINE_RISCV_LASTTHREAD_NO_SERVER=1 is a diagnostic-only escape
+         * hatch, not suitable for normal process teardown: a last Windows
+         * thread may require RtlExitUserProcess() rather than simple
+         * RtlExitUserThread() cleanup. */
+        rv64_last_checkpoint( "before SERVER_START_REQ", -1 );
 #endif
         SERVER_START_REQ( get_thread_info )
         {
+#if defined(__linux__) && defined(__riscv) && __riscv_xlen == 64
+            rv64_last_checkpoint( "request created", -1 );
+#endif
             req->handle = wine_server_obj_handle( handle );
+#if defined(__linux__) && defined(__riscv) && __riscv_xlen == 64
+            rv64_last_checkpoint( "before wine_server_call", -1 );
+#endif
             status = wine_server_call( req );
+#if defined(__linux__) && defined(__riscv) && __riscv_xlen == 64
+            rv64_last_checkpoint( "after wine_server_call", -1 );
+#endif
             if (status == STATUS_SUCCESS)
             {
                 ULONG last = !!(reply->flags & GET_THREAD_INFO_FLAG_LAST);
@@ -2566,6 +2636,9 @@ NTSTATUS WINAPI NtQueryInformationThread( HANDLE handle, THREADINFOCLASS class,
             }
         }
         SERVER_END_REQ;
+#if defined(__linux__) && defined(__riscv) && __riscv_xlen == 64
+        rv64_last_checkpoint( "server path return", -1 );
+#endif
         return status;
     }
 
