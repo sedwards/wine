@@ -233,7 +233,7 @@ This does not complete `RtlUnwindEx`, language-specific handlers, or collided un
 
 ### Development priorities
 
-1. Resolve the signal exception continuation loop; compare RtlRaiseException/RtlCaptureContext and NtContinue PC, RA and SP handling against established architectures.
+1. Validate the new RtlRaiseException caller-context correction with the signal suite; investigate any remaining NtContinue PC/RA/SP restoration or exception continuation failures.
 2. Correct native Winelib executable resolution and child process creation; rerun thread and sync tests with a consistent prefix and build.
 3. Symbolize the remaining GUI access violation and investigate possible 64-bit pointer truncation before changing pointer arithmetic.
 4. Validate nested callbacks, callback output pointers, syscall frame ownership and native protected fault recovery; expand GUI coverage beyond the successful Notepad launch (menus, file dialogs and other programs).
@@ -394,9 +394,8 @@ The experimental `signal_riscv64.c` implementation now emits frame lifecycle mar
 | `RV64-FRAME prepare NESTED` | A nested frame is allocated on the Unix stack and linked to its predecessor. |
 | `RV64-FRAME finish POP` | Completed nested frame is popped and its predecessor restored as active. |
 | `RV64-FRAME finish RETAIN` | Active frame remains selected at the end of the call. |
-| `RV64-FRAME sigreturn CONSUME` | SIGUSR2 handler consumes a continuation frame and reports the currently selected frame and target SP. |
 
-The existing `RV64-FLOW continue REQUEST` and `RV64-FLOW sigreturn APPLY` markers provide additional PC, SP, RA, flags, and frame-link information. SIGUSR2 handler logging uses the existing bounded, `write(2)`-based diagnostic formatter; do not add Wine TRACE/WARN, malloc, or pthread calls inside the signal handler.
+The retained `RV64-FLOW continue REQUEST` and `RV64-FLOW sigreturn APPLY` markers provide PC, SP, RA, flags and frame-link information. The former `RV64-FRAME sigreturn CONSUME` and redundant checkpoints were removed during diagnostic consolidation. With `WINE_RISCV_DIAG` unset, SIGSEGV logging is limited to compact `RV64-FAULT` records (up to eight per process); opt in for full register dumps. SIGUSR2 handler logging uses the existing bounded, `write(2)`-based diagnostic formatter; do not add Wine TRACE/WARN, malloc, or pthread calls inside the signal handler.
 
 ```sh
 cd ~/source/wine
@@ -421,7 +420,7 @@ make dlls/ntdll/tests/ntdll_test.exe.so
 ./wine dlls/ntdll/tests/ntdll_test.exe.so signal
 ```
 
-These are **initial smoke tests**, not complete syscall argument-count, nested callback, asynchronous signal, APC, register preservation, or nonlocal NtContinue tests. The latest signal diagnostic run loops on a continuable exception (section 7); current syscall smoke-test results have not been supplied. Record exit codes, assertions and branch commit.
+These are **initial smoke tests**, not complete syscall argument-count, nested callback, asynchronous signal, APC, register preservation, or nonlocal NtContinue tests. The pre-fix signal diagnostic run loops on a continuable exception (section 7). A caller-context correction and an exact PC/SP/RA/argument regression test have since been added; hardware validation is pending. Current syscall smoke-test results have not been supplied. Record exit codes, assertions and branch commit.
 
 ## 10. Focused debugging commands
 
@@ -492,3 +491,38 @@ dispatchers, context handling, ELF unwind support and regression tests.
 After each cleanup group rebuild and test explicit-path CMD, thread, sync,
 pipe, signal and Notepad under X11. Compare against the recorded baseline;
 existing failures are not new regressions unless the result changes.
+
+## 12. Signal cleanup and Mount Manager investigation (November 26, 2026)
+
+Hardware observations after the first diagnostic cleanup: Explorer, Notepad,
+WordPad, Task Manager and OLE Viewer run under X11/VNC, according to the
+developer. Mount Manager fails, and clients depending on it also fail.
+Thread (63 assertions, 19 failures) and sync (433 assertions, 2 failures)
+summaries remain unchanged; pipe failures persist and no pipe summary was
+supplied. No new signal result was supplied.
+
+The second cleanup series removes hardcoded syscall-number diagnostics,
+repetitive syscall/TLS tracing and duplicate signal continuation records.
+Frame validation, callback restoration, native longjmp recovery and
+nonvolatile preservation are retained.
+
+The former C RtlRaiseException captured its own internal continuation
+rather than its caller. Commit `0be31122ef11` introduces an assembly wrapper
+that reconstructs the caller PC, RA, SP and a0 in a CONTEXT and follows the
+debugger-aware dispatch pattern used on other architectures. The new test
+in `dlls/ntdll/tests/signal.c` compares these fields with an assembly caller's
+known values. The change is source-verified, not yet hardware-validated;
+the earlier signal loop is not yet established as resolved.
+
+Mount Manager startup requires builtin driver and Unix-library discovery,
+__wine_init_unix_call, device and symbolic-link creation, harddisk driver
+initialization and worker thread creation. Its failure cannot yet be
+attributed to exception handling. Capture +mountmgr,+ntoskrnl,+service,+seh
+and +module traces from wineboot with the corrected runtime before changing
+the driver. Preserve the executable lookup investigation, since missing
+Windows-visible files may also affect service and driver startup.
+
+Next steps: rebuild and run signal independently with a timeout, then
+capture Mount Manager startup and device-control failures. Retest the
+working GUI applications and thread/sync/pipe suites. Keep signal
+diagnostics opt-in and retain the known pre-cleanup baseline.
