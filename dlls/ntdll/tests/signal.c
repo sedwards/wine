@@ -20,6 +20,7 @@
 #include "winnt.h"
 #include "winternl.h"
 #include "wine/test.h"
+#include "wine/asm.h"
 
 #if defined(__x86_64__) || (defined(__riscv) && __riscv_xlen == 64)
 #define TEST_EXCEPTION_CODE 0xe0424242
@@ -75,6 +76,75 @@ static void test_signal_exception(void)
         invalid_exception_contexts );
     ok( RemoveVectoredExceptionHandler( handler ), "failed to remove handler\n" );
 }
+
+#if defined(__riscv) && __riscv_xlen == 64
+static ULONG_PTR expected_pc, expected_sp;
+static EXCEPTION_RECORD *expected_record;
+static unsigned int caller_exception_count, caller_context_errors;
+
+extern void riscv64_raise_from_caller( EXCEPTION_RECORD *record, ULONG_PTR *pc,
+                                     ULONG_PTR *sp, void (WINAPI *raise)(EXCEPTION_RECORD *) );
+__ASM_GLOBAL_FUNC( riscv64_raise_from_caller,
+                   "addi sp, sp, -16\n\t"
+                   __ASM_CFI(".cfi_def_cfa_offset 16\n\t")
+                   "sd ra, 0(sp)\n\t"
+                   __ASM_CFI(".cfi_offset 1, -16\n\t")
+                   "lla t0, 1f\n\t"
+                   "sd t0, 0(a1)\n\t"
+                   "sd sp, 0(a2)\n\t"
+                   "jalr ra, a3, 0\n\t"
+                   "1: ld ra, 0(sp)\n\t"
+                   "addi sp, sp, 16\n\t"
+                   __ASM_CFI(".cfi_def_cfa_offset 0\n\t")
+                   __ASM_CFI(".cfi_restore 1\n\t")
+                   "ret" )
+
+static LONG WINAPI caller_exception_handler( EXCEPTION_POINTERS *exception )
+{
+    CONTEXT *context = exception->ContextRecord;
+
+    if (exception->ExceptionRecord->ExceptionCode != TEST_EXCEPTION_CODE)
+        return EXCEPTION_CONTINUE_SEARCH;
+    ++caller_exception_count;
+    if (context->Pc != expected_pc || context->Gpr.X[1] != expected_pc ||
+        context->Gpr.X[2] != expected_sp ||
+        context->Gpr.X[10] != (ULONG_PTR)expected_record ||
+        (ULONG_PTR)exception->ExceptionRecord->ExceptionAddress != expected_pc)
+    {
+        ++caller_context_errors;
+        trace( "caller context mismatch: pc=%p ra=%p sp=%p a0=%p expected pc=%p sp=%p record=%p\n",
+               (void *)(ULONG_PTR)context->Pc, (void *)(ULONG_PTR)context->Gpr.X[1],
+               (void *)(ULONG_PTR)context->Gpr.X[2], (void *)(ULONG_PTR)context->Gpr.X[10],
+               (void *)expected_pc, (void *)expected_sp, expected_record );
+        /* Report the bad context but avoid recursively raising it forever. */
+        context->Pc = expected_pc;
+        context->Gpr.X[1] = expected_pc;
+        context->Gpr.X[2] = expected_sp;
+    }
+    return EXCEPTION_CONTINUE_EXECUTION;
+}
+
+static void test_raise_caller_context(void)
+{
+    EXCEPTION_RECORD record = {0};
+    PVOID handler;
+    unsigned int i;
+
+    record.ExceptionCode = TEST_EXCEPTION_CODE;
+    expected_record = &record;
+    caller_exception_count = caller_context_errors = 0;
+    handler = AddVectoredExceptionHandler( 1, caller_exception_handler );
+    ok( !!handler, "failed to install caller-context handler\n" );
+    if (!handler) return;
+
+    for (i = 0; i < 8; ++i)
+        riscv64_raise_from_caller( &record, &expected_pc, &expected_sp, RtlRaiseException );
+
+    ok( caller_exception_count == 8, "expected 8 caller exceptions, got %u\n", caller_exception_count );
+    ok( !caller_context_errors, "%u exceptions captured the wrong caller context\n", caller_context_errors );
+    ok( RemoveVectoredExceptionHandler( handler ), "failed to remove caller-context handler\n" );
+}
+#endif
 
 #ifdef __x86_64__
 static unsigned int translated_segv_count, translated_trap_count;
@@ -151,6 +221,9 @@ START_TEST(signal)
 {
 #if defined(__x86_64__) || (defined(__riscv) && __riscv_xlen == 64)
     test_capture_context();
+#if defined(__riscv) && __riscv_xlen == 64
+    test_raise_caller_context();
+#endif
     test_signal_exception();
 #ifdef __x86_64__
     test_linux_signal_translation();
