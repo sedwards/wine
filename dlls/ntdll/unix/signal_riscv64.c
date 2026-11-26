@@ -1569,41 +1569,8 @@ static ULONG_PTR __attribute__((used)) riscv64_dispatch_syscall( ULONG id, const
     for (i = 0; i < argc && i < 8; ++i) argv[i] = args[i];
     for (; i < argc; ++i) argv[i] = stack_args[i - 8];
 
-    if (riscv64_transition_diag_enabled() && (id == 0x39 || id == 0x0d))
-    {
-        WARN( "RV64-SVC id=%#x table=%u index=%u count=%u bytes=%u target=%p args=%p stack=%p\n",
-              id, table_id, index, argc, arg_size, service, args, stack_args );
-        for (i = 0; i < argc; ++i)
-            WARN( "RV64-SVC id=%#x arg[%u]=%016llx\n",
-                  id, i, (unsigned long long)argv[i] );
-    }
-    /* RISC-V LP64D passes the first eight integer/pointer arguments in
-     * a0..a7, then consecutive 8-byte slots on the stack.  A fixed
-     * prototype supplies the maximum supported slots; unused slots are
-     * initialized to zero and are never read from the Windows stack. */
-    if (riscv64_transition_diag_enabled() && id == 0x0d)
-        WARN( "RV64-THREAD NtSetInformationThread handle=%p class=%lu buffer=%p length=%lu\n",
-              (void *)argv[0], (unsigned long)argv[1], (void *)argv[2], (unsigned long)argv[3] );
-
-    /* Win32u service 0x144e is NtUserGetThreadState.  Trace this
-     * particular service because imm32.dll calls it from DllMain during
-     * DLL_THREAD_DETACH; the current RV64 failure occurs at that boundary.
-     * The return value is ULONG_PTR, not NTSTATUS: preserving a0's full
-     * 64 bits is essential for services which return pointers or handles. */
-    if (id == 0x144e)
-    {
-        ULONG_PTR result;
-
-        WARN( "RV64-WIN32U NtUserGetThreadState ENTER class=%#lx target=%p argc=%u tp=%p\n",
-              (unsigned long)argv[0], service, argc, __builtin_thread_pointer() );
-        result = service( argv[0], argv[1], argv[2], argv[3],
-                          argv[4], argv[5], argv[6], argv[7],
-                          argv[8], argv[9], argv[10], argv[11],
-                          argv[12], argv[13], argv[14], argv[15],
-                          argv[16], argv[17], argv[18], argv[19] );
-        WARN( "RV64-WIN32U NtUserGetThreadState RETURN value=%p\n", (void *)result );
-        return result;
-    }
+    /* LP64D uses eight argument registers followed by consecutive stack
+     * slots. Preserve the full pointer-sized result for every service. */
     return service( argv[0], argv[1], argv[2], argv[3],
                     argv[4], argv[5], argv[6], argv[7],
                     argv[8], argv[9], argv[10], argv[11],
