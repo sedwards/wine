@@ -317,18 +317,55 @@ void WINAPI RtlRestoreContext( CONTEXT *context, EXCEPTION_RECORD *record )
     __builtin_trap();
 }
 
-/* Exception dispatch. */
-/* Raise a Windows exception through the NT exception path instead of silently
- * returning to the caller.  Full SEH dispatch still requires the RV64
- * exception dispatcher and signal translation machinery. */
-void WINAPI RtlRaiseException( EXCEPTION_RECORD *record )
+/* Capture the caller of RtlRaiseException, not the instruction after
+ * RtlCaptureContext inside the raiser.  A continuable exception must
+ * resume at the original caller's return address. */
+struct riscv64_raise_frame
 {
+    ULONG64 ra;
+    EXCEPTION_RECORD *record;
     CONTEXT context;
+};
 
-    RtlCaptureContext( &context );
-    record->ExceptionAddress = (void *)(ULONG_PTR)context.Pc;
-    NtRaiseException( record, &context, TRUE );
+C_ASSERT( offsetof(struct riscv64_raise_frame, context) == 16 );
+C_ASSERT( sizeof(struct riscv64_raise_frame) == 752 );
+C_ASSERT( offsetof(CONTEXT, Gpr) == 8 );
+C_ASSERT( offsetof(CONTEXT, Pc) == 264 );
+
+static void __attribute__((used,noinline,noreturn)) riscv64_raise_exception( EXCEPTION_RECORD *record,
+                                                                           CONTEXT *context )
+{
+    NTSTATUS status;
+
+    record->ExceptionAddress = (void *)(ULONG_PTR)context->Pc;
+    context->ContextFlags |= CONTEXT_UNWOUND_TO_CALL;
+    if (!NtCurrentTeb()->Peb->BeingDebugged)
+        status = dispatch_exception( record, context );
+    else
+        status = NtRaiseException( record, context, TRUE );
+    RtlRaiseStatus( status );
+    __builtin_unreachable();
 }
+
+__ASM_GLOBAL_FUNC( RtlRaiseException,
+                   "addi sp, sp, -752\n\t"
+                   __ASM_CFI(".cfi_def_cfa_offset 752\n\t")
+                   "sd ra, 0(sp)\n\t"
+                   __ASM_CFI(".cfi_offset 1, -752\n\t")
+                   "sd a0, 8(sp)\n\t"
+                   "addi a0, sp, 16\n\t"
+                   "call " __ASM_NAME("RtlCaptureContext") "\n\t"
+                   "addi a1, sp, 16\n\t"
+                   "ld a0, 8(sp)\n\t"
+                   "sd a0, 88(a1)\n\t"   /* original x10 */
+                   "ld t0, 0(sp)\n\t"
+                   "sd t0, 16(a1)\n\t"   /* original x1 */
+                   "sd t0, 264(a1)\n\t"  /* caller PC */
+                   "addi t0, sp, 752\n\t"
+                   "sd t0, 24(a1)\n\t"   /* original x2 */
+                   "call " __ASM_NAME("riscv64_raise_exception") "\n\t"
+                   "ebreak" )
+
 /* Unix signal delivery and the syscall return path arrange a CONTEXT followed
  * by an EXCEPTION_RECORD at the current stack pointer.  The helper is
  * deliberately noreturn: dispatch_exception either continues via NtContinue
