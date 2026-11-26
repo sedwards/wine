@@ -1074,19 +1074,7 @@ static void riscv64_sigreturn_handler( int sig, siginfo_t *info, void *opaque )
     struct syscall_frame *frame;
     unsigned int i;
 
-    if (riscv64_transition_diag_enabled())
-    {
-        char buf[240], *p = buf;
-        p = riscv64_diag_text( p, "RV64-DIAG sigreturn TEB signal_data=" );
-        p = riscv64_diag_hex( p, (ULONG_PTR)data );
-        p = riscv64_diag_text( p, " teb=" );
-        p = riscv64_diag_hex( p, (ULONG_PTR)data->teb );
-        p = riscv64_diag_text( p, " tp=" );
-        p = riscv64_diag_hex( p, REGn_sig( 4, uc ) );
-        *p++ = '\n';
-        write( 2, buf, p - buf );
-    }
-    if (!data->teb) return;
+    if (!data || !data->teb) return;
     continuation = riscv64_continuation_data( data );
     if (!continuation->ready) return;
     frame = continuation->frame;
@@ -1115,6 +1103,8 @@ static void riscv64_sigreturn_handler( int sig, siginfo_t *info, void *opaque )
         p = riscv64_diag_hex( p, frame->pc );
         p = riscv64_diag_text( p, " target_sp=" );
         p = riscv64_diag_hex( p, frame->sp );
+        p = riscv64_diag_text( p, " target_ra=" );
+        p = riscv64_diag_hex( p, frame->ra );
         *p++ = '\n';
         write( 2, buf, p - buf );
     }
@@ -1148,60 +1138,14 @@ static void riscv64_sigreturn_handler( int sig, siginfo_t *info, void *opaque )
     }
     /* Do not call libc logging functions in the signal handler: use the
      * async-signal-safe write() diagnostic helper instead. */
-    if (riscv64_transition_diag_enabled())
-    {
-        char buf[192], *p = buf;
-        p = riscv64_diag_text( p, "RV64-DIAG sigreturn RESTORE pc=" );
-        p = riscv64_diag_hex( p, frame->pc );
-        p = riscv64_diag_text( p, " sp=" );
-        p = riscv64_diag_hex( p, frame->sp );
-        p = riscv64_diag_text( p, " ra=" );
-        p = riscv64_diag_hex( p, frame->ra );
-        *p++ = '\n';
-        write( 2, buf, p - buf );
-    }
     continuation->ready = 0;
     continuation->frame = NULL;
-    if (riscv64_transition_diag_enabled())
-    {
-        char buf[240], *p = buf;
-        p = riscv64_diag_text( p, "RV64-FRAME sigreturn CONSUME frame=" );
-        p = riscv64_diag_hex( p, (ULONG_PTR)frame );
-        p = riscv64_diag_text( p, " active=" );
-        p = riscv64_diag_hex( p, (ULONG_PTR)get_syscall_frame( data ) );
-        p = riscv64_diag_text( p, " target_sp=" );
-        p = riscv64_diag_hex( p, frame->sp );
-        *p++ = '\n';
-        write( 2, buf, p - buf );
-    }
     uc->uc_sigmask = frame->continuation_mask;
     PC_sig( uc ) = frame->pc;
     for (i = 1; i < 32; ++i)
         if (i != 3 && i != 4) REGn_sig( i, uc ) = frame->x[i];
     REGn_sig( 1, uc ) = frame->ra;
     REGn_sig( 2, uc ) = frame->sp;
-    if (riscv64_transition_diag_enabled())
-    {
-        char buf[360], *p = buf;
-        p = riscv64_diag_text( p, "RV64-DIAG sigreturn VERIFY requested_pc=" );
-        p = riscv64_diag_hex( p, frame->pc );
-        p = riscv64_diag_text( p, " actual_pc=" );
-        p = riscv64_diag_hex( p, PC_sig( uc ) );
-        p = riscv64_diag_text( p, " requested_sp=" );
-        p = riscv64_diag_hex( p, frame->sp );
-        p = riscv64_diag_text( p, " actual_sp=" );
-        p = riscv64_diag_hex( p, REGn_sig( 2, uc ) );
-        p = riscv64_diag_text( p, " requested_ra=" );
-        p = riscv64_diag_hex( p, frame->ra );
-        p = riscv64_diag_text( p, " actual_ra=" );
-        p = riscv64_diag_hex( p, REGn_sig( 1, uc ) );
-        p = riscv64_diag_text( p, " host_tp=" );
-        p = riscv64_diag_hex( p, REGn_sig( 4, uc ) );
-        p = riscv64_diag_text( p, " saved_tp=" );
-        p = riscv64_diag_hex( p, frame->x[4] );
-        *p++ = '\n';
-        write( 2, buf, p - buf );
-    }
     /* gp and tp belong to the host ELF runtime; retain the signal-time values.
      * Check the entire integer image while the kernel's real signal context
      * is still available, rather than sampling C compiler-owned registers. */
@@ -1291,10 +1235,6 @@ static void __attribute__((noreturn,used)) riscv64_sigreturn_continue( struct sy
             else WARN( "invalid RISC-V64 nested syscall-frame chain during continuation\n" );
         }
     }
-    if (riscv64_transition_diag_enabled())
-        WARN( "RV64-DIAG continuation REQUEST frame=%p pc=%016llx sp=%016llx ra=%016llx tp=%p\n",
-              frame, (unsigned long long)frame->pc, (unsigned long long)frame->sp,
-              (unsigned long long)frame->ra, __builtin_thread_pointer() );
     /* Validate the supplied frame against Wine's dedicated Unix stack
      * before publishing it to the asynchronous signal handler. */
     {
@@ -1310,12 +1250,6 @@ static void __attribute__((noreturn,used)) riscv64_sigreturn_continue( struct sy
             abort();
         }
     }
-    if (riscv64_transition_diag_enabled())
-        WARN( "RV64-DIAG continuation FRAME target_pc=%p target_sp=%p target_ra=%p saved_tp=%p host_tp=%p frame=%p frame_size=%lu aligned=%u\n",
-              (void *)(ULONG_PTR)frame->pc, (void *)(ULONG_PTR)frame->sp,
-              (void *)(ULONG_PTR)frame->ra, (void *)(ULONG_PTR)frame->x[4],
-              __builtin_thread_pointer(), frame, (unsigned long)sizeof(*frame),
-              !(frame->sp & 15) );
     if (riscv64_transition_diag_enabled())
     {
         WARN( "RV64-CONTEXT flags=%#x pc=%p sp=%p ra=%p x1=%p x2=%p gp=%p tp=%p fcsr=%#llx\n",
