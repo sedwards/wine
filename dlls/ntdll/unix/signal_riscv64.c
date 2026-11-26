@@ -768,9 +768,8 @@ static void riscv64_fault_handler( int sig, siginfo_t *info, void *opaque )
     /* Capture the interrupted architectural state before TLS lookup or
      * Wine's exception machinery can cause a recursive fault.  Keep this
      * async-signal-safe: no logging macros, allocation, locks or printf.
-     * A callback which crashes never reaches the trampoline's post-call
-     * ABI verifier, so compare this dump with RV64-ABI DLL pre-call. */
-    if (sig == SIGSEGV)
+     * Register dumps are opt-in via WINE_RISCV_DIAG. */
+    if (sig == SIGSEGV && riscv64_transition_diag_enabled())
     {
         static unsigned int reports;
         if (__atomic_fetch_add( &reports, 1, __ATOMIC_RELAXED ) < 8)
@@ -825,53 +824,38 @@ static void riscv64_fault_handler( int sig, siginfo_t *info, void *opaque )
             write( 2, buf, p - buf );
         }
     }
+    /* Keep a compact, bounded fault record even without verbose tracing. */
+    if (sig == SIGSEGV && !riscv64_transition_diag_enabled())
+    {
+        static unsigned int reports;
+        if (__atomic_fetch_add( &reports, 1, __ATOMIC_RELAXED ) < 8)
+        {
+            char buf[256], *p = buf;
+            p = riscv64_diag_text( p, "RV64-FAULT pid=" );
+            p = riscv64_diag_dec( p, (unsigned int)getpid() );
+            p = riscv64_diag_text( p, " tid=" );
+            p = riscv64_diag_dec( p, (unsigned int)syscall( 178 ) );
+            p = riscv64_diag_text( p, " pc=" );
+            p = riscv64_diag_hex( p, PC_sig( uc ) );
+            p = riscv64_diag_text( p, " sp=" );
+            p = riscv64_diag_hex( p, sp );
+            p = riscv64_diag_text( p, " ra=" );
+            p = riscv64_diag_hex( p, RA_sig( uc ) );
+            p = riscv64_diag_text( p, " addr=" );
+            p = riscv64_diag_hex( p, (ULONG_PTR)(info ? info->si_addr : NULL) );
+            p = riscv64_diag_text( p, " code=" );
+            p = riscv64_diag_hex( p, (ULONG_PTR)(unsigned int)(info ? info->si_code : 0) );
+            *p++ = '\n';
+            write( 2, buf, p - buf );
+        }
+    }
     data = riscv64_signal_thread_data();
 
     /* Avoid a recursive SIGSEGV when pthread-specific data is absent. */
-    if (riscv64_transition_diag_enabled())
-    {
-        char buf[192], *p = buf;
-        p = riscv64_diag_text( p, "RV64-DIAG fault SIGNAL sig=" );
-        p = riscv64_diag_dec( p, (unsigned int)sig );
-        p = riscv64_diag_text( p, " pc=" );
-        p = riscv64_diag_hex( p, PC_sig( uc ) );
-        p = riscv64_diag_text( p, " sp=" );
-        p = riscv64_diag_hex( p, sp );
-        p = riscv64_diag_text( p, " addr=" );
-        p = riscv64_diag_hex( p, (ULONG_PTR)(info ? info->si_addr : NULL) );
-        p = riscv64_diag_text( p, " signal_tp=" );
-        p = riscv64_diag_hex( p, REGn_sig( 4, uc ) );
-        p = riscv64_diag_text( p, " current_tp=" );
-        p = riscv64_diag_hex( p, (ULONG_PTR)__builtin_thread_pointer() );
-        *p++ = '\n';
-        write( 2, buf, p - buf );
-    }
     if (!data)
     {
         riscv64_report_missing_thread_data( sig, info, uc );
         _exit( 128 + sig );
-    }
-    if (riscv64_transition_diag_enabled())
-    {
-        char buf[320], *p = buf;
-        struct thread_data *tls_data = pthread_getspecific( thread_data_key );
-        struct thread_data *native_data = riscv64_lookup_thread_data();
-        p = riscv64_diag_text( p, "RV64-DIAG TEB CHECK signal_data=" );
-        p = riscv64_diag_hex( p, (ULONG_PTR)data );
-        p = riscv64_diag_text( p, " pthread_data=" );
-        p = riscv64_diag_hex( p, (ULONG_PTR)tls_data );
-        p = riscv64_diag_text( p, " signal_teb=" );
-        p = riscv64_diag_hex( p, (ULONG_PTR)data->teb );
-        p = riscv64_diag_text( p, " native_data=" );
-        p = riscv64_diag_hex( p, (ULONG_PTR)native_data );
-        p = riscv64_diag_text( p, " pthread_teb=" );
-        p = riscv64_diag_hex( p, (ULONG_PTR)(tls_data ? tls_data->teb : NULL) );
-        p = riscv64_diag_text( p, " syscall_frame=" );
-        p = riscv64_diag_hex( p, (ULONG_PTR)(data->teb ? get_syscall_frame( data ) : NULL) );
-        p = riscv64_diag_text( p, " saved_tp=" );
-        p = riscv64_diag_hex( p, REGn_sig( 4, uc ) );
-        *p++ = '\n';
-        write( 2, buf, p - buf );
     }
     /* Repeated faults at one instruction with a descending stack indicate
      * recursive exception dispatch.  Stop before exhausting the stack and
