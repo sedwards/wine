@@ -523,8 +523,6 @@ C_ASSERT( offsetof( CONTEXT, Fcsr ) == offsetof(CONTEXT, Pc) + sizeof(ULONG64) )
 C_ASSERT( offsetof( CONTEXT, F ) == offsetof(CONTEXT, Fcsr) + sizeof(ULONG64) );
 C_ASSERT( offsetof( struct riscv64_signal_exception, context ) % 16 == 0 );
 
-/* Diagnostic helper is defined below the exception dispatch routine. */
-static int riscv64_transition_diag_enabled(void);
 
 static void DECLSPEC_NORETURN riscv64_raise_signal_exception( struct riscv64_signal_exception *exc )
 {
@@ -737,7 +735,6 @@ static void riscv64_fault_handler( int sig, siginfo_t *info, void *opaque )
     /* The signal handler executes on Wine's aligned alternate stack.
      * Recover the owning Unix thread record directly; pthread_getspecific()
      * can itself depend on TLS state damaged by a context transition. */
-    RV64_CHECKPOINT( "fault ENTER before signal stack thread lookup" );
     if (riscv64_transition_diag_enabled())
     {
         stack_t alt = {0};
@@ -829,7 +826,6 @@ static void riscv64_fault_handler( int sig, siginfo_t *info, void *opaque )
         }
     }
     data = riscv64_signal_thread_data();
-    RV64_CHECKPOINT( "fault AFTER signal stack thread lookup" );
 
     /* Avoid a recursive SIGSEGV when pthread-specific data is absent. */
     if (riscv64_transition_diag_enabled())
@@ -1094,7 +1090,6 @@ static void riscv64_sigreturn_handler( int sig, siginfo_t *info, void *opaque )
     struct syscall_frame *frame;
     unsigned int i;
 
-    RV64_CHECKPOINT( "SIGUSR2 ENTER before continuation frame read" );
     if (riscv64_transition_diag_enabled())
     {
         char buf[240], *p = buf;
@@ -1111,7 +1106,6 @@ static void riscv64_sigreturn_handler( int sig, siginfo_t *info, void *opaque )
     continuation = riscv64_continuation_data( data );
     if (!continuation->ready) return;
     frame = continuation->frame;
-    RV64_CHECKPOINT( "SIGUSR2 AFTER TLS frame read" );
     if (!frame)
     {
         RV64_CHECKPOINT( "SIGUSR2 NULL frame" );
@@ -1182,7 +1176,6 @@ static void riscv64_sigreturn_handler( int sig, siginfo_t *info, void *opaque )
         *p++ = '\n';
         write( 2, buf, p - buf );
     }
-    RV64_CHECKPOINT( "SIGUSR2 BEFORE TLS frame clear" );
     continuation->ready = 0;
     continuation->frame = NULL;
     if (riscv64_transition_diag_enabled())
@@ -1197,15 +1190,12 @@ static void riscv64_sigreturn_handler( int sig, siginfo_t *info, void *opaque )
         *p++ = '\n';
         write( 2, buf, p - buf );
     }
-    RV64_CHECKPOINT( "SIGUSR2 AFTER TLS frame clear" );
     uc->uc_sigmask = frame->continuation_mask;
-    RV64_CHECKPOINT( "SIGUSR2 AFTER TLS mask read" );
     PC_sig( uc ) = frame->pc;
     for (i = 1; i < 32; ++i)
         if (i != 3 && i != 4) REGn_sig( i, uc ) = frame->x[i];
     REGn_sig( 1, uc ) = frame->ra;
     REGn_sig( 2, uc ) = frame->sp;
-    RV64_CHECKPOINT( "SIGUSR2 AFTER GPR restore" );
     if (riscv64_transition_diag_enabled())
     {
         char buf[360], *p = buf;
@@ -1296,19 +1286,7 @@ static void __attribute__((noreturn,used)) riscv64_sigreturn_continue( struct sy
         abort();
     }
 
-    WARN( "RISC-V64 continuation TLS: tid=%lu key=%lu data=%p frame=%p tp=%p\n",
-          (unsigned long)syscall( 178 /* __NR_gettid on Linux RISC-V */, 0 ),
-          (unsigned long)thread_data_key, data, frame, __builtin_thread_pointer() );
 
-    if (riscv64_transition_diag_enabled())
-    {
-        ULONG_PTR current_sp;
-        __asm__ volatile ( "mv %0, sp" : "=r"(current_sp) );
-        WARN( "RV64-HEAP continuation ENTER sp=%p aligned=%u host_tp=%p data=%p teb=%p frame=%p target_sp=%p\n",
-              (void *)current_sp, !(current_sp & 15),
-              __builtin_thread_pointer(), data, data->teb, frame,
-              (void *)(ULONG_PTR)frame->sp );
-    }
     sigemptyset( &set );
     sigaddset( &set, SIGUSR2 );
     if (pthread_sigmask( SIG_UNBLOCK, &set, &oldmask )) abort();
@@ -1397,14 +1375,10 @@ static void __attribute__((noreturn,used)) riscv64_sigreturn_continue( struct sy
         *p++ = '\n';
         write( 2, buf, p - buf );
     }
-    RV64_CHECKPOINT( "continuation BEFORE TLS mask write" );
     continuation->ready = 0;
     frame->continuation_mask = oldmask;
-    RV64_CHECKPOINT( "continuation AFTER TLS mask write" );
     continuation->frame = frame;
     __atomic_store_n( &continuation->ready, 1, __ATOMIC_RELEASE );
-    RV64_CHECKPOINT( "continuation AFTER TLS frame write" );
-    RV64_CHECKPOINT( "continuation BEFORE raise SIGUSR2" );
     if (raise( SIGUSR2 ))
     {
         RV64_CHECKPOINT( "continuation raise FAILED" );
@@ -1521,15 +1495,6 @@ static ULONG_PTR __attribute__((used)) riscv64_dispatch_syscall( ULONG id, const
                                   ULONG_PTR, ULONG_PTR, ULONG_PTR, ULONG_PTR);
     service_t service;
 
-    if (riscv64_transition_diag_enabled())
-    {
-        ULONG_PTR current_sp;
-        __asm__ volatile ( "mv %0, sp" : "=r"(current_sp) );
-        WARN( "RV64-HEAP syscall ENTER id=%#x sp=%p aligned=%u host_tp=%p data=%p teb=%p args=%p stack_args=%p\n",
-              id, (void *)current_sp, !(current_sp & 15),
-              __builtin_thread_pointer(), data, data ? data->teb : NULL,
-              args, stack_args );
-    }
     if (!data || !data->teb) return STATUS_INVALID_SYSTEM_SERVICE;
     tables = get_teb_data(data)->syscall_table;
     if (!tables) return STATUS_INVALID_SYSTEM_SERVICE;
@@ -1964,10 +1929,6 @@ static struct syscall_frame *__attribute__((used)) riscv64_prepare_syscall( void
     ULONG_PTR sp = (ULONG_PTR)entry_sp;
     ULONG_PTR stack_base, stack_end, frame_addr;
 
-    if (riscv64_transition_diag_enabled())
-        WARN( "RV64-HEAP syscall PREPARE entry_sp=%p aligned=%u host_tp=%p data=%p teb=%p\n",
-              entry_sp, !(sp & 15), __builtin_thread_pointer(),
-              data, data ? data->teb : NULL );
     if (!data || !data->teb) return NULL;
     frame = get_syscall_frame( data );
     if (!frame) return NULL;
@@ -2035,15 +1996,6 @@ static void __attribute__((used)) riscv64_finish_syscall( struct syscall_frame *
 {
     struct thread_data *data = get_thread_data();
 
-    if (riscv64_transition_diag_enabled())
-    {
-        ULONG_PTR current_sp;
-        __asm__ volatile ( "mv %0, sp" : "=r"(current_sp) );
-        WARN( "RV64-HEAP syscall FINISH sp=%p aligned=%u host_tp=%p data=%p teb=%p frame=%p previous=%p\n",
-              (void *)current_sp, !(current_sp & 15),
-              __builtin_thread_pointer(), data, data ? data->teb : NULL,
-              frame, frame ? frame->prev_frame : NULL );
-    }
     if (!data || !data->teb || !frame) return;
     if (get_syscall_frame( data ) != frame)
     {
