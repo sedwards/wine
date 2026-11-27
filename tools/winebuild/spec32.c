@@ -1412,6 +1412,12 @@ void output_fake_module( DLLSPEC *spec )
 
     static const unsigned char exe_code_section[] = { 0xb8, 0x01, 0x00, 0x00, 0x00,  /* movl $1,%eax */
                                                       0xc2, 0x04, 0x00 };            /* ret $4 */
+    /* Fake modules must not execute real initialization. Preserve the
+     * existing DLL failure / EXE return-one semantics on RV64. */
+    static const unsigned char rv64_dll_code_section[] = { 0x13, 0x05, 0x00, 0x00, /* li a0,0 */
+                                                           0x67, 0x80, 0x00, 0x00 }; /* ret */
+    static const unsigned char rv64_exe_code_section[] = { 0x13, 0x05, 0x10, 0x00, /* li a0,1 */
+                                                           0x67, 0x80, 0x00, 0x00 }; /* ret */
     unsigned int i;
 
     resolve_imports( spec );
@@ -1420,7 +1426,13 @@ void output_fake_module( DLLSPEC *spec )
     init_output_buffer();
 
     /* .text section */
-    if (spec->characteristics & IMAGE_FILE_DLL) put_data( dll_code_section, sizeof(dll_code_section) );
+    if (target.cpu == CPU_RISCV)
+    {
+        if (spec->characteristics & IMAGE_FILE_DLL)
+            put_data( rv64_dll_code_section, sizeof(rv64_dll_code_section) );
+        else put_data( rv64_exe_code_section, sizeof(rv64_exe_code_section) );
+    }
+    else if (spec->characteristics & IMAGE_FILE_DLL) put_data( dll_code_section, sizeof(dll_code_section) );
     else put_data( exe_code_section, sizeof(exe_code_section) );
     flush_output_to_section( ".text", -1, 0x60000020 /* CNT_CODE|MEM_EXECUTE|MEM_READ */ );
 
