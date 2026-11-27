@@ -553,3 +553,26 @@ switching to direct KiUserExceptionDispatcher delivery as on ARM64. These
 changes are source-reviewed but not yet compiled or hardware-validated.
 The cause of the original stack access faults and Mount Manager failure is
 not yet established.
+
+## 14. SEH termination and direct exception delivery
+
+The symbolized signal crash identified virtual_unwind() and
+call_seh_handlers() on the exhausted Windows stack, with a secondary fault
+in logging. After the first SEH boundary corrections, Task Manager shutdown
+no longer showed the stack overflow in the reported run. The signal test
+exited 66 with no output; this matches the low byte of its test exception
+0xe0424242 but does not establish the reason for termination.
+
+The subsequent series unifies signal and syscall exception frame layouts,
+uses send_debug_event() and virtual_setup_exception() to deliver synchronous
+exceptions directly to KiUserExceptionDispatcher, and removes the intermediate
+signal trampoline. The Windows-side dispatcher now calls dispatch_exception
+directly, with compile-time checks on its record offset. The native ELF
+handler search recognizes a zero caller PC after unwinding, while retaining
+initial null-PC exception handling.
+
+Native pthread stack separation, callback return correction, SIGUSR2
+continuation, and the existing recursion limits remain unchanged.
+Protected SEH handler wrappers, complete collided unwind semantics, native
+dispatcher unwind metadata, and memory fault access classification remain
+open. These commits have not been compiled or tested on RV64 hardware.
