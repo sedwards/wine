@@ -90,3 +90,37 @@ sync and signal tests. Check for callback result-store faults, USER lock
 assertions, incorrect register restoration, and nested callback regressions.
 The offset correction is source-verified; runtime validation remains
 outstanding. The separate signal continuation loop is not addressed here.
+
+## Exception delivery and SEH search
+
+Both the synchronous Linux signal path and NtRaiseException's first-chance
+dispatcher use the same 16-byte-aligned Windows exception frame:
+
+| Offset (bytes) | Contents |
+| ---: | --- |
+| 0 | RISCV64 CONTEXT (736 bytes) |
+| 736 | EXCEPTION_RECORD |
+| end of record | Structure alignment padding, if needed |
+
+The signal path preserves the record returned by virtual_handle_fault(),
+uses virtual_setup_exception() to prepare the Windows stack, and delivers
+directly to KiUserExceptionDispatcher after debugger notification. The
+dispatcher passes the record and context to dispatch_exception(). The
+older intermediate signal trampoline has been removed.
+
+The dispatcher is not an ordinary LP64D call frame. The Windows-side
+virtual_unwind() recognizes its address range and restores the saved
+CONTEXT after validating the frame and interrupted SP against the TEB
+stack bounds. In particular, the interrupted PC and native RA are separate
+values. This is an internal Wine unwind rule; it does not provide external
+debuggers with equivalent DWARF CFI for the dispatcher.
+
+Native ELF SEH search handler calls use a temporary registered TEB
+exception frame to report nested exceptions. RtlRestoreContext() removes
+registrations below the destination SP when restoring an unwound context.
+Full protected unwind-handler invocation and collided-unwind handling
+remain outstanding.
+
+These changes are source-reviewed, not yet validated on hardware. See
+the root [development guide](../../risc-v.md) for the current checkpoint
+and regression status.
