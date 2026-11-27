@@ -103,12 +103,14 @@ NTSTATUS call_seh_handlers( EXCEPTION_RECORD *rec, CONTEXT *original )
     while (depth++ < 1024)
     {
         sp = context.Gpr.X[2];
-        if (!sp || sp >= (ULONG_PTR)NtCurrentTeb()->Tib.StackBase ||
+        if (sp == (ULONG_PTR)NtCurrentTeb()->Tib.StackBase) break;
+        if (!sp || sp > (ULONG_PTR)NtCurrentTeb()->Tib.StackBase ||
             sp < (ULONG_PTR)NtCurrentTeb()->Tib.StackLimit)
         {
             WARN( "RV64 dispatch stopped on invalid stack depth=%u pc=%p sp=%p\n",
                   depth, (void *)(ULONG_PTR)context.Pc, (void *)sp );
-            return STATUS_BAD_STACK;
+            rec->ExceptionFlags |= EXCEPTION_STACK_INVALID;
+            break;
         }
         if (prev_sp && (sp < prev_sp || (sp == prev_sp && context.Pc == prev_pc)))
         {
@@ -139,6 +141,7 @@ NTSTATUS call_seh_handlers( EXCEPTION_RECORD *rec, CONTEXT *original )
                depth, (void *)(ULONG_PTR)context.Pc, (void *)(ULONG_PTR)context.Gpr.X[2],
                (void *)(ULONG_PTR)context.Gpr.X[1],
                (void *)dispatch.EstablisherFrame, dispatch.LanguageHandler );
+        if (!dispatch.EstablisherFrame) break;
         if (context.Gpr.X[2] < sp ||
             (context.Gpr.X[2] == sp && context.Pc == prev_pc))
         {
@@ -189,8 +192,9 @@ NTSTATUS call_seh_handlers( EXCEPTION_RECORD *rec, CONTEXT *original )
         if (frame && frame != (void *)(ULONG_PTR)-1 && !riscv64_valid_seh_frame( frame ))
         {
             rec->ExceptionFlags |= EXCEPTION_STACK_INVALID;
-            return STATUS_BAD_STACK;
+            break;
         }
+        if (context.Gpr.X[2] == (ULONG_PTR)NtCurrentTeb()->Tib.StackBase) break;
     }
     if (depth > 1024)
     {
