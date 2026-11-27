@@ -526,3 +526,30 @@ Next steps: rebuild and run signal independently with a timeout, then
 capture Mount Manager startup and device-control failures. Retest the
 working GUI applications and thread/sync/pipe suites. Keep signal
 diagnostics opt-in and retain the known pre-cleanup baseline.
+
+## 13. Exception stack alignment with master (November 27, 2026)
+
+The first signal test after the caller-context correction exited with status
+139, reporting two SEGV_ACCERR faults near the interrupted stack pointers.
+The prefix update trace confirms that rundll32 is created and its initial
+thread runs, but does not establish that SetupAPI PreInstall is reached.
+Mount Manager registration remains unverified.
+
+The first exception cleanup series adopts the shared Wine stack preparation
+path for synchronous signal delivery, preserves the EXCEPTION_RECORD modified
+by virtual_handle_fault(), extracts handle_syscall_fault(), preserves the
+actual exception status on syscall recovery, and uses overlap-safe context
+copying with a local exception-record snapshot in call_user_exception_dispatcher().
+
+The existing intermediate signal exception trampoline, recursion limits and
+syscall-driven frame allocation remain in place for this validation stage.
+The shared virtual.c implementation is unchanged. Read/write/execute fault
+classification remains incomplete. The earlier caller-context fix and callback
+stack correction are retained.
+
+Rebuild and run signal, exception, syscall, thread, sync and pipe tests, and
+retest the working GUI applications before unifying the frame layouts and
+switching to direct KiUserExceptionDispatcher delivery as on ARM64. These
+changes are source-reviewed but not yet compiled or hardware-validated.
+The cause of the original stack access faults and Mount Manager failure is
+not yet established.
