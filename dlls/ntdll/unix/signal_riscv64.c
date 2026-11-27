@@ -514,21 +514,16 @@ static void usr1_handler( int sig, siginfo_t *info, void *opaque )
 /* Translate synchronous Linux traps into NT exceptions.  Keep the signal
  * handler itself free of loader and wineserver calls: those run after the
  * kernel restores the interrupted thread context. */
-struct riscv64_signal_exception
-{
-    EXCEPTION_RECORD record;
-    CONTEXT context;
-};
 /* The Unix signal handoff and the PE dispatcher must agree on the RV64
  * register image.  Catch ABI drift at build time, not after rt_sigreturn. */
 C_ASSERT( offsetof( CONTEXT, Gpr ) == 8 );
 C_ASSERT( offsetof( CONTEXT, Pc ) == 8 + 32 * sizeof(ULONG64) );
 C_ASSERT( offsetof( CONTEXT, Fcsr ) == offsetof(CONTEXT, Pc) + sizeof(ULONG64) );
 C_ASSERT( offsetof( CONTEXT, F ) == offsetof(CONTEXT, Fcsr) + sizeof(ULONG64) );
-C_ASSERT( offsetof( struct riscv64_signal_exception, context ) % 16 == 0 );
+C_ASSERT( offsetof( struct riscv64_exception_stack_layout, context ) % 16 == 0 );
 
 
-static void DECLSPEC_NORETURN riscv64_raise_signal_exception( struct riscv64_signal_exception *exc )
+static void DECLSPEC_NORETURN riscv64_raise_signal_exception( struct riscv64_exception_stack_layout *exc )
 {
     NTSTATUS status;
     ULONG_PTR entry_pc = exc->context.Pc;
@@ -787,7 +782,7 @@ static BOOL handle_syscall_fault( struct thread_data *data, ucontext_t *uc,
 static void riscv64_fault_handler( int sig, siginfo_t *info, void *opaque )
 {
     ucontext_t *uc = opaque;
-    struct riscv64_signal_exception *exc;
+    struct riscv64_exception_stack_layout *exc;
     EXCEPTION_RECORD rec = {0};
     struct thread_data *data;
     ULONG_PTR sp = SP_sig( uc );
