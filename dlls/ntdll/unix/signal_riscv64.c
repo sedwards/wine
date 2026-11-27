@@ -980,33 +980,10 @@ static void riscv64_fault_handler( int sig, siginfo_t *info, void *opaque )
         _exit( 128 + sig );
     }
 
-    /* A nested exception can arrive with SP at the Windows stack guard.
-     * Do not fault a second time while clearing an exception payload below
-     * StackLimit; preserve the original PC and fault address instead. */
-    if (data->teb && sp <= (ULONG_PTR)data->teb->Tib.StackBase &&
-        sp >= (ULONG_PTR)data->teb->Tib.StackLimit &&
-        (sp < sizeof(*exc) ||
-         ((sp - sizeof(*exc)) & ~(ULONG_PTR)15) < (ULONG_PTR)data->teb->Tib.StackLimit))
-    {
-        if (riscv64_transition_diag_enabled())
-        {
-            char buf[256], *p = buf;
-            p = riscv64_diag_text( p, "RV64-DIAG exception frame below StackLimit pc=" );
-            p = riscv64_diag_hex( p, PC_sig( uc ) );
-            p = riscv64_diag_text( p, " sp=" );
-            p = riscv64_diag_hex( p, sp );
-            p = riscv64_diag_text( p, " limit=" );
-            p = riscv64_diag_hex( p, (ULONG_PTR)data->teb->Tib.StackLimit );
-            p = riscv64_diag_text( p, " fault=" );
-            p = riscv64_diag_hex( p, (ULONG_PTR)(info ? info->si_addr : NULL) );
-            *p++ = '\n';
-            write( 2, buf, p - buf );
-        }
-        _exit( 128 + sig );
-    }
-    /* Allocate the exception payload on the interrupted stack, preserving
-     * the LP64D 16-byte stack alignment.  SA_ONSTACK protects delivery. */
-    exc = (void *)((sp - sizeof(*exc)) & ~(ULONG_PTR)15);
+    /* Use the common stack preparation path, as on arm64 and x86-64.
+     * It can extend a committed stack into its guard page and preserve
+     * STATUS_STACK_OVERFLOW in the exception record when appropriate. */
+    exc = virtual_setup_exception( data, (void *)(sp & ~(ULONG_PTR)15), sizeof(*exc), &rec );
     if (riscv64_transition_diag_enabled())
     {
         char buf[384], *p = buf;
