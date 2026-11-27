@@ -729,6 +729,7 @@ static void riscv64_fault_handler( int sig, siginfo_t *info, void *opaque )
 {
     ucontext_t *uc = opaque;
     struct riscv64_signal_exception *exc;
+    EXCEPTION_RECORD rec = {0};
     struct thread_data *data;
     ULONG_PTR sp = SP_sig( uc );
 
@@ -889,18 +890,41 @@ static void riscv64_fault_handler( int sig, siginfo_t *info, void *opaque )
             _exit( 128 + sig );
         }
     }
-    /* Resolve guard-page and stack-growth faults before writing to the
-     * interrupted stack.  That stack may itself be the faulting mapping. */
-    if (sig == SIGSEGV || sig == SIGBUS)
+    rec.ExceptionAddress = (void *)(ULONG_PTR)PC_sig( uc );
+    switch (sig)
     {
-        EXCEPTION_RECORD fault = {0};
-        fault.ExceptionCode = EXCEPTION_ACCESS_VIOLATION;
-        fault.ExceptionAddress = (void *)(ULONG_PTR)PC_sig( uc );
-        fault.NumberParameters = 2;
-        fault.ExceptionInformation[0] = EXCEPTION_READ_FAULT;
-        fault.ExceptionInformation[1] = (ULONG_PTR)info->si_addr;
-        if (!virtual_handle_fault( data, &fault, (void *)sp )) return;
+    case SIGSEGV:
+    case SIGBUS:
+        rec.ExceptionCode = EXCEPTION_ACCESS_VIOLATION;
+        rec.NumberParameters = 2;
+        rec.ExceptionInformation[0] = EXCEPTION_READ_FAULT;
+        rec.ExceptionInformation[1] = (ULONG_PTR)info->si_addr;
+        break;
+    case SIGILL:
+        rec.ExceptionCode = EXCEPTION_ILLEGAL_INSTRUCTION;
+        break;
+    case SIGTRAP:
+        rec.ExceptionCode = EXCEPTION_BREAKPOINT;
+        break;
+    case SIGFPE:
+        rec.ExceptionCode = EXCEPTION_FLT_INVALID_OPERATION;
+#ifdef FPE_INTDIV
+        if (info->si_code == FPE_INTDIV) rec.ExceptionCode = EXCEPTION_INT_DIVIDE_BY_ZERO;
+#endif
+#ifdef FPE_INTOVF
+        if (info->si_code == FPE_INTOVF) rec.ExceptionCode = EXCEPTION_INT_OVERFLOW;
+#endif
+#ifdef FPE_FLTDIV
+        if (info->si_code == FPE_FLTDIV) rec.ExceptionCode = EXCEPTION_FLT_DIVIDE_BY_ZERO;
+#endif
+        break;
+    default:
+        rec.ExceptionCode = EXCEPTION_ILLEGAL_INSTRUCTION;
     }
+
+    /* Preserve the status and parameters returned by the virtual memory manager. */
+    if ((sig == SIGSEGV || sig == SIGBUS) &&
+        !virtual_handle_fault( data, &rec, (void *)sp )) return;
 
     /* A fault on the Unix syscall stack must not construct an exception
      * payload below the interrupted SP.  That address can be in a protected
@@ -1005,38 +1029,8 @@ static void riscv64_fault_handler( int sig, siginfo_t *info, void *opaque )
     }
     memset( exc, 0, sizeof(*exc) );
     save_context( &exc->context, uc );
-    exc->record.ExceptionAddress = (void *)(ULONG_PTR)exc->context.Pc;
 
-    switch (sig)
-    {
-    case SIGSEGV:
-    case SIGBUS:
-        exc->record.ExceptionCode = EXCEPTION_ACCESS_VIOLATION;
-        exc->record.NumberParameters = 2;
-        exc->record.ExceptionInformation[0] = EXCEPTION_READ_FAULT;
-        exc->record.ExceptionInformation[1] = (ULONG_PTR)info->si_addr;
-        break;
-    case SIGILL:
-        exc->record.ExceptionCode = EXCEPTION_ILLEGAL_INSTRUCTION;
-        break;
-    case SIGTRAP:
-        exc->record.ExceptionCode = EXCEPTION_BREAKPOINT;
-        break;
-    case SIGFPE:
-        exc->record.ExceptionCode = EXCEPTION_FLT_INVALID_OPERATION;
-#ifdef FPE_INTDIV
-        if (info->si_code == FPE_INTDIV) exc->record.ExceptionCode = EXCEPTION_INT_DIVIDE_BY_ZERO;
-#endif
-#ifdef FPE_INTOVF
-        if (info->si_code == FPE_INTOVF) exc->record.ExceptionCode = EXCEPTION_INT_OVERFLOW;
-#endif
-#ifdef FPE_FLTDIV
-        if (info->si_code == FPE_FLTDIV) exc->record.ExceptionCode = EXCEPTION_FLT_DIVIDE_BY_ZERO;
-#endif
-        break;
-    default:
-        exc->record.ExceptionCode = EXCEPTION_ILLEGAL_INSTRUCTION;
-    }
+    exc->record = rec;
 
     if (riscv64_transition_diag_enabled())
     {
