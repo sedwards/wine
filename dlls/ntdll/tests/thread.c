@@ -20,6 +20,8 @@
  */
 
 #include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
 
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
@@ -27,6 +29,7 @@
 #include "winbase.h"
 #include "winternl.h"
 #include "wine/test.h"
+#include "wine/asm.h"
 
 static BOOL is_wow64;
 static BOOL old_wow64;
@@ -570,12 +573,304 @@ static void test_arm64_skip_loader_init(void)
     CloseHandle( thread );
 }
 
+#if defined(__riscv) && __riscv_xlen == 64
+/* Opt-in checkpoints remain visible when winetest is redirected to a log,
+ * including when a server-side context request never returns. */
+static void rv64_thread_checkpoint( const char *phase )
+{
+    char enabled[2];
+
+    if (!GetEnvironmentVariableA( "WINE_RISCV_THREAD_DIAG", enabled, sizeof(enabled) )) return;
+    fprintf( stderr, "RV64-THREAD-TEST: %s\n", phase );
+    fflush( stderr );
+}
+
+/* Basic thread creation and join must work before suspended-context tests
+ * can meaningfully diagnose register restoration. */
+static DWORD WINAPI rv64_thread_smoke_proc( void *arg )
+{
+    rv64_thread_checkpoint( "smoke worker entered" );
+    rv64_thread_checkpoint( "smoke worker returning" );
+    return 0x1234abcd;
+}
+
+static void test_riscv64_thread_smoke(void)
+{
+    DWORD ret, exit_code = 0;
+    HANDLE thread;
+
+    rv64_thread_checkpoint( "smoke CreateThread enter" );
+    thread = CreateThread( NULL, 0, rv64_thread_smoke_proc, NULL, 0, NULL );
+    rv64_thread_checkpoint( "smoke CreateThread returned" );
+    ok( !!thread, "Smoke CreateThread failed: %lu\n", GetLastError() );
+    if (!thread) return;
+
+    rv64_thread_checkpoint( "smoke wait enter" );
+    ret = WaitForSingleObject( thread, 5000 );
+    rv64_thread_checkpoint( "smoke wait returned" );
+    ok( ret == WAIT_OBJECT_0, "Smoke thread wait returned %#lx\n", ret );
+    if (ret == WAIT_OBJECT_0)
+    {
+        rv64_thread_checkpoint( "smoke worker completed" );
+        ok( GetExitCodeThread( thread, &exit_code ), "Smoke GetExitCodeThread failed: %lu\n",
+            GetLastError() );
+        ok( exit_code == 0x1234abcd, "Smoke thread exit code %#lx\n", exit_code );
+    }
+    else if (ret == WAIT_TIMEOUT) TerminateThread( thread, 1 );
+    CloseHandle( thread );
+}
+
+/* Compare raw NtTerminateThread with the full RtlExitUserThread shutdown.
+ * Both execute after the worker entry point, without returning through
+ * BaseThreadInitThunk.  Keep these opt-in until the normal smoke test passes. */
+static DWORD WINAPI rv64_thread_exit_proc( void *arg )
+{
+    if (arg)
+    {
+        rv64_thread_checkpoint( "rtl exit worker entered" );
+        RtlExitUserThread( 0x1234abcd );
+        rv64_thread_checkpoint( "rtl exit unexpectedly returned" );
+        ok( 0, "RtlExitUserThread unexpectedly returned to its caller\n" );
+    }
+    else
+    {
+        rv64_thread_checkpoint( "direct exit worker entered" );
+        NtTerminateThread( GetCurrentThread(), 0x1234abcd );
+        rv64_thread_checkpoint( "direct exit unexpectedly returned" );
+        ok( 0, "NtTerminateThread(current thread) unexpectedly returned to its caller\n" );
+    }
+    return 0;
+}
+
+static void test_riscv64_thread_exit_path( BOOL rtl_exit )
+{
+    DWORD ret, exit_code = 0;
+    HANDLE thread;
+
+    rv64_thread_checkpoint( rtl_exit ? "rtl exit CreateThread enter" : "direct exit CreateThread enter" );
+    thread = CreateThread( NULL, 0, rv64_thread_exit_proc, (void *)(ULONG_PTR)rtl_exit, 0, NULL );
+    rv64_thread_checkpoint( rtl_exit ? "rtl exit CreateThread returned" : "direct exit CreateThread returned" );
+    ok( !!thread, "Exit-path CreateThread failed: %lu\n", GetLastError() );
+    if (!thread) return;
+
+    rv64_thread_checkpoint( rtl_exit ? "rtl exit wait enter" : "direct exit wait enter" );
+    ret = WaitForSingleObject( thread, 5000 );
+    rv64_thread_checkpoint( rtl_exit ? "rtl exit wait returned" : "direct exit wait returned" );
+    ok( ret == WAIT_OBJECT_0, "Exit-path thread wait returned %#lx\n", ret );
+    if (ret == WAIT_OBJECT_0)
+    {
+        ok( GetExitCodeThread( thread, &exit_code ),
+            "Exit-path GetExitCodeThread failed: %lu\n", GetLastError() );
+        ok( exit_code == 0x1234abcd, "Exit-path thread exit code %#lx\n", exit_code );
+    }
+    else if (ret == WAIT_TIMEOUT) TerminateThread( thread, 1 );
+    CloseHandle( thread );
+}
+
+/* Check suspended startup separately from register-context manipulation. */
+static void test_riscv64_thread_startup(void)
+{
+    DWORD ret, exit_code = 0;
+    HANDLE thread = CreateThread( NULL, 0, rv64_thread_smoke_proc, NULL, CREATE_SUSPENDED, NULL );
+
+    rv64_thread_checkpoint( "startup CreateThread returned" );
+    ok( !!thread, "Suspended CreateThread failed: %lu\n", GetLastError() );
+    if (!thread) return;
+
+    rv64_thread_checkpoint( "startup first wait enter" );
+    ret = WaitForSingleObject( thread, 100 );
+    rv64_thread_checkpoint( "startup first wait returned" );
+    ok( ret == WAIT_TIMEOUT, "Suspended thread ran before resume: %#lx\n", ret );
+
+    rv64_thread_checkpoint( "startup ResumeThread enter" );
+    ret = ResumeThread( thread );
+    rv64_thread_checkpoint( "startup ResumeThread returned" );
+    ok( ret == 1, "ResumeThread previous suspend count %#lx\n", ret );
+
+    rv64_thread_checkpoint( "startup completion wait enter" );
+    if (ret != ~0u)
+    {
+        DWORD wait = WaitForSingleObject( thread, 5000 );
+        rv64_thread_checkpoint( "startup completion wait returned" );
+        ok( wait == WAIT_OBJECT_0, "Resumed thread wait returned %#lx\n", wait );
+        if (wait == WAIT_OBJECT_0)
+        {
+            ok( GetExitCodeThread( thread, &exit_code ), "GetExitCodeThread failed: %lu\n", GetLastError() );
+            ok( exit_code == 0x1234abcd, "Resumed thread exit code %#lx\n", exit_code );
+        }
+        else if (wait == WAIT_TIMEOUT) TerminateThread( thread, 1 );
+    }
+    else TerminateThread( thread, 1 );
+    CloseHandle( thread );
+}
+
+struct riscv64_context_test
+{
+    LONG ready, stop;
+    ULONG64 integer, fp;
+    ULONG fcsr, reserved;
+    ULONG64 tp, gp;
+};
+
+extern DWORD WINAPI riscv64_context_thread( struct riscv64_context_test *state );
+__ASM_GLOBAL_FUNC( riscv64_context_thread,
+                   "addi sp, sp, -32\n\t"
+                   "sd s2, 0(sp)\n\t"
+                   "fsd fs0, 8(sp)\n\t"
+                   "frcsr t1\n\t"
+                   "sd t1, 16(sp)\n\t"
+                   "mv t0, a0\n\t"
+                   "li s2, 0x12345678\n\t"
+                   "fmv.d.x fs0, s2\n\t"
+                   "fence rw, rw\n\t"
+                   "li t1, 1\n\t"
+                   "sw t1, 0(t0)\n\t"
+                   "1: lw t1, 4(t0)\n\t"
+                   "beqz t1, 1b\n\t"
+                   "sd s2, 8(t0)\n\t"
+                   "fsd fs0, 16(t0)\n\t"
+                   "frcsr t1\n\t"
+                   "sw t1, 24(t0)\n\t"
+                   "sd tp, 32(t0)\n\t"
+                   "sd gp, 40(t0)\n\t"
+                   "ld s2, 0(sp)\n\t"
+                   "fld fs0, 8(sp)\n\t"
+                   "ld t1, 16(sp)\n\t"
+                   "fscsr t1\n\t"
+                   "addi sp, sp, 32\n\t"
+                   "li a0, 0\n\t"
+                   "ret" )
+
+static void test_riscv64_thread_context(void)
+{
+    struct riscv64_context_test state = {0};
+    CONTEXT context, updated;
+    HANDLE thread;
+    NTSTATUS status;
+    DWORD start, ret;
+
+    rv64_thread_checkpoint( "CreateThread enter" );
+    thread = CreateThread( NULL, 0, (LPTHREAD_START_ROUTINE)riscv64_context_thread,
+                           &state, CREATE_SUSPENDED, NULL );
+    rv64_thread_checkpoint( "CreateThread returned" );
+    ok( !!thread, "CreateThread failed: %lu\n", GetLastError() );
+    if (!thread) return;
+    rv64_thread_checkpoint( "suspended-thread wait enter" );
+    ret = WaitForSingleObject( thread, 100 );
+    rv64_thread_checkpoint( "suspended-thread wait returned" );
+    ok( ret == WAIT_TIMEOUT, "Suspended thread wait returned %#lx\n", ret );
+    ok( !state.ready, "Suspended thread executed its entry point\n" );
+    context.ContextFlags = CONTEXT_FULL;
+    rv64_thread_checkpoint( "NtGetContextThread enter" );
+    status = NtGetContextThread( thread, &context );
+    rv64_thread_checkpoint( "initial NtGetContextThread returned" );
+    ok( !status, "Initial NtGetContextThread returned %#lx\n", status );
+    if (!status)
+    {
+        ok( !!context.Pc, "Initial PC is zero\n" );
+        ok( context.Gpr.X[2] && !(context.Gpr.X[2] & 15),
+            "Invalid initial SP %s\n", wine_dbgstr_longlong(context.Gpr.X[2]) );
+    }
+    rv64_thread_checkpoint( "first ResumeThread enter" );
+    ResumeThread( thread );
+    rv64_thread_checkpoint( "first ResumeThread returned" );
+    start = GetTickCount();
+    while (!InterlockedCompareExchange( &state.ready, 0, 0 ) && GetTickCount() - start < 5000)
+        Sleep( 1 );
+    ok( !!state.ready, "Thread did not reach its register loop\n" );
+    if (!state.ready) goto done;
+
+    rv64_thread_checkpoint( "SuspendThread enter" );
+    ret = SuspendThread( thread );
+    rv64_thread_checkpoint( "SuspendThread returned" );
+    ok( ret == 0, "SuspendThread returned %#lx\n", ret );
+    if (ret == ~0u) goto done;
+    context.ContextFlags = CONTEXT_FULL | CONTEXT_EXCEPTION_REQUEST;
+    rv64_thread_checkpoint( "suspended NtGetContextThread enter" );
+    status = NtGetContextThread( thread, &context );
+    rv64_thread_checkpoint( "suspended NtGetContextThread returned" );
+    ok( !status, "NtGetContextThread returned %#lx\n", status );
+    if (!status)
+    {
+        ok( context.Gpr.X[0] == 0, "x0 is not zero\n" );
+        ok( context.Gpr.X[18] == 0x12345678, "Unexpected s2 %s\n",
+            wine_dbgstr_longlong(context.Gpr.X[18]) );
+        {
+            CONTEXT integer_context;
+            memset( &integer_context, 0, sizeof(integer_context) );
+            integer_context.ContextFlags = CONTEXT_INTEGER;
+            rv64_thread_checkpoint( "integer-only NtGetContextThread enter" );
+            status = NtGetContextThread( thread, &integer_context );
+            rv64_thread_checkpoint( "integer-only NtGetContextThread returned" );
+            ok( !status, "Integer-only NtGetContextThread returned %#lx\n", status );
+            if (!status)
+            {
+                ok( !integer_context.Gpr.X[0], "x0 is not zero\n" );
+                ok( integer_context.Gpr.X[2] == context.Gpr.X[2],
+                    "Integer-only query lost SP %s / %s\n",
+                    wine_dbgstr_longlong(integer_context.Gpr.X[2]),
+                    wine_dbgstr_longlong(context.Gpr.X[2]) );
+            }
+        }
+        ok( context.F[8].Q == 0x12345678, "Unexpected fs0 %s\n",
+            wine_dbgstr_longlong(context.F[8].Q) );
+        updated = context;
+        updated.ContextFlags = CONTEXT_INTEGER | CONTEXT_FLOATING_POINT;
+        updated.Gpr.X[18] = 0x23456789;
+        updated.F[8].Q = 0x3456789a;
+        updated.Fcsr = 0x40; /* RDN, no accrued exception flags. */
+        updated.Gpr.X[2] = 0xdeadbeef; /* Integer-only updates must preserve SP/PC. */
+        updated.Pc = 0xdeadbeef;
+        rv64_thread_checkpoint( "NtSetContextThread enter" );
+        status = NtSetContextThread( thread, &updated );
+        rv64_thread_checkpoint( "NtSetContextThread returned" );
+        ok( !status, "NtSetContextThread returned %#lx\n", status );
+        updated.ContextFlags = CONTEXT_FULL;
+        rv64_thread_checkpoint( "updated NtGetContextThread enter" );
+        status = NtGetContextThread( thread, &updated );
+        rv64_thread_checkpoint( "updated NtGetContextThread returned" );
+        ok( !status, "Updated NtGetContextThread returned %#lx\n", status );
+        if (!status)
+        {
+            ok( updated.Pc == context.Pc, "Integer update changed PC\n" );
+            ok( updated.Gpr.X[2] == context.Gpr.X[2], "Integer update changed SP\n" );
+        }
+    }
+    InterlockedExchange( &state.stop, 1 );
+    rv64_thread_checkpoint( "final ResumeThread enter" );
+    ResumeThread( thread );
+    rv64_thread_checkpoint( "final ResumeThread returned" );
+    ret = WaitForSingleObject( thread, 5000 );
+    ok( ret == WAIT_OBJECT_0, "Thread wait returned %#lx\n", ret );
+    if (!status && ret == WAIT_OBJECT_0)
+    {
+        ok( state.integer == 0x23456789, "s2 update lost: %s\n",
+            wine_dbgstr_longlong(state.integer) );
+        ok( state.fp == 0x3456789a, "fs0 update lost: %s\n", wine_dbgstr_longlong(state.fp) );
+        ok( state.fcsr == 0x40, "FCSR update lost: %#lx\n", state.fcsr );
+        ok( state.tp == context.Gpr.X[4], "Native TLS pointer changed\n" );
+        ok( state.gp == context.Gpr.X[3], "Native global pointer changed\n" );
+    }
+ done:
+    rv64_thread_checkpoint( "cleanup enter" );
+    InterlockedExchange( &state.stop, 1 );
+    if (WaitForSingleObject( thread, 5000 ) == WAIT_TIMEOUT) TerminateThread( thread, 1 );
+    CloseHandle( thread );
+}
+#endif
+
 START_TEST(thread)
 {
     char **argv;
     int argc;
 
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "START_TEST entered; initializing function pointers" );
+#endif
     init_function_pointers();
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "function pointers initialized" );
+#endif
 
     if (!pIsWow64Process || !pIsWow64Process( GetCurrentProcess(), &is_wow64 )) is_wow64 = FALSE;
     if (is_wow64)
@@ -604,12 +899,78 @@ START_TEST(thread)
         return;
     }
 
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "hidden thread enter" );
+#endif
     test_dbg_hidden_thread_creation();
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "hidden thread returned" );
+#endif
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "unique TEB enter" );
+#endif
     test_unique_teb();
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "unique TEB returned" );
+#endif
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "errno enter" );
+#endif
     test_errno();
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "errno returned" );
+#endif
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "NtCreateUserProcess enter" );
+#endif
     test_NtCreateUserProcess();
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "NtCreateUserProcess returned" );
+#endif
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "NtTerminateProcess enter" );
+#endif
     test_NtTerminateProcess();
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "NtTerminateProcess returned" );
+#endif
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "bypass process freeze enter" );
+#endif
     test_thread_bypass_process_freeze();
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "bypass process freeze returned" );
+#endif
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "NtQueueApcThreadEx enter" );
+#endif
     test_NtQueueApcThreadEx();
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "NtQueueApcThreadEx returned" );
+#endif
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "skip thread attach enter" );
+#endif
     test_skip_thread_attach();
+#if defined(__riscv) && __riscv_xlen == 64
+    rv64_thread_checkpoint( "skip thread attach returned" );
+#endif
+
+#if defined(__riscv) && __riscv_xlen == 64
+    /* Run every test by default, as on the other architectures.  Keep
+     * RV64-specific lifecycle regressions after the existing Wine tests
+     * so failures in a new port do not mask unrelated test coverage. */
+    rv64_thread_checkpoint( "native groups finished; RV64 smoke enter" );
+    test_riscv64_thread_smoke();
+    rv64_thread_checkpoint( "RV64 directexit enter" );
+    test_riscv64_thread_exit_path( FALSE );
+    rv64_thread_checkpoint( "RV64 rtlexit enter" );
+    test_riscv64_thread_exit_path( TRUE );
+    rv64_thread_checkpoint( "RV64 startup enter" );
+    test_riscv64_thread_startup();
+    rv64_thread_checkpoint( "RV64 context enter" );
+    test_riscv64_thread_context();
+    rv64_thread_checkpoint( "all RV64 groups finished" );
+#endif
+
 }

@@ -3475,6 +3475,16 @@ done:
 }
 
 
+#ifdef __riscv
+/* pthread_exit() performs libc cleanup and stack unwinding before the
+ * thread-specific-data destructors.  Keep the native-TID fallback alive
+ * through that entire phase and retire it only after cleanup has finished. */
+static void riscv64_thread_data_destructor( void *ptr )
+{
+    if (ptr) riscv64_unregister_thread_data();
+}
+#endif
+
 /***********************************************************************
  *           virtual_init
  */
@@ -3485,7 +3495,11 @@ void virtual_init(void)
     const struct preload_info *preload_info = preload_info_ptr ? *preload_info_ptr : NULL;
     pthread_mutexattr_t attr;
 
+#ifdef __riscv
+    pthread_key_create( &thread_data_key, riscv64_thread_data_destructor );
+#else
     pthread_key_create( &thread_data_key, NULL );
+#endif
     pthread_mutexattr_init( &attr );
     pthread_mutexattr_settype( &attr, PTHREAD_MUTEX_RECURSIVE );
     pthread_mutex_init( &virtual_mutex, &attr );
@@ -3527,15 +3541,44 @@ void virtual_init(void)
         high_range.start = high_range.end = ROUND_ADDR( host_addr_space_limit, limit_4g - 1 );
 
 #ifdef _WIN64
-    pages_vprot_size = ((size_t)host_addr_space_limit >> page_shift >> pages_vprot_shift) + 1;
-    pages_vprot = calloc( pages_vprot_size, sizeof(*pages_vprot) );
-    assert( pages_vprot != NULL );
-#else
+#if !defined(__riscv) || (__riscv_xlen != 64)
     pages_vprot = anon_mmap_alloc( 1U << (32 - page_shift), PROT_READ | PROT_WRITE );
     assert( pages_vprot != MAP_FAILED );
-#endif
     view_block_start = anon_mmap_alloc( view_block_size, PROT_READ | PROT_WRITE );
     view_block_end = view_block_start + view_block_size / sizeof(*view_block_start);
+#endif
+    pages_vprot_size = ((size_t)host_addr_space_limit >> page_shift >> pages_vprot_shift) + 1;
+#if defined(__riscv) && (__riscv_xlen == 64)
+    /* The RV64 protection table and view block are allocated once below. */
+    view_block_start = anon_mmap_alloc( view_block_size, PROT_READ | PROT_WRITE );
+    view_block_end = view_block_start + view_block_size / sizeof(*view_block_start);
+#endif
+
+#if defined(__riscv) && (__riscv_xlen == 64)
+    TRACE( "pages_vprot: size=%zu sizeof=%zu total=%zu\n",
+           pages_vprot_size, sizeof(*pages_vprot),
+           pages_vprot_size * sizeof(*pages_vprot) );
+
+    {
+        size_t pages_vprot_alloc_size;
+
+        pages_vprot_alloc_size = (pages_vprot_size * sizeof(*pages_vprot)
+                                  + host_page_mask) & ~host_page_mask;
+
+        pages_vprot = anon_mmap_alloc( pages_vprot_alloc_size,
+                                       PROT_READ | PROT_WRITE );
+    }
+#else
+pages_vprot = anon_mmap_alloc( pages_vprot_size * sizeof(*pages_vprot), PROT_READ | PROT_WRITE );
+/* !! #if defined(__riscv) && (__riscv_xlen == 64) */
+#endif /* #if defined(__riscv) && (__riscv_xlen == 64) */
+#else
+    /* try to find space in a reserved area for the views and pages protection table */
+    view_block_start = alloc_virtual_heap( 2 * view_block_size + (1U << (32 - page_shift)) );
+    view_block_end = view_block_start + view_block_size / sizeof(*view_block_start);
+    free_ranges = (void *)((char *)view_block_start + view_block_size);
+    pages_vprot = (void *)((char *)view_block_start + 2 * view_block_size);
+#endif
     assert( view_block_start != MAP_FAILED );
 
     write_exec_disallowed = is_write_exec_disallowed( view_block_start );
@@ -3602,7 +3645,12 @@ NTSTATUS virtual_map_builtin_module( HANDLE mapping, void **module, SIZE_T *size
     NTSTATUS status;
 
     if ((status = get_mapping_info( mapping, SECTION_MAP_READ, &sec_flags, &full_size, &pe_mapping )))
+    {
+#ifdef __riscv
+        WARN( "RV64-LAUNCH virtual_map_builtin_module mapping=%p get_mapping_info status=%08x\n", mapping, status );
+#endif
         return status;
+    }
 
     if (!pe_mapping) return STATUS_INVALID_PARAMETER;
 
@@ -4001,7 +4049,19 @@ struct thread_data *virtual_alloc_first_thread_data(void)
     VIRTUAL_DEBUG_DUMP_VIEW( view );
 
     thread_data = init_thread_data( view->base );
-    pthread_setspecific( thread_data_key, thread_data );
+    {
+        int err = pthread_setspecific( thread_data_key, thread_data );
+        if (err)
+        {
+            ERR( "failed to register first Unix thread data: %d\n", err );
+            abort();
+        }
+#ifdef __riscv
+        WARN( "RISC-V64 first TLS registration: key=%lu data=%p readback=%p tp=%p\n",
+              (unsigned long)thread_data_key, thread_data, get_thread_data(),
+              __builtin_thread_pointer() );
+#endif
+    }
     return thread_data;
 }
 

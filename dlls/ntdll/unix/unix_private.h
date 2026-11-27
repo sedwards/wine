@@ -49,6 +49,8 @@ static const WORD current_machine = IMAGE_FILE_MACHINE_AMD64;
 static const WORD current_machine = IMAGE_FILE_MACHINE_ARMNT;
 #elif defined(__aarch64__)
 static const WORD current_machine = IMAGE_FILE_MACHINE_ARM64;
+#elif defined(__riscv) && (__riscv_xlen == 64)
+static const USHORT current_machine = IMAGE_FILE_MACHINE_RISCV64;
 #endif
 extern WORD native_machine;
 extern ULONG cpu_count;
@@ -60,7 +62,9 @@ static const ULONG_PTR limit_4g = (ULONG_PTR)((ULONGLONG)1 << 32);
 
 static inline BOOL is_machine_64bit( WORD machine )
 {
-    return (machine == IMAGE_FILE_MACHINE_AMD64 || machine == IMAGE_FILE_MACHINE_ARM64);
+    return (machine == IMAGE_FILE_MACHINE_AMD64 ||
+        machine == IMAGE_FILE_MACHINE_ARM64 ||
+        machine == IMAGE_FILE_MACHINE_RISCV64);
 }
 
 #ifdef _WIN64
@@ -133,9 +137,22 @@ struct thread_data
 
 extern pthread_key_t thread_data_key;
 
+#ifdef __riscv
+/* The Windows context switch can leave pthread_getspecific() unable to
+ * recover the key despite a valid native tp.  Use a separate Linux-TID
+ * registry as a fallback without assigning the host tp to the Windows TEB. */
+extern void riscv64_register_thread_data( struct thread_data *data );
+extern void riscv64_unregister_thread_data(void);
+extern struct thread_data *riscv64_lookup_thread_data(void);
+#endif
+
 static inline struct thread_data *get_thread_data(void)
 {
-    return pthread_getspecific( thread_data_key );
+    struct thread_data *data = pthread_getspecific( thread_data_key );
+#ifdef __riscv
+    if (!data) data = riscv64_lookup_thread_data();
+#endif
+    return data;
 }
 
 /* thread private data, stored in NtCurrentTeb()->GdiTebBatch */
@@ -247,6 +264,10 @@ extern NTSTATUS load_builtin( struct pe_mapping_info *pe_mapping, USHORT machine
                               ULONG_PTR limit_low, ULONG_PTR limit_high, off_t offset );
 extern NTSTATUS load_unixlib_by_name( const UNICODE_STRING *nt_name, void **handle_ret );
 extern BOOL is_system_dir_path( const UNICODE_STRING *path, WORD *machine );
+#if defined(__riscv) && __riscv_xlen == 64
+extern NTSTATUS get_riscv64_builtin_exe_info( const UNICODE_STRING *nt_name,
+                                               struct pe_image_info *info );
+#endif
 extern NTSTATUS load_main_exe( UNICODE_STRING *nt_name, USHORT load_machine );
 extern NTSTATUS load_start_exe( UNICODE_STRING *nt_name );
 extern ULONG_PTR redirect_arm64ec_rva( void *module, ULONG_PTR rva, const IMAGE_ARM64EC_METADATA *metadata );

@@ -766,7 +766,16 @@ static void input_context_init( INPUTCONTEXT *ctx )
 static void IMM_FreeThreadData(void)
 {
     struct coinit_spy *spy;
+#if defined(__riscv) && __riscv_xlen == 64
+    /* Do not create a brand-new Win32u default input context during
+     * DLL_THREAD_DETACH.  On an RV64 worker that never used IME, the
+     * normal getter can allocate USER state and invoke further syscalls
+     * after thread teardown has already begun.  Query only state that
+     * was actually initialized earlier in the thread's lifetime. */
+    HIMC default_imc = (HIMC)NtUserGetThreadState( UserThreadStateDefaultInputContextNoCreate );
+#else
     HIMC default_imc = (HIMC)NtUserGetThreadState( UserThreadStateDefaultInputContext );
+#endif
 
     free_input_context_data( default_imc );
     if ((spy = get_thread_coinit_spy())) IInitializeSpy_Release( &spy->IInitializeSpy_iface );

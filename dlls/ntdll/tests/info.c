@@ -339,7 +339,21 @@ static void test_query_cpu(void)
     ok( status == STATUS_SUCCESS, "Expected STATUS_SUCCESS, got %08lx\n", status);
     ok( sizeof(sci) == len, "Inconsistent length %ld\n", len);
 
-    memset(&sci2, 0xcc, sizeof(sci2));
+#if defined(__riscv) && __riscv_xlen == 64
+    /* Reject null CPU information buffers without dereferencing them. */
+    status = pNtQuerySystemInformation( SystemCpuInformation, NULL, sizeof(sci), &len );
+    ok( status == STATUS_ACCESS_VIOLATION,
+        "Expected STATUS_ACCESS_VIOLATION, got %08lx\n", status );
+    status = pNtQuerySystemInformation( SystemEmulationProcessorInformation, NULL, sizeof(sci), &len );
+    ok( status == STATUS_ACCESS_VIOLATION,
+        "Expected STATUS_ACCESS_VIOLATION, got %08lx\n", status );
+    status = pNtQuerySystemInformation( SystemProcessorFeaturesInformation, NULL,
+                                        sizeof(features), &len );
+    ok( status == STATUS_ACCESS_VIOLATION,
+        "Expected STATUS_ACCESS_VIOLATION, got %08lx\n", status );
+#endif
+
+        memset(&sci2, 0xcc, sizeof(sci2));
     status = pRtlGetNativeSystemInformation(SystemCpuInformation, &sci2, sizeof(sci2), &len);
     ok( status == STATUS_SUCCESS, "Expected STATUS_SUCCESS, got %08lx.\n", status);
     ok( sizeof(sci2) == len, "Unexpected length %lu.\n", len);
@@ -357,7 +371,12 @@ static void test_query_cpu(void)
             "ProcessorArchitecture differs %x / %x\n",
             sci.ProcessorArchitecture, sci2.ProcessorArchitecture );
 
+    /* RISC-V has no Windows-defined legacy ProcessorFeatureBits mapping. */
+#if defined(__riscv) && __riscv_xlen == 64
+    if (sci2.ProcessorArchitecture != PROCESSOR_ARCHITECTURE_UNKNOWN)
+#else
     if (sci2.ProcessorArchitecture != PROCESSOR_ARCHITECTURE_ARM64)
+#endif
     {
         /* Check if we have some return values */
         if (winetest_debug > 1) trace("Processor FeatureSet : %08lx\n", sci.ProcessorFeatureBits);
@@ -379,12 +398,19 @@ static void test_query_cpu(void)
     ok( sizeof(sci3) == len, "Unexpected length %lu.\n", len);
 
 #ifdef _WIN64
+#if defined(__riscv) && __riscv_xlen == 64
+    /* Native RISC-V64 has no x86/ARM32 emulation architecture. */
+    ok( sci3.ProcessorArchitecture == sci2.ProcessorArchitecture,
+        "ProcessorArchitecture differs %x / %x\n",
+        sci3.ProcessorArchitecture, sci2.ProcessorArchitecture );
+#else
     if (sci2.ProcessorArchitecture == PROCESSOR_ARCHITECTURE_ARM64)
         ok( sci3.ProcessorArchitecture == PROCESSOR_ARCHITECTURE_ARM, "ProcessorArchitecture wrong %x\n",
             sci3.ProcessorArchitecture );
     else
         ok( sci3.ProcessorArchitecture == PROCESSOR_ARCHITECTURE_INTEL, "ProcessorArchitecture wrong %x\n",
             sci3.ProcessorArchitecture );
+#endif
 #else
     ok( sci.ProcessorArchitecture == sci3.ProcessorArchitecture,
         "ProcessorArchitecture differs %x / %x\n",

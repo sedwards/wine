@@ -698,7 +698,7 @@ static XSTATE_CONFIGURATION *get_xstate_config(void)
 {
 #if defined(__aarch64__)
     return &user_shared_data->XStateArm64;
-#elif defined(__arm__)
+#elif defined(__arm__) || (defined(__riscv) && __riscv_xlen == 64)
     static XSTATE_CONFIGURATION empty_config;
     return &empty_config;
 #else

@@ -10047,6 +10047,12 @@ static LONG CALLBACK breakpoint_handler(EXCEPTION_POINTERS *ExceptionInfo)
     ok(rec->ExceptionInformation[0] == 0,
        "got ExceptionInformation[0] = %p\n", (void *)rec->ExceptionInformation[0]);
     context->Pc += 4;
+#elif defined(__riscv) && __riscv_xlen == 64
+    ok(context->Pc == (DWORD_PTR)code_mem,
+       "expected pc = %p, got %p\n", code_mem, (void *)context->Pc);
+    ok(rec->ExceptionAddress == code_mem,
+       "expected address %p, got %p\n", code_mem, rec->ExceptionAddress);
+    context->Pc += 4;
 #endif
 
     breakpoint_exceptions++;
@@ -10059,6 +10065,8 @@ static const BYTE breakpoint_code[] = { 0xcd, 0x03, 0xc3 };   /* int $0x3; ret *
 static const DWORD breakpoint_code[] = { 0xdefe, 0x4770 };  /* udf #0xfe; bx lr */
 #elif defined(__aarch64__)
 static const DWORD breakpoint_code[] = { 0xd43e0000, 0xd65f03c0 };  /* brk #0xf000; ret */
+#elif defined(__riscv) && __riscv_xlen == 64
+static const DWORD breakpoint_code[] = { 0x00100073, 0x00008067 }; /* ebreak; ret */
 #endif
 
 static void test_breakpoint(DWORD numexc)
@@ -12560,6 +12568,55 @@ static void test_set_live_context(void)
 }
 #endif
 
+#if defined(__riscv) && __riscv_xlen == 64
+static ULONG (WINAPI *pRtlWalkFrameChain)(void **, ULONG, ULONG);
+
+static DECLSPEC_NOINLINE void riscv64_walk_frames( unsigned int depth )
+{
+    void *frames[3][16];
+    ULONG counts[3], flags[] = { 0, 2 << 8, 20 << 8 };
+    volatile unsigned int saved_depth = depth;
+    unsigned int i, j;
+
+    if (depth)
+    {
+        riscv64_walk_frames( depth - 1 );
+        /* Keep recursive frames and their unwind metadata observable. */
+        ok( saved_depth == depth, "Recursive frame was corrupted\n" );
+        return;
+    }
+
+    for (i = 0; i < ARRAY_SIZE(counts); ++i)
+    {
+        for (j = 0; j < ARRAY_SIZE(frames[i]); ++j) frames[i][j] = (void *)0xdeadbeef;
+        /* Use the same call site so skipped frames can be compared exactly. */
+        counts[i] = pRtlWalkFrameChain( frames[i], 8, flags[i] );
+    }
+    ok( counts[0] >= 6 && counts[0] <= 8, "Expected recursive frames, got %lu\n", counts[0] );
+    ok( counts[1] == (counts[0] > 2 ? counts[0] - 2 : 0),
+        "Skip returned %lu frames for %lu total\n", counts[1], counts[0] );
+    ok( counts[2] == 0, "Skip beyond count returned %lu frames\n", counts[2] );
+    for (i = 0; i < counts[1] && i + 2 < counts[0]; ++i)
+        ok( frames[1][i] == frames[0][i + 2], "Skipped frame %u differs: %p / %p\n",
+            i, frames[1][i], frames[0][i + 2] );
+    for (i = 0; i < ARRAY_SIZE(counts); ++i)
+        if (counts[i] < ARRAY_SIZE(frames[i]))
+            ok( frames[i][counts[i]] == (void *)0xdeadbeef, "Wrote beyond frame count\n" );
+    ok( !pRtlWalkFrameChain( NULL, 0, 0 ), "Zero-length walk returned frames\n" );
+}
+
+static void test_riscv64_backtrace(void)
+{
+    pRtlWalkFrameChain = (void *)GetProcAddress( hntdll, "RtlWalkFrameChain" );
+    if (!pRtlWalkFrameChain)
+    {
+        win_skip( "RtlWalkFrameChain not available\n" );
+        return;
+    }
+    riscv64_walk_frames( 5 );
+}
+#endif
+
 static void test_backtrace(void)
 {
     void *buffer[1024];
@@ -12956,12 +13013,702 @@ static void test_RtlAddVectoredExceptionHandler(void)
     pRtlRemoveVectoredExceptionHandler( vh2 );
 }
 
+#if defined(__riscv) && __riscv_xlen == 64
+/*
+ * Unlike x86/x86-64/ARM64, RISC-V64's dispatcher entry points are very
+ * short.  Replacing an entire absolute-jump stub could overwrite the next
+ * entry point.  Patch only the first 32-bit word with a JAL x0 to a nearby
+ * trampoline, then restore that word before executing the original entry.
+ *
+ * The RISC-V JAL range is +/- 1 MiB; if we cannot reserve nearby executable
+ * memory, report a skip instead of risking an out-of-range branch.
+ */
+struct riscv64_dispatcher_hook
+{
+    void *entry;
+    BYTE *trampoline;
+    DWORD original, protection;
+    BOOL installed;
+};
+
+struct riscv64_exception_layout
+{
+    CONTEXT context;
+    EXCEPTION_RECORD record;
+};
+
+struct riscv64_apc_layout
+{
+    void (*func)(ULONG_PTR, ULONG_PTR, ULONG_PTR);
+    ULONG_PTR args[3];
+    ULONG_PTR alertable;
+    ULONG_PTR reserved;
+    CONTEXT context;
+};
+
+struct riscv64_callback_layout
+{
+    void *args;
+    ULONG len, id;
+    ULONG64 ra, sp, pc;
+    BYTE args_data[0];
+};
+
+C_ASSERT(offsetof(struct riscv64_exception_layout, record) == sizeof(CONTEXT));
+C_ASSERT(offsetof(struct riscv64_apc_layout, context) == 0x30);
+C_ASSERT(offsetof(struct riscv64_callback_layout, args_data) == 40);
+
+/* Encodes JAL zero,offset.  Offset is signed and 2-byte aligned. */
+static DWORD riscv64_jal( LONGLONG offset )
+{
+    ULONG imm = (ULONG)offset;
+
+    return ((imm & 0x100000) << 11) | ((imm & 0x7fe) << 20) |
+           ((imm & 0x800) << 9) | (imm & 0xff000) | 0x6f;
+}
+
+static BYTE *riscv64_alloc_near( void *entry )
+{
+    const ULONG_PTR granularity = 0x10000;
+    ULONG_PTR base = (ULONG_PTR)entry & ~(granularity - 1), addr, distance;
+    BYTE *mem;
+    unsigned int side;
+
+    for (distance = 0; distance <= 0xf0000; distance += granularity)
+    {
+        for (side = 0; side < 2; ++side)
+        {
+            if (side && !distance) continue;
+            if (side && base < distance) continue;
+            addr = side ? base - distance : base + distance;
+            if (!addr) continue;
+            mem = VirtualAlloc( (void *)addr, 0x1000, MEM_RESERVE | MEM_COMMIT,
+                                PAGE_EXECUTE_READWRITE );
+            if (!mem) continue;
+            if ((LONGLONG)((ULONG_PTR)mem - (ULONG_PTR)entry) >= -(1 << 20) &&
+                (LONGLONG)((ULONG_PTR)mem - (ULONG_PTR)entry) < (1 << 20))
+                return mem;
+            VirtualFree( mem, 0, MEM_RELEASE );
+        }
+    }
+    return NULL;
+}
+
+static BOOL riscv64_install_hook( struct riscv64_dispatcher_hook *hook,
+                                  void *entry, void *func )
+{
+    static const DWORD trampoline_code[] =
+    {
+        0x00010513, /* mv a0,sp */
+        0x00000297, /* auipc t0,0 */
+        0x0142b283, /* ld t0,20(t0) -- address stored at byte 24 */
+        0x000280e7, /* jalr ra,t0,0 -- call the frame checker */
+        0x00050067, /* jalr zero,a0,0 -- jump to restored dispatcher */
+        0x00000013  /* nop, aligns the literal to 8 bytes */
+    };
+    DWORD patch;
+    LONGLONG distance;
+
+    memset( hook, 0, sizeof(*hook) );
+    if (!entry) return FALSE;
+    hook->trampoline = riscv64_alloc_near( entry );
+    if (!hook->trampoline) return FALSE;
+    hook->entry = entry;
+    memcpy( hook->trampoline, trampoline_code, sizeof(trampoline_code) );
+    memcpy( hook->trampoline + sizeof(trampoline_code), &func, sizeof(func) );
+    FlushInstructionCache( GetCurrentProcess(), hook->trampoline, 32 );
+
+    distance = (LONGLONG)((ULONG_PTR)hook->trampoline - (ULONG_PTR)entry);
+    if (distance < -(1 << 20) || distance >= (1 << 20) || (distance & 1))
+        return FALSE;
+    if (!VirtualProtect( entry, sizeof(patch), PAGE_EXECUTE_READWRITE, &hook->protection ))
+        return FALSE;
+
+    memcpy( &hook->original, entry, sizeof(hook->original) );
+    patch = riscv64_jal( distance );
+    memcpy( entry, &patch, sizeof(patch) );
+    FlushInstructionCache( GetCurrentProcess(), entry, sizeof(patch) );
+    hook->installed = TRUE;
+    return TRUE;
+}
+
+static void riscv64_unhook( struct riscv64_dispatcher_hook *hook )
+{
+    DWORD protection;
+
+    if (!hook->installed) return;
+    memcpy( hook->entry, &hook->original, sizeof(hook->original) );
+    FlushInstructionCache( GetCurrentProcess(), hook->entry, sizeof(hook->original) );
+    VirtualProtect( hook->entry, sizeof(hook->original), hook->protection, &protection );
+    hook->installed = FALSE;
+}
+
+static void riscv64_free_hook( struct riscv64_dispatcher_hook *hook )
+{
+    riscv64_unhook( hook );
+    if (hook->trampoline) VirtualFree( hook->trampoline, 0, MEM_RELEASE );
+    hook->trampoline = NULL;
+}
+
+static volatile LONG riscv64_exception_hits, riscv64_layout_hits;
+static DWORD riscv64_exception_code;
+static ULONG_PTR riscv64_exception_pc;
+static struct riscv64_dispatcher_hook riscv64_exception_hook;
+static const ULONG_PTR riscv64_expected_args[] =
+{
+    (ULONG_PTR)0x12345678aabbccddull,
+    (ULONG_PTR)0x1111222233334444ull,
+    (ULONG_PTR)0x2222333344445555ull,
+    (ULONG_PTR)0x3333444455556666ull,
+    (ULONG_PTR)0x4444555566667777ull,
+    (ULONG_PTR)0x5555666677778888ull,
+    (ULONG_PTR)0x6666777788889999ull,
+    (ULONG_PTR)0x777788889999aaaauLL
+};
+
+static LONG WINAPI riscv64_exception_handler( EXCEPTION_POINTERS *exception )
+{
+    if (exception->ExceptionRecord->ExceptionCode != riscv64_exception_code)
+        return EXCEPTION_CONTINUE_SEARCH;
+    ++riscv64_exception_hits;
+    riscv64_exception_pc = exception->ContextRecord->Pc;
+    return EXCEPTION_CONTINUE_EXECUTION;
+}
+
+static void *WINAPI riscv64_exception_layout_hook( struct riscv64_exception_layout *stack )
+{
+    CONTEXT *ctx = &stack->context;
+    ULONG_PTR sp = ctx->Gpr.X[2];
+    TEB *teb = NtCurrentTeb();
+    unsigned int i;
+
+    ++riscv64_layout_hits;
+    ok( !((ULONG_PTR)stack & 15), "unaligned exception stack %p\n", stack );
+    ok( !((ULONG_PTR)ctx & 15), "unaligned exception CONTEXT %p\n", ctx );
+    ok( stack->record.ExceptionCode == EXCEPTION_BREAKPOINT,
+        "unexpected exception code %#lx\n", stack->record.ExceptionCode );
+    ok( stack->record.ExceptionAddress == code_mem, "exception address %p, expected %p\n",
+        stack->record.ExceptionAddress, code_mem );
+    ok( ctx->Pc == (ULONG_PTR)code_mem, "exception PC %p, expected %p\n",
+        (void *)(ULONG_PTR)ctx->Pc, code_mem );
+    ok( (ctx->ContextFlags & CONTEXT_CONTROL) == CONTEXT_CONTROL,
+        "missing control flags %#lx\n", ctx->ContextFlags );
+    ok( (ctx->ContextFlags & CONTEXT_INTEGER) == CONTEXT_INTEGER,
+        "missing integer flags %#lx\n", ctx->ContextFlags );
+    ok( sp >= (ULONG_PTR)teb->Tib.StackLimit && sp < (ULONG_PTR)teb->Tib.StackBase,
+        "saved SP %p outside Windows stack %p-%p\n", (void *)sp,
+        teb->Tib.StackLimit, teb->Tib.StackBase );
+    ok( !(sp & 15), "saved SP %#Ix is not 16-byte aligned\n", sp );
+    ok( ctx->Gpr.X[1] != 0, "saved return address is null\n" );
+    for (i = 0; i < ARRAY_SIZE(riscv64_expected_args); ++i)
+        ok( ctx->Gpr.X[10 + i] == riscv64_expected_args[i],
+            "saved a%u %#Ix / %#Ix\n", i,
+            (ULONG_PTR)ctx->Gpr.X[10 + i], riscv64_expected_args[i] );
+    riscv64_unhook( &riscv64_exception_hook );
+    return pKiUserExceptionDispatcher;
+}
+
+static LONG WINAPI riscv64_breakpoint_continue( EXCEPTION_POINTERS *exception )
+{
+    if (exception->ExceptionRecord->ExceptionCode != EXCEPTION_BREAKPOINT)
+        return EXCEPTION_CONTINUE_SEARCH;
+    ++riscv64_exception_hits;
+    ok( exception->ContextRecord->Pc == (ULONG_PTR)code_mem,
+        "breakpoint context PC %p / %p\n",
+        (void *)(ULONG_PTR)exception->ContextRecord->Pc, code_mem );
+    /* ebreak is a four-byte RISC-V instruction, unlike c.ebreak. */
+    exception->ContextRecord->Pc += 4;
+    return EXCEPTION_CONTINUE_EXECUTION;
+}
+
+static void test_KiUserExceptionDispatcher(void)
+{
+    static const DWORD code[] = { 0x00100073, 0x00008067 }; /* ebreak; ret */
+    void (WINAPI *func)(ULONG_PTR, ULONG_PTR, ULONG_PTR, ULONG_PTR,
+                        ULONG_PTR, ULONG_PTR, ULONG_PTR, ULONG_PTR) = code_mem;
+    PVOID handler;
+    BOOL hooked;
+
+    if (!pKiUserExceptionDispatcher)
+    {
+        skip( "KiUserExceptionDispatcher is not exported\n" );
+        return;
+    }
+    memcpy( code_mem, code, sizeof(code) );
+    FlushInstructionCache( GetCurrentProcess(), code_mem, sizeof(code) );
+
+    hooked = riscv64_install_hook( &riscv64_exception_hook, pKiUserExceptionDispatcher,
+                                  riscv64_exception_layout_hook );
+    if (!hooked) win_skip( "cannot hook RISC-V64 exception dispatcher for exact frame check\n" );
+
+    handler = AddVectoredExceptionHandler( 1, riscv64_breakpoint_continue );
+    ok( !!handler, "AddVectoredExceptionHandler failed\n" );
+    if (handler)
+    {
+        riscv64_exception_hits = 0;
+        riscv64_layout_hits = 0;
+        func( riscv64_expected_args[0], riscv64_expected_args[1],
+              riscv64_expected_args[2], riscv64_expected_args[3],
+              riscv64_expected_args[4], riscv64_expected_args[5],
+              riscv64_expected_args[6], riscv64_expected_args[7] );
+        ok( riscv64_exception_hits == 1, "expected one breakpoint, got %ld\n",
+            riscv64_exception_hits );
+        if (hooked)
+            ok( riscv64_layout_hits == 1, "expected one dispatcher frame, got %ld\n",
+                riscv64_layout_hits );
+        ok( RemoveVectoredExceptionHandler( handler ), "RemoveVectoredExceptionHandler failed\n" );
+    }
+    riscv64_free_hook( &riscv64_exception_hook );
+}
+
+static volatile LONG riscv64_apc_hits, riscv64_apc_layout_hits;
+static struct riscv64_dispatcher_hook riscv64_apc_hook;
+static void CALLBACK riscv64_apc_callback( ULONG_PTR arg1, ULONG_PTR arg2, ULONG_PTR arg3 )
+{
+    ok( arg1 == 0x6464, "APC arg1 %#Ix\n", arg1 );
+    ok( arg2 == 0x5678, "APC arg2 %#Ix\n", arg2 );
+    ok( arg3 == 0xdeadbeef, "APC arg3 %#Ix\n", arg3 );
+    ++riscv64_apc_hits;
+}
+
+static void *WINAPI riscv64_apc_layout_hook( struct riscv64_apc_layout *stack )
+{
+    CONTEXT *ctx = &stack->context;
+    TEB *teb = NtCurrentTeb();
+
+    ++riscv64_apc_layout_hits;
+    ok( !((ULONG_PTR)stack & 15), "unaligned APC stack %p\n", stack );
+    ok( stack->func == riscv64_apc_callback, "wrong APC func %p / %p\n",
+        stack->func, riscv64_apc_callback );
+    ok( stack->args[0] == 0x6464 && stack->args[1] == 0x5678 &&
+        stack->args[2] == 0xdeadbeef, "wrong APC args %#Ix,%#Ix,%#Ix\n",
+        stack->args[0], stack->args[1], stack->args[2] );
+    ok( stack->alertable, "APC frame is not alertable\n" );
+    ok( !stack->reserved, "APC reserved field %#Ix\n", stack->reserved );
+    ok( (ctx->ContextFlags & CONTEXT_CONTROL) == CONTEXT_CONTROL,
+        "APC context missing control flags %#lx\n", ctx->ContextFlags );
+    ok( ctx->Pc && ctx->Gpr.X[2], "APC context PC %p SP %p\n",
+        (void *)(ULONG_PTR)ctx->Pc, (void *)(ULONG_PTR)ctx->Gpr.X[2] );
+    ok( !(ctx->Gpr.X[2] & 15), "APC saved SP %#Ix is unaligned\n",
+        (ULONG_PTR)ctx->Gpr.X[2] );
+    ok( ctx->Gpr.X[2] >= (ULONG_PTR)teb->Tib.StackLimit &&
+        ctx->Gpr.X[2] < (ULONG_PTR)teb->Tib.StackBase,
+        "APC saved SP outside thread stack\n" );
+
+    riscv64_unhook( &riscv64_apc_hook );
+    return pKiUserApcDispatcher;
+}
+
+static void test_KiUserApcDispatcher(void)
+{
+    NTSTATUS status;
+    DWORD result;
+    BOOL hooked;
+
+    if (!pKiUserApcDispatcher || !pNtQueueApcThread)
+    {
+        skip( "KiUserApcDispatcher or NtQueueApcThread unavailable\n" );
+        return;
+    }
+    hooked = riscv64_install_hook( &riscv64_apc_hook, pKiUserApcDispatcher,
+                                  riscv64_apc_layout_hook );
+    if (!hooked) win_skip( "cannot hook RISC-V64 APC dispatcher for exact frame check\n" );
+
+    riscv64_apc_hits = 0;
+    riscv64_apc_layout_hits = 0;
+    status = pNtQueueApcThread( GetCurrentThread(), riscv64_apc_callback,
+                                0x6464, 0x5678, 0xdeadbeef );
+    ok( !status, "NtQueueApcThread returned %#lx\n", status );
+    if (!status)
+    {
+        result = SleepEx( 1000, TRUE );
+        ok( result == WAIT_IO_COMPLETION, "SleepEx returned %#lx\n", result );
+        ok( riscv64_apc_hits == 1, "expected one APC, got %ld\n", riscv64_apc_hits );
+        if (hooked)
+            ok( riscv64_apc_layout_hits == 1, "expected one APC frame, got %ld\n",
+                riscv64_apc_layout_hits );
+    }
+    riscv64_free_hook( &riscv64_apc_hook );
+}
+
+static volatile LONG riscv64_callback_layout_hits;
+static struct riscv64_dispatcher_hook riscv64_callback_hook;
+
+static void *WINAPI riscv64_callback_layout_hook( struct riscv64_callback_layout *stack )
+{
+    ULONG_PTR redzone, args_end, base = (ULONG_PTR)NtCurrentTeb()->Tib.StackBase;
+    void *module = NULL, *win32u = GetModuleHandleA( "win32u.dll" );
+
+    ++riscv64_callback_layout_hits;
+    ok( !((ULONG_PTR)stack & 15), "unaligned callback stack %p\n", stack );
+    ok( stack->args == stack->args_data, "callback args %p / %p\n",
+        stack->args, stack->args_data );
+    ok( stack->len < 0x100000, "unexpected callback argument length %lu\n", stack->len );
+    args_end = (ULONG_PTR)stack->args_data + stack->len;
+    redzone = (ULONG_PTR)stack->sp - args_end;
+    ok( redzone >= 16 && redzone <= 31, "invalid callback redzone %#Ix\n", redzone );
+    ok( stack->ra && stack->pc, "callback RA %p PC %p\n",
+        (void *)(ULONG_PTR)stack->ra, (void *)(ULONG_PTR)stack->pc );
+    ok( stack->sp >= (ULONG_PTR)NtCurrentTeb()->Tib.StackLimit && stack->sp <= base,
+        "callback saved SP outside thread stack: %p\n", (void *)(ULONG_PTR)stack->sp );
+    ok( NtCurrentTeb()->Peb->KernelCallbackTable != NULL,
+        "missing kernel callback table\n" );
+    ok( stack->id < 128, "invalid callback index %lu\n", stack->id );
+    if (stack->id < 128 && NtCurrentTeb()->Peb->KernelCallbackTable)
+        ok( !!NtCurrentTeb()->Peb->KernelCallbackTable[stack->id],
+            "callback table entry %lu is null\n", stack->id );
+    if (pRtlPcToFileHeader && win32u && stack->pc)
+    {
+        pRtlPcToFileHeader( (void *)(ULONG_PTR)stack->pc, &module );
+        ok( module == win32u, "callback PC module %p, expected win32u %p\n", module, win32u );
+    }
+
+    riscv64_unhook( &riscv64_callback_hook );
+    return pKiUserCallbackDispatcher;
+}
+
+static void test_KiUserCallbackDispatcher(void)
+{
+    HWND hwnd;
+    NTSTATUS status;
+    BOOL hooked;
+
+    status = NtCallbackReturn( NULL, 0, STATUS_SUCCESS );
+    ok( status == STATUS_NO_CALLBACK_ACTIVE,
+        "NtCallbackReturn without an active callback returned %#lx\n", status );
+
+    if (!pKiUserCallbackDispatcher)
+    {
+        skip( "KiUserCallbackDispatcher is not exported\n" );
+        return;
+    }
+    hooked = riscv64_install_hook( &riscv64_callback_hook, pKiUserCallbackDispatcher,
+                                  riscv64_callback_layout_hook );
+    if (!hooked)
+    {
+        win_skip( "cannot hook RISC-V64 callback dispatcher for exact frame check\n" );
+        riscv64_free_hook( &riscv64_callback_hook );
+        return;
+    }
+    riscv64_callback_layout_hits = 0;
+    hwnd = CreateWindowA( "Static", "riscv64 callback test", 0, 0, 0, 0, 0,
+                          NULL, NULL, NULL, NULL );
+    if (hwnd) DestroyWindow( hwnd );
+    if (!hwnd && !riscv64_callback_layout_hits)
+        win_skip( "window creation unavailable; cannot exercise kernel callback\n" );
+    else
+        ok( riscv64_callback_layout_hits == 1, "expected callback dispatcher entry, got %ld\n",
+            riscv64_callback_layout_hits );
+    riscv64_free_hook( &riscv64_callback_hook );
+}
+
+static void test_rtlraiseexception(void)
+{
+    EXCEPTION_RECORD record;
+    PVOID handler;
+
+    if (!pRtlRaiseException)
+    {
+        skip( "RtlRaiseException not exported\n" );
+        return;
+    }
+    handler = AddVectoredExceptionHandler( 1, riscv64_exception_handler );
+    ok( !!handler, "AddVectoredExceptionHandler failed\n" );
+    if (!handler) return;
+
+    memset( &record, 0, sizeof(record) );
+    record.ExceptionCode = 0xe0426465;
+    riscv64_exception_code = record.ExceptionCode;
+    riscv64_exception_hits = 0;
+    riscv64_exception_pc = 0;
+    pRtlRaiseException( &record );
+    ok( riscv64_exception_hits == 1, "RtlRaiseException dispatched %ld times\n",
+        riscv64_exception_hits );
+    ok( !!riscv64_exception_pc, "RtlRaiseException context PC is null\n" );
+    ok( RemoveVectoredExceptionHandler( handler ), "RemoveVectoredExceptionHandler failed\n" );
+}
+
+/*
+ * Debugger parity with the x86, x86-64 and ARM64 tests: create a debuggee,
+ * observe a first-chance exception, read/modify its RISC-V64 CONTEXT, then
+ * resume it with either DBG_CONTINUE or DBG_EXCEPTION_NOT_HANDLED.
+ */
+#define RISCV64_DEBUG_MARKER 0xe0426470
+#define RISCV64_DEBUG_RESUME_VALUE ((ULONG_PTR)0x6464aabbccdd1122ull)
+static volatile LONG riscv64_debuggee_veh_hits;
+
+static LONG WINAPI riscv64_debuggee_veh( EXCEPTION_POINTERS *exception )
+{
+    CONTEXT *ctx = exception->ContextRecord;
+
+    if (exception->ExceptionRecord->ExceptionCode != EXCEPTION_BREAKPOINT)
+        return EXCEPTION_CONTINUE_SEARCH;
+    ++riscv64_debuggee_veh_hits;
+    ok( !!ctx->Pc && !!ctx->Gpr.X[2], "debuggee VEH PC/SP missing\n" );
+    ctx->Pc += 4; /* ebreak, not c.ebreak */
+    ctx->Gpr.X[10] = RISCV64_DEBUG_RESUME_VALUE;
+    return EXCEPTION_CONTINUE_EXECUTION;
+}
+
+static void riscv64_debuggee( DWORD cont_status )
+{
+    PVOID handler;
+    ULONG_PTR value = 0;
+
+    if (!NtCurrentTeb()->Peb->BeingDebugged)
+    {
+        ok( 0, "RISC-V debuggee was not launched under a debugger\n" );
+        ExitProcess( 1 );
+    }
+
+    handler = AddVectoredExceptionHandler( 1, riscv64_debuggee_veh );
+    if (!handler) ExitProcess( 2 );
+
+    /* A distinct, first-chance exception marks the breakpoint that follows.
+     * This avoids confusing it with ntdll's initial debugger breakpoint. */
+    RaiseException( RISCV64_DEBUG_MARKER, 0, 0, NULL );
+
+    __asm__ volatile( ".4byte 0x00100073\n\tmv %0, a0"
+                      : "=r"(value) : : "memory" );
+
+    ok( value == RISCV64_DEBUG_RESUME_VALUE, "debugger-resumed a0 %#Ix / %#Ix\n",
+        value, RISCV64_DEBUG_RESUME_VALUE );
+    ok( riscv64_debuggee_veh_hits == (cont_status == DBG_EXCEPTION_NOT_HANDLED),
+        "debuggee VEH calls %ld for continuation status %#lx\n",
+        riscv64_debuggee_veh_hits, cont_status );
+
+    RemoveVectoredExceptionHandler( handler );
+    ExitProcess( value == RISCV64_DEBUG_RESUME_VALUE &&
+                 riscv64_debuggee_veh_hits == (cont_status == DBG_EXCEPTION_NOT_HANDLED) ? 0 : 3 );
+}
+
+static void test_debugger( DWORD cont_status, BOOL with_WaitForDebugEventEx )
+{
+    char cmdline[MAX_PATH];
+    STARTUPINFOA si = { 0 };
+    PROCESS_INFORMATION pi;
+    DEBUG_EVENT event;
+    CONTEXT context, verify;
+    DWORD code, continuation, instruction, exit_code = ~0u;
+    BOOL ret, handshake = FALSE, hit_breakpoint = FALSE, exited = FALSE;
+    unsigned int i;
+    SIZE_T bytes;
+    NTSTATUS status;
+
+    if (!pNtGetContextThread || !pNtSetContextThread)
+    {
+        skip( "NtGetContextThread/NtSetContextThread are unavailable\n" );
+        return;
+    }
+    if (with_WaitForDebugEventEx && !pWaitForDebugEventEx)
+    {
+        win_skip( "WaitForDebugEventEx is not exported\n" );
+        return;
+    }
+    si.cb = sizeof(si);
+    sprintf( cmdline, "%s %s riscv64_debuggee %lu", my_argv[0], my_argv[1], cont_status );
+    ret = CreateProcessA( NULL, cmdline, NULL, NULL, FALSE, DEBUG_PROCESS, NULL, NULL, &si, &pi );
+    ok( ret, "CreateProcess(DEBUG_PROCESS) failed: %lu\n", GetLastError() );
+    if (!ret) return;
+
+    for (i = 0; i < 100; ++i)
+    {
+        memset( &event, 0, sizeof(event) );
+        ret = with_WaitForDebugEventEx ? pWaitForDebugEventEx( &event, 10000 ) :
+                                        WaitForDebugEvent( &event, 10000 );
+        if (!ret)
+        {
+            ok( 0, "WaitForDebugEvent failed or timed out: %lu\n", GetLastError() );
+            break;
+        }
+        continuation = DBG_CONTINUE;
+        if (event.dwDebugEventCode == CREATE_PROCESS_DEBUG_EVENT &&
+            event.u.CreateProcessInfo.hFile)
+            CloseHandle( event.u.CreateProcessInfo.hFile );
+        else if (event.dwDebugEventCode == LOAD_DLL_DEBUG_EVENT &&
+                 event.u.LoadDll.hFile)
+            CloseHandle( event.u.LoadDll.hFile );
+        else if (event.dwDebugEventCode == EXCEPTION_DEBUG_EVENT)
+        {
+            code = event.u.Exception.ExceptionRecord.ExceptionCode;
+            if (code == RISCV64_DEBUG_MARKER)
+            {
+                ok( event.u.Exception.dwFirstChance, "debug marker is not first-chance\n" );
+                ok( !handshake, "duplicate debug marker\n" );
+                handshake = TRUE;
+            }
+            else if (code == EXCEPTION_BREAKPOINT && handshake && !hit_breakpoint)
+            {
+                hit_breakpoint = TRUE;
+                ok( event.u.Exception.dwFirstChance, "target breakpoint is not first-chance\n" );
+                memset( &context, 0, sizeof(context) );
+                context.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+                status = pNtGetContextThread( pi.hThread, &context );
+                ok( !status, "NtGetContextThread(debuggee) returned %#lx\n", status );
+                if (!status)
+                {
+                    ok( (context.ContextFlags & CONTEXT_CONTROL) == CONTEXT_CONTROL,
+                        "debug context flags %#lx\n", context.ContextFlags );
+                    ok( context.Pc == (ULONG_PTR)event.u.Exception.ExceptionRecord.ExceptionAddress,
+                        "debug PC %p / exception address %p\n",
+                        (void *)(ULONG_PTR)context.Pc,
+                        event.u.Exception.ExceptionRecord.ExceptionAddress );
+                    ok( !!context.Gpr.X[1], "debug context RA is null\n" );
+                    ok( !!context.Gpr.X[2] && !(context.Gpr.X[2] & 15),
+                        "debug context SP %#Ix is invalid\n", (ULONG_PTR)context.Gpr.X[2] );
+                }
+                instruction = 0;
+                bytes = 0;
+                ret = ReadProcessMemory( pi.hProcess,
+                    event.u.Exception.ExceptionRecord.ExceptionAddress,
+                    &instruction, sizeof(instruction), &bytes );
+                ok( ret && bytes == sizeof(instruction) && instruction == 0x00100073,
+                    "debug breakpoint instruction %#lx (read %Iu bytes, ret %d)\n",
+                    instruction, bytes, ret );
+                if (cont_status == DBG_CONTINUE && !status)
+                {
+                    context.Pc = (ULONG_PTR)event.u.Exception.ExceptionRecord.ExceptionAddress + 4;
+                    context.Gpr.X[10] = RISCV64_DEBUG_RESUME_VALUE;
+                    status = pNtSetContextThread( pi.hThread, &context );
+                    ok( !status, "NtSetContextThread(debuggee) returned %#lx\n", status );
+                    if (!status)
+                    {
+                        memset( &verify, 0, sizeof(verify) );
+                        verify.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+                        status = pNtGetContextThread( pi.hThread, &verify );
+                        ok( !status, "NtGetContextThread(after set) returned %#lx\n", status );
+                        if (!status)
+                        {
+                            ok( verify.Pc == context.Pc, "restored PC %p / %p\n",
+                                (void *)(ULONG_PTR)verify.Pc, (void *)(ULONG_PTR)context.Pc );
+                            ok( verify.Gpr.X[10] == RISCV64_DEBUG_RESUME_VALUE,
+                                "restored a0 %#Ix / %#Ix\n",
+                                (ULONG_PTR)verify.Gpr.X[10], RISCV64_DEBUG_RESUME_VALUE );
+                        }
+                    }
+                }
+                continuation = cont_status;
+            }
+            else if (code == EXCEPTION_BREAKPOINT && !handshake)
+            {
+                /* Process startup breakpoint, also used by other Wine tests. */
+                trace( "RISC-V debuggee startup breakpoint %p\n",
+                       event.u.Exception.ExceptionRecord.ExceptionAddress );
+            }
+            else
+            {
+                ok( 0, "unexpected debuggee exception %#lx, first-chance %lu, address %p\n",
+                    code, event.u.Exception.dwFirstChance,
+                    event.u.Exception.ExceptionRecord.ExceptionAddress );
+                continuation = DBG_EXCEPTION_NOT_HANDLED;
+            }
+        }
+        else if (event.dwDebugEventCode == EXIT_PROCESS_DEBUG_EVENT)
+        {
+            exited = TRUE;
+            exit_code = event.u.ExitProcess.dwExitCode;
+        }
+
+        ret = ContinueDebugEvent( event.dwProcessId, event.dwThreadId, continuation );
+        ok( ret, "ContinueDebugEvent(%#lx) failed: %lu\n",
+            continuation, GetLastError() );
+        if (!ret || exited) break;
+    }
+
+    ok( handshake, "RISC-V debuggee marker was never delivered\n" );
+    ok( hit_breakpoint, "RISC-V debuggee breakpoint was never delivered\n" );
+    ok( exited, "RISC-V debuggee did not exit within the debug event loop\n" );
+    if (exited) ok( !exit_code, "RISC-V debuggee exit code %#lx\n", exit_code );
+    if (!exited)
+    {
+        TerminateProcess( pi.hProcess, 1 );
+        WaitForSingleObject( pi.hProcess, 5000 );
+    }
+    CloseHandle( pi.hThread );
+    CloseHandle( pi.hProcess );
+}
+
+static DWORD WINAPI riscv64_context_thread( void *arg )
+{
+    HANDLE ready = arg;
+    SetEvent( ready );
+    Sleep( 1000 );
+    return 0;
+}
+
+static void test_thread_context(void)
+{
+    CONTEXT context;
+    HANDLE thread, ready;
+    DWORD result;
+    NTSTATUS status;
+
+    if (!pNtGetContextThread)
+    {
+        skip( "NtGetContextThread unavailable\n" );
+        return;
+    }
+    memset( &context, 0, sizeof(context) );
+    context.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+    status = pNtGetContextThread( GetCurrentThread(), &context );
+    ok( status == STATUS_SUCCESS, "NtGetContextThread(current) returned %#lx\n", status );
+    if (!status)
+    {
+        ok( !!context.Pc, "current thread context PC is null\n" );
+        ok( !!context.Gpr.X[2], "current thread context SP is null\n" );
+    }
+
+    ready = CreateEventW( NULL, TRUE, FALSE, NULL );
+    ok( !!ready, "CreateEvent failed\n" );
+    if (!ready) return;
+    thread = CreateThread( NULL, 0, riscv64_context_thread, ready, 0, NULL );
+    ok( !!thread, "CreateThread failed\n" );
+    if (!thread)
+    {
+        CloseHandle( ready );
+        return;
+    }
+    result = WaitForSingleObject( ready, 3000 );
+    ok( result == WAIT_OBJECT_0, "worker startup wait returned %#lx\n", result );
+    if (result == WAIT_OBJECT_0)
+    {
+        result = SuspendThread( thread );
+        ok( result != (DWORD)-1, "SuspendThread failed\n" );
+        if (result != (DWORD)-1)
+        {
+            memset( &context, 0, sizeof(context) );
+            context.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+            status = pNtGetContextThread( thread, &context );
+            ok( status == STATUS_SUCCESS, "NtGetContextThread(worker) returned %#lx\n", status );
+            if (!status)
+            {
+                ok( !!context.Pc, "worker PC is null\n" );
+                ok( !!context.Gpr.X[2], "worker SP is null\n" );
+            }
+            ResumeThread( thread );
+        }
+    }
+    result = WaitForSingleObject( thread, 5000 );
+    ok( result == WAIT_OBJECT_0, "worker completion wait returned %#lx\n", result );
+    CloseHandle( thread );
+    CloseHandle( ready );
+}
+#endif
+
 START_TEST(exception)
 {
     HMODULE hkernel32 = GetModuleHandleA("kernel32.dll");
     hntdll = GetModuleHandleA("ntdll.dll");
 
     my_argc = winetest_get_mainargs( &my_argv );
+
+#if defined(__riscv) && __riscv_xlen == 64
+    if (my_argc >= 4 && !strcmp(my_argv[2], "riscv64_debuggee"))
+    {
+        riscv64_debuggee( strtoul( my_argv[3], NULL, 0 ) );
+        return;
+    }
+#endif
 
     if (my_argc >= 3 && !strcmp(my_argv[2], "suspend_process"))
     {
@@ -13108,6 +13855,7 @@ START_TEST(exception)
             return;
         }
 
+#if !defined(__riscv) || __riscv_xlen != 64
         if (pRtlRaiseException)
         {
             test_stage = STAGE_RTLRAISE_NOT_HANDLED;
@@ -13120,7 +13868,7 @@ START_TEST(exception)
             run_rtlraiseexception_test(EXCEPTION_INVALID_HANDLE);
         }
         else skip( "RtlRaiseException not found\n" );
-
+#endif
         test_stage = STAGE_OUTPUTDEBUGSTRINGA_CONTINUE;
 
         test_outputdebugstring(FALSE, 0, FALSE, 0, 0);
@@ -13136,10 +13884,12 @@ START_TEST(exception)
         test_ripevent(0);
         test_stage = STAGE_RIPEVENT_NOT_HANDLED;
         test_ripevent(1);
+#if !defined(__riscv) || __riscv_xlen != 64
         test_stage = STAGE_SERVICE_CONTINUE;
         test_debug_service(0);
         test_stage = STAGE_SERVICE_NOT_HANDLED;
         test_debug_service(1);
+#endif
         test_stage = STAGE_BREAKPOINT_CONTINUE;
         test_breakpoint(0);
         test_stage = STAGE_BREAKPOINT_NOT_HANDLED;
@@ -13254,6 +14004,7 @@ START_TEST(exception)
     test_debugger(DBG_EXCEPTION_HANDLED, TRUE);
     test_debugger(DBG_CONTINUE, TRUE);
     test_thread_context();
+
     test_outputdebugstring(FALSE, 1, FALSE, 0, 0);
     if (pWaitForDebugEventEx)
     {
@@ -13279,6 +14030,9 @@ START_TEST(exception)
     test_suspend_thread();
     test_suspend_process();
     test_unload_trace();
+#if defined(__riscv) && __riscv_xlen == 64
+    test_riscv64_backtrace();
+#endif
     test_backtrace();
     test_context_exception_request();
     test_RtlAddVectoredExceptionHandler();

@@ -197,6 +197,12 @@ static unsigned int get_server_context_flags( const void *context, USHORT machin
         if (flags & CONTEXT_ARM_FLOATING_POINT) ret |= SERVER_CTX_FLOATING_POINT;
         if (flags & CONTEXT_ARM_DEBUG_REGISTERS) ret |= SERVER_CTX_DEBUG_REGISTERS;
         break;
+    case IMAGE_FILE_MACHINE_RISCV64:
+        flags = ((const RISCV64_CONTEXT *)context)->ContextFlags & ~CONTEXT_RISCV64;
+        if (flags & CONTEXT_RISCV64_CONTROL) ret |= SERVER_CTX_CONTROL;
+        if (flags & CONTEXT_RISCV64_INTEGER) ret |= SERVER_CTX_INTEGER;
+        if (flags & CONTEXT_RISCV64_FLOATING_POINT) ret |= SERVER_CTX_FLOATING_POINT;
+        break;
     case IMAGE_FILE_MACHINE_ARM64:
         flags = ((const ARM64_NT_CONTEXT *)context)->ContextFlags & ~CONTEXT_ARM64;
         if (flags & CONTEXT_ARM64_CONTROL) ret |= SERVER_CTX_CONTROL;
@@ -574,6 +580,37 @@ static NTSTATUS context_to_server( struct context_data *to, USHORT to_machine, c
             for (i = 0; i < ARM_MAX_BREAKPOINTS; i++) to->debug.arm_regs.bcr[i] = from->Bcr[i];
             for (i = 0; i < ARM_MAX_WATCHPOINTS; i++) to->debug.arm_regs.wvr[i] = from->Wvr[i];
             for (i = 0; i < ARM_MAX_WATCHPOINTS; i++) to->debug.arm_regs.wcr[i] = from->Wcr[i];
+        }
+        exception_request_flags_to_server( to, flags );
+        return STATUS_SUCCESS;
+    }
+
+    case MAKELONG( IMAGE_FILE_MACHINE_RISCV64, IMAGE_FILE_MACHINE_RISCV64 ):
+    {
+        const RISCV64_CONTEXT *from = src;
+
+        flags = from->ContextFlags & ~CONTEXT_RISCV64;
+        if (flags & CONTEXT_RISCV64_CONTROL)
+        {
+            to->flags |= SERVER_CTX_CONTROL;
+            to->ctl.riscv64_regs.pc = from->Pc;
+            to->ctl.riscv64_regs.sp = from->Gpr.X[2];
+            to->ctl.riscv64_regs.ra = from->Gpr.X[1];
+        }
+        if (flags & CONTEXT_RISCV64_INTEGER)
+        {
+            to->flags |= SERVER_CTX_INTEGER;
+            /* x0 is constant and x2 (sp) is carried by SERVER_CTX_CONTROL.
+             * Keep the protocol integer union at its original 240 bytes. */
+            to->integer.riscv64_regs.x[0] = from->Gpr.X[1];
+            for (i = 3; i < 32; i++)
+                to->integer.riscv64_regs.x[i - 2] = from->Gpr.X[i];
+        }
+        if (flags & CONTEXT_RISCV64_FLOATING_POINT)
+        {
+            to->flags |= SERVER_CTX_FLOATING_POINT;
+            for (i = 0; i < 32; i++) to->fp.riscv64_regs.f[i] = from->F[i].Q;
+            to->fp.riscv64_regs.fcsr = from->Fcsr;
         }
         exception_request_flags_to_server( to, flags );
         return STATUS_SUCCESS;
@@ -1015,6 +1052,39 @@ static NTSTATUS context_from_server( void *dst, const struct context_data *from,
         return STATUS_SUCCESS;
     }
 
+    case MAKELONG( IMAGE_FILE_MACHINE_RISCV64, IMAGE_FILE_MACHINE_RISCV64 ):
+    {
+        RISCV64_CONTEXT *to = dst;
+
+        to_flags = to->ContextFlags & ~CONTEXT_RISCV64;
+        if ((from->flags & SERVER_CTX_CONTROL) && (to_flags & CONTEXT_RISCV64_CONTROL))
+        {
+            to->Pc = from->ctl.riscv64_regs.pc;
+            to->Gpr.X[2] = from->ctl.riscv64_regs.sp;
+            to->Gpr.X[1] = from->ctl.riscv64_regs.ra;
+        }
+        if ((from->flags & SERVER_CTX_INTEGER) && (to_flags & CONTEXT_RISCV64_INTEGER))
+        {
+            to->Gpr.X[0] = 0;
+            to->Gpr.X[1] = from->integer.riscv64_regs.x[0];
+            for (i = 3; i < 32; i++)
+                to->Gpr.X[i] = from->integer.riscv64_regs.x[i - 2];
+            /* The protocol stores x2/SP in the control union, not in the
+             * 240-byte integer register union.  Integer-only queries still
+             * need the architectural x2 register when control was requested
+             * internally by get_thread_context(). */
+            if (from->flags & SERVER_CTX_CONTROL)
+                to->Gpr.X[2] = from->ctl.riscv64_regs.sp;
+        }
+        if ((from->flags & SERVER_CTX_FLOATING_POINT) && (to_flags & CONTEXT_RISCV64_FLOATING_POINT))
+        {
+            for (i = 0; i < 32; i++) to->F[i].Q = from->fp.riscv64_regs.f[i];
+            to->Fcsr = from->fp.riscv64_regs.fcsr;
+        }
+        exception_request_flags_from_server( &to->ContextFlags, from );
+        return STATUS_SUCCESS;
+    }
+
     case MAKELONG( IMAGE_FILE_MACHINE_ARM64, IMAGE_FILE_MACHINE_ARM64 ):
     {
         ARM64_NT_CONTEXT *to = dst;
@@ -1145,7 +1215,30 @@ static DECLSPEC_NORETURN void pthread_exit_wrapper( int status )
     close( data->wait_fd[1] );
     close( data->reply_fd );
     close( data->request_fd );
+    /*
+     * Wine's RV64 NT syscall bridge switches from the Windows stack to
+     * the Unix stack without providing a native unwind chain across the
+     * assembly dispatcher.  glibc pthread_exit() forces a DWARF unwind;
+     * the resulting nonlocal transition has resumed the Windows caller
+     * instead of terminating the native worker.
+     *
+     * Wine server termination and descriptor cleanup are already complete
+     * here.  Exit only this Linux task (not exit_group); the kernel clears
+     * CLONE_CHILD_CLEARTID for the parent pthread_join().  RISC-V native
+     * thread registry cleanup must precede the syscall because libc TLS
+     * destructors are intentionally bypassed by this emergency path.
+     */
+#if defined(__linux__) && defined(__riscv) && __riscv_xlen == 64
+    riscv64_unregister_thread_data();
+    {
+        register long a0 __asm__("a0") = status;
+        register long a7 __asm__("a7") = 93; /* Linux RV64 __NR_exit */
+        __asm__ volatile ("ecall" : "+r"(a0) : "r"(a7) : "memory");
+    }
+    __builtin_trap(); /* SYS_exit must never return. */
+#else
     pthread_exit( UIntToPtr(status) );
+#endif
 }
 
 
@@ -1357,8 +1450,21 @@ static NTSTATUS spawn_thread( struct thread_data *data )
 
     pthread_sigmask( SIG_BLOCK, &server_block_set, &sigset );
     pthread_attr_init( &attr );
+#if defined(__linux__) && defined(__riscv) && __riscv_xlen == 64
+    /* Experiment: let glibc own the native pthread stack and TLS storage.
+     * The RV64 syscall frame occupies the top of Wine's kernel stack,
+     * which must not overlap glibc's pthread descriptor or static TLS. */
+    if (pthread_attr_setstacksize( &attr, 1024 * 1024 ) ||
+        pthread_attr_setguardsize( &attr, 4096 ))
+    {
+        pthread_attr_destroy( &attr );
+        pthread_sigmask( SIG_SETMASK, &sigset, NULL );
+        return STATUS_NO_MEMORY;
+    }
+#else
     pthread_attr_setstack( &attr, get_kernel_stack( data ), kernel_stack_size );
     pthread_attr_setguardsize( &attr, 0 );
+#endif
     pthread_attr_setscope( &attr, PTHREAD_SCOPE_SYSTEM ); /* force creating a kernel thread */
     InterlockedIncrement( &nb_threads );
     if (pthread_create( &pthread_id, &attr, (void * (*)(void *))server_init_thread, data ))
@@ -1570,8 +1676,33 @@ static DECLSPEC_NORETURN void exit_thread( int status )
     {
         if (data->pthread_id)
         {
-            pthread_join( data->pthread_id, NULL );
-            virtual_free_thread_data( data );
+#if defined(__linux__) && defined(__riscv) && __riscv_xlen == 64
+            /* TEMPORARY DIAGNOSTIC: joining a previously terminated RV64
+             * worker currently crashes in ld.so TLS deallocation when
+             * glibc free() receives a corrupted DTV to_free pointer.
+             *
+             * Do not detach: pthread_detach() can reclaim the same glibc
+             * TLS state and reproduce the crash.  Do not free Wine's
+             * thread_data either: without join we cannot establish that
+             * native execution has finished using its stack and TEB.
+             *
+             * This deliberately leaks both glibc pthread resources and
+             * Wine thread_data until process exit.  Never enable it for
+             * normal operation or long-lived multithreaded services. */
+            const char *quarantine = getenv( "WINE_RISCV_SKIP_PTHREAD_JOIN" );
+
+            if (quarantine && quarantine[0] == '1' && !quarantine[1])
+            {
+                static const char msg[] =
+                    "RV64-TLS-QUARANTINE skipped pthread_join; retaining native TLS and Wine thread_data\n";
+                (void)write( 2, msg, sizeof(msg) - 1 );
+            }
+            else
+#endif
+            {
+                pthread_join( data->pthread_id, NULL );
+                virtual_free_thread_data( data );
+            }
         }
     }
     pthread_exit_wrapper( status );
@@ -1727,6 +1858,77 @@ NTSTATUS WINAPI NtRaiseException( EXCEPTION_RECORD *rec, CONTEXT *context, BOOL 
     return STATUS_SUCCESS;
 }
 
+
+#ifdef __riscv
+/* Native Linux TIDs identify the running kernel thread without depending on
+ * pthread-specific keys.  This registry is deliberately separate from the
+ * Windows TEB and does not modify the ELF tp register.  A fixed-size array
+ * avoids allocation in the recovery path. */
+#define RISCV64_THREAD_SLOTS 4096
+static struct
+{
+    volatile long tid;
+    struct thread_data *data;
+} riscv64_threads[RISCV64_THREAD_SLOTS];
+
+static long riscv64_native_tid(void)
+{
+    register long a0 __asm__("a0") = 0;
+    register long a7 __asm__("a7") = 178; /* Linux gettid */
+    __asm__ volatile ("ecall" : "+r"(a0) : "r"(a7) : "memory");
+    return a0;
+}
+
+void riscv64_register_thread_data( struct thread_data *data )
+{
+    long tid = riscv64_native_tid();
+    unsigned int i;
+    for (i = 0; i < RISCV64_THREAD_SLOTS; ++i)
+    {
+        long expected = 0;
+        if (__atomic_compare_exchange_n( &riscv64_threads[i].tid, &expected, -tid,
+                                         0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE ))
+        {
+            __atomic_store_n( &riscv64_threads[i].data, data, __ATOMIC_RELEASE );
+            __atomic_store_n( &riscv64_threads[i].tid, tid, __ATOMIC_RELEASE );
+            return;
+        }
+    }
+    ERR( "RISC-V64 native thread registry exhausted for tid=%ld\n", tid );
+    abort();
+}
+
+void riscv64_unregister_thread_data(void)
+{
+    long tid = riscv64_native_tid();
+    unsigned int i;
+    for (i = 0; i < RISCV64_THREAD_SLOTS; ++i)
+    {
+        long expected = tid;
+
+        /* Claim the slot while clearing it.  Publishing tid=0 before
+         * clearing data allows a concurrent thread to reuse the slot and
+         * then have its newly registered pointer erased by this thread. */
+        if (__atomic_compare_exchange_n( &riscv64_threads[i].tid, &expected, -tid,
+                                         0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE ))
+        {
+            __atomic_store_n( &riscv64_threads[i].data, NULL, __ATOMIC_RELEASE );
+            __atomic_store_n( &riscv64_threads[i].tid, 0, __ATOMIC_RELEASE );
+            return;
+        }
+    }
+}
+
+struct thread_data *riscv64_lookup_thread_data(void)
+{
+    long tid = riscv64_native_tid();
+    unsigned int i;
+    for (i = 0; i < RISCV64_THREAD_SLOTS; ++i)
+        if (__atomic_load_n( &riscv64_threads[i].tid, __ATOMIC_ACQUIRE ) == tid)
+            return __atomic_load_n( &riscv64_threads[i].data, __ATOMIC_ACQUIRE );
+    return NULL;
+}
+#endif
 
 /**********************************************************************
  *           NtCurrentTeb   (NTDLL.@)
@@ -1952,6 +2154,12 @@ NTSTATUS get_thread_context( HANDLE handle, void *context, BOOL *self, USHORT ma
     unsigned int count;
     unsigned int flags = get_server_context_flags( context, machine );
 
+    /* The RISC-V64 server context carries x2/SP only in its control
+     * union.  Request it also for integer-only queries so the returned
+     * register image contains a valid stack pointer. */
+    if (machine == IMAGE_FILE_MACHINE_RISCV64 && (flags & SERVER_CTX_INTEGER))
+        flags |= SERVER_CTX_CONTROL;
+
     SERVER_START_REQ( get_thread_context )
     {
         req->handle  = wine_server_obj_handle( handle );
@@ -2104,17 +2312,32 @@ static void set_native_thread_name( HANDLE handle, const UNICODE_STRING *name )
     char path[64], nameA[64];
     int unix_pid, unix_tid, len, fd;
 
-    SERVER_START_REQ( get_thread_times )
+#if defined(__riscv) && __riscv_xlen == 64
+    /* Current-thread naming does not need a synchronous get_thread_times
+     * request.  Avoid the extra RPC during early Wine worker startup;
+     * the Windows description has already been stored by set_thread_info. */
+    if (handle == GetCurrentThread())
     {
-        req->handle = wine_server_obj_handle( handle );
-        status = wine_server_call( req );
-        if (status == STATUS_SUCCESS)
-        {
-            unix_pid = reply->unix_pid;
-            unix_tid = reply->unix_tid;
-        }
+        unix_pid = getpid();
+        /* get_unix_tid() is private to server.c; query Linux directly. */
+        unix_tid = syscall( __NR_gettid );
+        status = STATUS_SUCCESS;
     }
-    SERVER_END_REQ;
+    else
+#endif
+    {
+        SERVER_START_REQ( get_thread_times )
+        {
+            req->handle = wine_server_obj_handle( handle );
+            status = wine_server_call( req );
+            if (status == STATUS_SUCCESS)
+            {
+                unix_pid = reply->unix_pid;
+                unix_tid = reply->unix_tid;
+            }
+        }
+        SERVER_END_REQ;
+    }
 
     if (status != STATUS_SUCCESS || unix_pid == -1 || unix_tid == -1)
         return;
@@ -2527,7 +2750,13 @@ NTSTATUS WINAPI NtSetInformationThread( HANDLE handle, THREADINFOCLASS class,
 {
     unsigned int status;
 
-    TRACE("(%p,%d,%p,%x)\n", handle, class, data, length);
+#if defined(__riscv) && __riscv_xlen == 64
+    /* Thread descriptions are commonly set while worker threads initialize.
+     * Avoid debug output and getenv() on this early RV64 syscall path;
+     * the Unix TLS/debug state may still be transitioning. */
+    if (class != ThreadNameInformation)
+#endif
+        TRACE("(%p,%d,%p,%x)\n", handle, class, data, length);
 
     switch (class)
     {

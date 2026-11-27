@@ -1012,6 +1012,15 @@ ULONG_PTR WINAPI NtUserGetThreadState( USERTHREADSTATECLASS cls )
     case UserThreadStateDefaultInputContext:
         return (ULONG_PTR)get_default_input_context();
 
+    case UserThreadStateDefaultInputContextNoCreate:
+    {
+        /* A dying worker may never have initialized USER/IME state.  In
+         * particular, IMM32 DLL_THREAD_DETACH must not create a default
+         * input context merely to destroy it immediately afterward. */
+        struct user_thread_info *info = get_existing_user_thread_info();
+        return info ? (ULONG_PTR)info->default_imc : 0;
+    }
+
     case UserThreadStateInputState:
         return get_input_state();
 

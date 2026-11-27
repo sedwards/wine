@@ -35,6 +35,10 @@
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#if defined(__riscv) && __riscv_xlen == 64
+#include <time.h>
+#include <sys/syscall.h>
+#endif
 #ifdef HAVE_SYS_PRCTL_H
 # include <sys/prctl.h>
 #endif
@@ -1601,13 +1605,14 @@ static void run_wineboot( WCHAR *env, SIZE_T size )
         NtClose( handles[0] );
         return;
     }
-    NtResumeThread( thread, NULL );
+    status = NtResumeThread( thread, NULL );
     NtClose( thread );
     handles[count++] = process;
 
 wait:
     timeout.QuadPart = (ULONGLONG)5 * 60 * 1000 * -10000;
-    if (NtWaitForMultipleObjects( count, handles, WaitAny, FALSE, &timeout ) == WAIT_TIMEOUT)
+    status = NtWaitForMultipleObjects( count, handles, WaitAny, FALSE, &timeout );
+    if (status == WAIT_TIMEOUT)
         ERR( "boot event wait timed out\n" );
     while (count) NtClose( handles[--count] );
 }

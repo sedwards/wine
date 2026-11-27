@@ -42,6 +42,9 @@ WINE_DECLARE_DEBUG_CHANNEL(relay);
 WINE_DECLARE_DEBUG_CHANNEL(snoop);
 WINE_DECLARE_DEBUG_CHANNEL(loaddll);
 WINE_DECLARE_DEBUG_CHANNEL(imports);
+#if defined(__riscv) && __riscv_xlen == 64
+WINE_DECLARE_DEBUG_CHANNEL(thread);
+#endif
 
 #ifdef _WIN64
 #define DEFAULT_SECURITY_COOKIE_64  (((ULONGLONG)0x00002b99 << 32) | 0x2ddfa232)
@@ -371,6 +374,306 @@ __ASM_GLOBAL_FUNC(call_dll_entry_point,
                    __ASM_CFI(".cfi_adjust_cfa_offset -8\n\t")
                    __ASM_CFI(".cfi_same_value %rbx\n\t")
                   "ret" )
+#elif defined(__riscv) && __riscv_xlen == 64
+/* Both the PE and Unix RV64 ABIs require s0-s11 and fs0-fs11 to survive
+ * a call.  The DLL entry wrapper snapshots them before entering third-party
+ * code, verifies gp/tp/sp and the immediate return address, and restores
+ * all nonvolatile registers even when the callback violates the ABI.
+ * Mask layout: bits 0..11=s0..s11, 12..23=fs0..fs11,
+ * 24=gp, 25=tp, 26=sp, 27=ra. */
+static void __attribute__((used,noinline))
+riscv64_report_dll_abi( unsigned int mask, void *entry )
+{
+    static unsigned int reports;
+    if (__atomic_fetch_add( &reports, 1, __ATOMIC_RELAXED ) < 32)
+        ERR( "RV64-ABI DLL entry=%p clobbered nonvolatile mask=%#x (s0-s11 bits 0-11, fs0-fs11 12-23, gp 24, tp 25, sp 26, ra 27)\n",
+             entry, mask );
+}
+
+extern BOOL call_dll_entry_point( DLLENTRYPROC proc, void *module,
+                                  UINT reason, void *reserved );
+__ASM_GLOBAL_FUNC( call_dll_entry_point,
+                  "addi sp, sp, -256\n\t"
+                  __ASM_CFI(".cfi_def_cfa_offset 256\n\t")
+                  "sd ra, 0(sp)\n\t"
+                  __ASM_CFI(".cfi_offset 1, -256\n\t")
+                  "sd gp, 8(sp)\n\t"
+                  "sd tp, 16(sp)\n\t"
+                  "addi t0, sp, 256\n\t"
+                  "sd t0, 24(sp)\n\t"
+                  "sd s0, 32(sp)\n\t"
+                  __ASM_CFI(".cfi_offset 8, -224\n\t")
+                  "sd s1, 40(sp)\n\t"
+                  __ASM_CFI(".cfi_offset 9, -216\n\t")
+                  "sd s2, 48(sp)\n\t"
+                  __ASM_CFI(".cfi_offset 18, -208\n\t")
+                  "sd s3, 56(sp)\n\t"
+                  __ASM_CFI(".cfi_offset 19, -200\n\t")
+                  "sd s4, 64(sp)\n\t"
+                  __ASM_CFI(".cfi_offset 20, -192\n\t")
+                  "sd s5, 72(sp)\n\t"
+                  __ASM_CFI(".cfi_offset 21, -184\n\t")
+                  "sd s6, 80(sp)\n\t"
+                  __ASM_CFI(".cfi_offset 22, -176\n\t")
+                  "sd s7, 88(sp)\n\t"
+                  __ASM_CFI(".cfi_offset 23, -168\n\t")
+                  "sd s8, 96(sp)\n\t"
+                  __ASM_CFI(".cfi_offset 24, -160\n\t")
+                  "sd s9, 104(sp)\n\t"
+                  __ASM_CFI(".cfi_offset 25, -152\n\t")
+                  "sd s10, 112(sp)\n\t"
+                  __ASM_CFI(".cfi_offset 26, -144\n\t")
+                  "sd s11, 120(sp)\n\t"
+                  __ASM_CFI(".cfi_offset 27, -136\n\t")
+                  "fsd f8, 128(sp)\n\t"
+                  __ASM_CFI(".cfi_offset 40, -128\n\t")
+                  "fsd f9, 136(sp)\n\t"
+                  __ASM_CFI(".cfi_offset 41, -120\n\t")
+                  "fsd f18, 144(sp)\n\t"
+                  __ASM_CFI(".cfi_offset 50, -112\n\t")
+                  "fsd f19, 152(sp)\n\t"
+                  __ASM_CFI(".cfi_offset 51, -104\n\t")
+                  "fsd f20, 160(sp)\n\t"
+                  __ASM_CFI(".cfi_offset 52, -96\n\t")
+                  "fsd f21, 168(sp)\n\t"
+                  __ASM_CFI(".cfi_offset 53, -88\n\t")
+                  "fsd f22, 176(sp)\n\t"
+                  __ASM_CFI(".cfi_offset 54, -80\n\t")
+                  "fsd f23, 184(sp)\n\t"
+                  __ASM_CFI(".cfi_offset 55, -72\n\t")
+                  "fsd f24, 192(sp)\n\t"
+                  __ASM_CFI(".cfi_offset 56, -64\n\t")
+                  "fsd f25, 200(sp)\n\t"
+                  __ASM_CFI(".cfi_offset 57, -56\n\t")
+                  "fsd f26, 208(sp)\n\t"
+                  __ASM_CFI(".cfi_offset 58, -48\n\t")
+                  "fsd f27, 216(sp)\n\t"
+                  __ASM_CFI(".cfi_offset 59, -40\n\t")
+                  "frcsr t0\n\t"
+                  "sd t0, 224(sp)\n\t"
+                  "sd a0, 248(sp)\n\t"
+                  "mv t0, a0\n\t"
+                  "mv a0, a1\n\t"
+                  "mv a1, a2\n\t"
+                  "mv a2, a3\n\t"
+                  "jalr ra, 0(t0)\n\t"
+                  "1: sd a0, 232(sp)\n\t"
+                  "li t2, 0\n\t"
+                  "ld t1, 32(sp)\n\t"
+                  "beq s0, t1, 2f\n\t"
+                  "li t3, 1\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "ld t1, 40(sp)\n\t"
+                  "beq s1, t1, 2f\n\t"
+                  "li t3, 2\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "ld t1, 48(sp)\n\t"
+                  "beq s2, t1, 2f\n\t"
+                  "li t3, 4\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "ld t1, 56(sp)\n\t"
+                  "beq s3, t1, 2f\n\t"
+                  "li t3, 8\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "ld t1, 64(sp)\n\t"
+                  "beq s4, t1, 2f\n\t"
+                  "li t3, 16\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "ld t1, 72(sp)\n\t"
+                  "beq s5, t1, 2f\n\t"
+                  "li t3, 32\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "ld t1, 80(sp)\n\t"
+                  "beq s6, t1, 2f\n\t"
+                  "li t3, 64\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "ld t1, 88(sp)\n\t"
+                  "beq s7, t1, 2f\n\t"
+                  "li t3, 128\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "ld t1, 96(sp)\n\t"
+                  "beq s8, t1, 2f\n\t"
+                  "li t3, 256\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "ld t1, 104(sp)\n\t"
+                  "beq s9, t1, 2f\n\t"
+                  "li t3, 512\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "ld t1, 112(sp)\n\t"
+                  "beq s10, t1, 2f\n\t"
+                  "li t3, 1024\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "ld t1, 120(sp)\n\t"
+                  "beq s11, t1, 2f\n\t"
+                  "li t3, 2048\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "ld t1, 128(sp)\n\t"
+                  "fmv.x.d t4, f8\n\t"
+                  "beq t4, t1, 2f\n\t"
+                  "li t3, 4096\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "ld t1, 136(sp)\n\t"
+                  "fmv.x.d t4, f9\n\t"
+                  "beq t4, t1, 2f\n\t"
+                  "li t3, 8192\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "ld t1, 144(sp)\n\t"
+                  "fmv.x.d t4, f18\n\t"
+                  "beq t4, t1, 2f\n\t"
+                  "li t3, 16384\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "ld t1, 152(sp)\n\t"
+                  "fmv.x.d t4, f19\n\t"
+                  "beq t4, t1, 2f\n\t"
+                  "li t3, 32768\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "ld t1, 160(sp)\n\t"
+                  "fmv.x.d t4, f20\n\t"
+                  "beq t4, t1, 2f\n\t"
+                  "li t3, 65536\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "ld t1, 168(sp)\n\t"
+                  "fmv.x.d t4, f21\n\t"
+                  "beq t4, t1, 2f\n\t"
+                  "li t3, 131072\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "ld t1, 176(sp)\n\t"
+                  "fmv.x.d t4, f22\n\t"
+                  "beq t4, t1, 2f\n\t"
+                  "li t3, 262144\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "ld t1, 184(sp)\n\t"
+                  "fmv.x.d t4, f23\n\t"
+                  "beq t4, t1, 2f\n\t"
+                  "li t3, 524288\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "ld t1, 192(sp)\n\t"
+                  "fmv.x.d t4, f24\n\t"
+                  "beq t4, t1, 2f\n\t"
+                  "li t3, 1048576\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "ld t1, 200(sp)\n\t"
+                  "fmv.x.d t4, f25\n\t"
+                  "beq t4, t1, 2f\n\t"
+                  "li t3, 2097152\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "ld t1, 208(sp)\n\t"
+                  "fmv.x.d t4, f26\n\t"
+                  "beq t4, t1, 2f\n\t"
+                  "li t3, 4194304\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "ld t1, 216(sp)\n\t"
+                  "fmv.x.d t4, f27\n\t"
+                  "beq t4, t1, 2f\n\t"
+                  "li t3, 8388608\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "ld t1, 8(sp)\n\t"
+                  "beq gp, t1, 2f\n\t"
+                  "li t3, 16777216\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "ld t1, 16(sp)\n\t"
+                  "beq tp, t1, 2f\n\t"
+                  "li t3, 33554432\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "ld t1, 24(sp)\n\t"
+                  "addi t4, sp, 256\n\t"
+                  "beq t4, t1, 2f\n\t"
+                  "li t3, 67108864\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "la t1, 1b\n\t"
+                  "beq ra, t1, 2f\n\t"
+                  "li t3, 134217728\n\t"
+                  "or t2, t2, t3\n\t"
+                  "2:\n\t"
+                  "ld gp, 8(sp)\n\t"
+                  "ld tp, 16(sp)\n\t"
+                  "ld s0, 32(sp)\n\t"
+                  "ld s1, 40(sp)\n\t"
+                  "ld s2, 48(sp)\n\t"
+                  "ld s3, 56(sp)\n\t"
+                  "ld s4, 64(sp)\n\t"
+                  "ld s5, 72(sp)\n\t"
+                  "ld s6, 80(sp)\n\t"
+                  "ld s7, 88(sp)\n\t"
+                  "ld s8, 96(sp)\n\t"
+                  "ld s9, 104(sp)\n\t"
+                  "ld s10, 112(sp)\n\t"
+                  "ld s11, 120(sp)\n\t"
+                  "fld f8, 128(sp)\n\t"
+                  "fld f9, 136(sp)\n\t"
+                  "fld f18, 144(sp)\n\t"
+                  "fld f19, 152(sp)\n\t"
+                  "fld f20, 160(sp)\n\t"
+                  "fld f21, 168(sp)\n\t"
+                  "fld f22, 176(sp)\n\t"
+                  "fld f23, 184(sp)\n\t"
+                  "fld f24, 192(sp)\n\t"
+                  "fld f25, 200(sp)\n\t"
+                  "fld f26, 208(sp)\n\t"
+                  "fld f27, 216(sp)\n\t"
+                  "ld t0, 224(sp)\n\t"
+                  "fscsr t0\n\t"
+                  "beqz t2, 3f\n\t"
+                  "mv a0, t2\n\t"
+                  "ld a1, 248(sp)\n\t"
+                  "call " __ASM_NAME("riscv64_report_dll_abi") "\n\t"
+                  "3: ld a0, 232(sp)\n\t"
+                  "ld ra, 0(sp)\n\t"
+                  "addi sp, sp, 256\n\t"
+                  __ASM_CFI(".cfi_def_cfa_offset 0\n\t")
+                  __ASM_CFI(".cfi_restore 1\n\t")
+                  __ASM_CFI(".cfi_restore 8\n\t")
+                  __ASM_CFI(".cfi_restore 9\n\t")
+                  __ASM_CFI(".cfi_restore 18\n\t")
+                  __ASM_CFI(".cfi_restore 19\n\t")
+                  __ASM_CFI(".cfi_restore 20\n\t")
+                  __ASM_CFI(".cfi_restore 21\n\t")
+                  __ASM_CFI(".cfi_restore 22\n\t")
+                  __ASM_CFI(".cfi_restore 23\n\t")
+                  __ASM_CFI(".cfi_restore 24\n\t")
+                  __ASM_CFI(".cfi_restore 25\n\t")
+                  __ASM_CFI(".cfi_restore 26\n\t")
+                  __ASM_CFI(".cfi_restore 27\n\t")
+                  __ASM_CFI(".cfi_restore 40\n\t")
+                  __ASM_CFI(".cfi_restore 41\n\t")
+                  __ASM_CFI(".cfi_restore 50\n\t")
+                  __ASM_CFI(".cfi_restore 51\n\t")
+                  __ASM_CFI(".cfi_restore 52\n\t")
+                  __ASM_CFI(".cfi_restore 53\n\t")
+                  __ASM_CFI(".cfi_restore 54\n\t")
+                  __ASM_CFI(".cfi_restore 55\n\t")
+                  __ASM_CFI(".cfi_restore 56\n\t")
+                  __ASM_CFI(".cfi_restore 57\n\t")
+                  __ASM_CFI(".cfi_restore 58\n\t")
+                  __ASM_CFI(".cfi_restore 59\n\t")
+                  "ret\n\t" )
 #else
 static inline BOOL call_dll_entry_point( DLLENTRYPROC proc, void *module,
                                          UINT reason, void *reserved )
@@ -1680,7 +1983,10 @@ static NTSTATUS MODULE_InitDLL( WINE_MODREF *wm, UINT reason, LPVOID lpReserved 
     /* Skip calls for modules loaded with special load flags */
 
     if (wm->ldr.Flags & LDR_DONT_RESOLVE_REFS) return STATUS_SUCCESS;
-    if (wm->ldr.TlsIndex == -1) call_tls_callbacks( wm->ldr.DllBase, reason );
+    if (wm->ldr.TlsIndex == -1)
+    {
+        call_tls_callbacks( wm->ldr.DllBase, reason );
+    }
     if (!entry) return STATUS_SUCCESS;
 
     if (TRACE_ON(relay))
@@ -2689,6 +2995,9 @@ static NTSTATUS open_dll_file( UNICODE_STRING *nt_name, WINE_MODREF **pwm, HANDL
     NTSTATUS status;
     HANDLE handle;
 
+#if defined(__riscv) && __riscv_xlen == 64
+    WARN("RISCV64-LOADER open_dll_file path=%s\n", debugstr_us(nt_name));
+#endif
     if ((*pwm = find_fullname_module( nt_name ))) return STATUS_SUCCESS;
 
     InitializeObjectAttributes( &attr, nt_name, OBJ_CASE_INSENSITIVE, 0, NULL );
@@ -2696,6 +3005,10 @@ static NTSTATUS open_dll_file( UNICODE_STRING *nt_name, WINE_MODREF **pwm, HANDL
                               FILE_SHARE_READ | FILE_SHARE_DELETE,
                               FILE_SYNCHRONOUS_IO_NONALERT | FILE_NON_DIRECTORY_FILE )))
     {
+#if defined(__riscv) && __riscv_xlen == 64
+        WARN("RISCV64-LOADER NtOpenFile path=%s status=%#lx\n",
+             debugstr_us(nt_name), (unsigned long)status);
+#endif
         if (status != STATUS_OBJECT_PATH_NOT_FOUND &&
             status != STATUS_OBJECT_NAME_NOT_FOUND &&
             !NtQueryAttributesFile( &attr, &info ))
@@ -2836,15 +3149,15 @@ static NTSTATUS load_native_dll( LPCWSTR load_path, const UNICODE_STRING *nt_nam
  *           load_so_dll
  */
 static NTSTATUS load_so_dll( LPCWSTR load_path, const UNICODE_STRING *nt_name,
-                             DWORD flags, WINE_MODREF **pwm )
+                             DWORD flags, WINE_MODREF **pwm, BOOL builtin )
 {
-    void *module;
+    void *module = NULL;
     NTSTATUS status;
     WINE_MODREF *wm;
     struct load_so_dll_params params = { *nt_name, &module };
 
     TRACE( "trying %s as so lib\n", debugstr_us(nt_name) );
-    if ((status = WINE_UNIX_CALL( unix_load_so_dll, &params )))
+    if ((status = WINE_UNIX_CALL( builtin ? unix_load_builtin_so_dll : unix_load_so_dll, &params )))
     {
         WARN( "failed to load .so lib %s\n", debugstr_us(nt_name) );
         if (status == STATUS_INVALID_IMAGE_FORMAT) status = STATUS_INVALID_IMAGE_NOT_MZ;
@@ -3141,6 +3454,9 @@ static NTSTATUS find_builtin_without_file( const WCHAR *name, UNICODE_STRING *ne
     NTSTATUS status = STATUS_DLL_NOT_FOUND;
     BOOL found_image = FALSE;
 
+#if defined(__riscv) && __riscv_xlen == 64
+    WARN("RISCV64-LOADER builtin name=%s bootstrap=%u\n", debugstr_w(name), is_prefix_bootstrap);
+#endif
     if (contains_path( name )) return status;
 
     if (!is_prefix_bootstrap)
@@ -3158,6 +3474,9 @@ static NTSTATUS find_builtin_without_file( const WCHAR *name, UNICODE_STRING *ne
         RtlAppendUnicodeToString( new_name, pe_dir );
         RtlAppendUnicodeToString( new_name, L"\\" );
         RtlAppendUnicodeToString( new_name, name );
+#if defined(__riscv) && __riscv_xlen == 64
+        WARN("RISCV64-LOADER builtin build candidate=%s\n", debugstr_us(new_name));
+#endif
         status = open_dll_file( new_name, pwm, mapping, image_info, id );
         if (status != STATUS_DLL_NOT_FOUND) goto done;
 
@@ -3267,14 +3586,24 @@ static NTSTATUS find_dll_file( const WCHAR *load_path, const WCHAR *libname, UNI
     *redirected = FALSE;
     nt_name->Buffer = NULL;
 
+#if defined(__riscv) && __riscv_xlen == 64
+    WARN("RISCV64-LOADER find_dll_file name=%s load_path=%s bootstrap=%u\n",
+         debugstr_w(libname), debugstr_w(load_path), is_prefix_bootstrap);
+#endif
     if (!contains_path( libname ))
     {
         status = find_apiset_dll( libname, &fullname );
+#if defined(__riscv) && __riscv_xlen == 64
+        WARN("RISCV64-LOADER apiset name=%s status=%#lx\n", debugstr_w(libname), (unsigned long)status);
+#endif
         if (status == STATUS_DLL_NOT_FOUND) return status;
 
         if (status)
         {
             status = find_actctx_dll( libname, &fullname );
+#if defined(__riscv) && __riscv_xlen == 64
+            WARN("RISCV64-LOADER actctx name=%s status=%#lx\n", debugstr_w(libname), (unsigned long)status);
+#endif
             if (status == STATUS_SUCCESS) *redirected = TRUE;
         }
 
@@ -3302,6 +3631,9 @@ static NTSTATUS find_dll_file( const WCHAR *load_path, const WCHAR *libname, UNI
     if (RtlDetermineDosPathNameType_U( libname ) == RtlPathTypeRelative)
     {
         status = search_dll_file( load_path, libname, nt_name, pwm, mapping, image_info, id );
+#if defined(__riscv) && __riscv_xlen == 64
+        WARN("RISCV64-LOADER search name=%s status=%#lx\n", debugstr_w(libname), (unsigned long)status);
+#endif
         switch (status)
         {
         case STATUS_NOT_SUPPORTED:
@@ -3310,6 +3642,10 @@ static NTSTATUS find_dll_file( const WCHAR *load_path, const WCHAR *libname, UNI
             /* fall through */
         case STATUS_DLL_NOT_FOUND:
             status = find_builtin_without_file( libname, nt_name, pwm, mapping, image_info, id );
+#if defined(__riscv) && __riscv_xlen == 64
+            WARN("RISCV64-LOADER builtin result name=%s status=%#lx\n",
+                 debugstr_w(libname), (unsigned long)status);
+#endif
             break;
         }
     }
@@ -3318,6 +3654,9 @@ static NTSTATUS find_dll_file( const WCHAR *load_path, const WCHAR *libname, UNI
 
     if (status == STATUS_NOT_SUPPORTED) status = STATUS_INVALID_IMAGE_FORMAT;
 
+#if defined(__riscv) && __riscv_xlen == 64
+    WARN("RISCV64-LOADER find_dll_file final name=%s status=%#lx\n", debugstr_w(libname), (unsigned long)status);
+#endif
     RtlFreeHeap( GetProcessHeap(), 0, fullname );
     if (wow64_old_value) RtlWow64EnableFsRedirectionEx( 1, &wow64_old_value );
     return status;
@@ -3332,12 +3671,13 @@ static NTSTATUS find_dll_file( const WCHAR *load_path, const WCHAR *libname, UNI
  */
 static NTSTATUS load_dll( const WCHAR *load_path, const WCHAR *libname, DWORD flags, WINE_MODREF** pwm, BOOL system )
 {
-    UNICODE_STRING nt_name;
+    UNICODE_STRING nt_name = { 0 };
     struct file_id id;
     HANDLE mapping = 0;
     SECTION_IMAGE_INFORMATION image_info;
     NTSTATUS nts = STATUS_DLL_NOT_FOUND;
     BOOL redirected;
+    BOOL riscv_builtin = FALSE;
     void *prev;
 
     TRACE( "looking for %s in %s\n", debugstr_w(libname), debugstr_w(load_path) );
@@ -3350,6 +3690,10 @@ static NTSTATUS load_dll( const WCHAR *load_path, const WCHAR *libname, DWORD fl
         nts = find_dll_file( load_path, libname, &nt_name, pwm, &mapping, &image_info, &id,
                              &redirected, FALSE );
         system = FALSE;
+#if defined(__riscv) && __riscv_xlen == 64
+        WARN("RISCV64-LOADER load_dll lookup name=%s status=%#lx nt_name=%s\n",
+             debugstr_w(libname), (unsigned long)nts, debugstr_us(&nt_name));
+#endif
     }
 
     if (*pwm)  /* found already loaded module */
@@ -3363,6 +3707,18 @@ static NTSTATUS load_dll( const WCHAR *load_path, const WCHAR *libname, DWORD fl
         return STATUS_SUCCESS;
     }
 
+#if defined(__riscv) && __riscv_xlen == 64
+    if (nts == STATUS_DLL_NOT_FOUND && !contains_path( libname ) && __wine_unixlib_handle)
+    {
+        RtlFreeUnicodeString( &nt_name );
+        nt_name.Buffer = NULL;
+        build_sysdir_nt_name( libname, &nt_name );
+        if (!nt_name.Buffer) { nts = STATUS_NO_MEMORY; goto done; }
+        nts = STATUS_INVALID_IMAGE_NOT_MZ;
+        riscv_builtin = TRUE;
+        TRACE( "RISCV64-WINELIB ELF fallback for %s\n", debugstr_w(libname) );
+    }
+#endif
     if (nts && nts != STATUS_INVALID_IMAGE_NOT_MZ) goto done;
 
     prev = NtCurrentTeb()->Tib.ArbitraryUserPointer;
@@ -3371,7 +3727,7 @@ static NTSTATUS load_dll( const WCHAR *load_path, const WCHAR *libname, DWORD fl
     switch (nts)
     {
     case STATUS_INVALID_IMAGE_NOT_MZ:  /* not in PE format, maybe it's a .so file */
-        if (__wine_unixlib_handle) nts = load_so_dll( load_path, &nt_name, flags, pwm );
+        if (__wine_unixlib_handle) nts = load_so_dll( load_path, &nt_name, flags, pwm, riscv_builtin );
         break;
 
     case STATUS_SUCCESS:  /* valid PE file */
@@ -3875,6 +4231,12 @@ void* WINAPI LdrResolveDelayLoadedAPI( void* base, const IMAGE_DELAYLOAD_DESCRIP
         RtlInitAnsiString(&fnc, (char*)iibn->Name);
         nts = LdrGetProcedureAddress(*phmod, &fnc, 0, (void**)&fp);
     }
+#ifdef __riscv
+    WARN( "RISCV64 delay import %s!%s module=%p image=%p target=%p status=%08lx thunk=%p\n",
+          name, IMAGE_SNAP_BY_ORDINAL(pINT[id].u1.Ordinal) ? "(ordinal)" :
+          (const char *)((const IMAGE_IMPORT_BY_NAME *)get_rva(base, pINT[id].u1.AddressOfData))->Name,
+          *phmod, base, nts ? NULL : fp, nts, addr );
+#endif
     if (!nts)
     {
         pIAT[id].u1.Function = (ULONG_PTR)fp;
@@ -3946,59 +4308,61 @@ void WINAPI LdrShutdownThread(void)
     PLIST_ENTRY mark, entry;
     LDR_DATA_TABLE_ENTRY *mod;
     WINE_MODREF *wm;
+    TEB *teb = NtCurrentTeb();
     UINT i;
     void **pointers;
 
     TRACE("()\n");
 
-    /* don't do any detach calls if process is exiting */
+    /* Do not send thread detach notifications while the process exits. */
     if (process_detaching) return;
 
-    RtlProcessFlsData( NtCurrentTeb()->FlsSlots, 1 );
+    if (!teb) return;
 
+    RtlProcessFlsData( teb->FlsSlots, 1 );
     RtlEnterCriticalSection( &loader_section );
 
-    if (!NtCurrentTeb()->SkipThreadAttach)
+    /* Winelib/RV64 worker threads may not have their image represented
+     * in the loader's module index.  A null get_modref() result is not
+     * evidence that DLL thread-detach callbacks must be skipped.  Only
+     * the image-specific TLS callbacks require its module record. */
+    if (!teb->SkipThreadAttach && teb->Peb && teb->Peb->LdrData)
     {
-        wm = get_modref( NtCurrentTeb()->Peb->ImageBaseAddress );
-        mark = &NtCurrentTeb()->Peb->LdrData->InInitializationOrderModuleList;
+        wm = get_modref( teb->Peb->ImageBaseAddress );
+        mark = &teb->Peb->LdrData->InInitializationOrderModuleList;
         for (entry = mark->Blink; entry != mark; entry = entry->Blink)
         {
-            mod = CONTAINING_RECORD(entry, LDR_DATA_TABLE_ENTRY,
-                                    InInitializationOrderLinks);
-            if ( !(mod->Flags & LDR_PROCESS_ATTACHED) )
-                continue;
-            if ( mod->Flags & LDR_NO_DLL_CALLS )
-                continue;
-
-            MODULE_InitDLL( CONTAINING_RECORD(mod, WINE_MODREF, ldr),
-                            DLL_THREAD_DETACH, NULL );
+            mod = CONTAINING_RECORD(entry, LDR_DATA_TABLE_ENTRY, InInitializationOrderLinks);
+            if (!(mod->Flags & LDR_PROCESS_ATTACHED)) continue;
+            if (mod->Flags & LDR_NO_DLL_CALLS) continue;
+            MODULE_InitDLL( CONTAINING_RECORD(mod, WINE_MODREF, ldr), DLL_THREAD_DETACH, NULL );
         }
 
-        if (wm->ldr.TlsIndex == -1) call_tls_callbacks( wm->ldr.DllBase, DLL_THREAD_DETACH );
+        if (wm && wm->ldr.TlsIndex == -1)
+            call_tls_callbacks( wm->ldr.DllBase, DLL_THREAD_DETACH );
     }
+    else if (!teb->SkipThreadAttach)
+        WARN( "Thread exit has no initialized PEB loader data, skipping DLL detach notifications\n" );
 
     RtlAcquirePebLock();
-    if ((pointers = NtCurrentTeb()->ThreadLocalStoragePointer))
+    if ((pointers = teb->ThreadLocalStoragePointer))
     {
-        NtCurrentTeb()->ThreadLocalStoragePointer = NULL;
+        teb->ThreadLocalStoragePointer = NULL;
         for (i = 0; i < tls_module_count; i++) RtlFreeHeap( GetProcessHeap(), 0, pointers[i] );
         RtlFreeHeap( GetProcessHeap(), 0, pointers );
     }
-    RtlProcessFlsData( NtCurrentTeb()->FlsSlots, 2 );
-    NtCurrentTeb()->FlsSlots = NULL;
-    RtlFreeHeap( GetProcessHeap(), 0, NtCurrentTeb()->TlsExpansionSlots );
-    NtCurrentTeb()->TlsExpansionSlots = NULL;
+    RtlProcessFlsData( teb->FlsSlots, 2 );
+    teb->FlsSlots = NULL;
+    RtlFreeHeap( GetProcessHeap(), 0, teb->TlsExpansionSlots );
+    teb->TlsExpansionSlots = NULL;
     RtlReleasePebLock();
 
     RtlLeaveCriticalSection( &loader_section );
-    /* don't call DbgUiGetThreadDebugObject as some apps hook it and terminate if called */
-    if (NtCurrentTeb()->DbgSsReserved[1]) NtClose( NtCurrentTeb()->DbgSsReserved[1] );
+    if (teb->DbgSsReserved[1]) NtClose( teb->DbgSsReserved[1] );
     RtlFreeThreadActivationContextStack();
 
     heap_thread_detach();
 }
-
 
 /***********************************************************************
  *           free_modref
@@ -4498,7 +4862,11 @@ void loader_init( CONTEXT *context, void **entry )
             NtTerminateProcess( GetCurrentProcess(), status );
         }
         node_kernel32 = kernel32->ldr.DdagNode;
-        pBaseThreadInitThunk = RtlFindExportedRoutineByName( kernel32->ldr.DllBase, "BaseThreadInitThunk" );
+        {
+            void *thunk = RtlFindExportedRoutineByName( kernel32->ldr.DllBase, "BaseThreadInitThunk" );
+            if (thunk) pBaseThreadInitThunk = thunk;
+            else WARN( "kernel32 has no BaseThreadInitThunk export; retaining fallback thread starter\n" );
+        }
         LdrGetProcedureAddress( kernel32->ldr.DllBase, &ctrl_routine, 0, (void **)&pCtrlRoutine );
 
         locale_init();

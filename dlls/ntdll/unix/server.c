@@ -1607,6 +1607,16 @@ void server_init_process( struct thread_data *data )
     int ret, reply_pipe;
     struct sigaction sig_act;
 
+
+    /* The first thread was already registered by virtual_alloc_first_thread_data().
+     * Observe the original registration without silently replacing its value. */
+    data->pthread_id = pthread_self();
+#ifdef __riscv
+    WARN( "RISC-V64 initial TLS check: tid=%u key=%lu expected=%p readback=%p tp=%p\n",
+          get_unix_tid(), (unsigned long)thread_data_key, data, get_thread_data(),
+          __builtin_thread_pointer() );
+#endif
+
     server_pid = -1;
     if (env_socket)
     {
@@ -1777,7 +1787,21 @@ void server_init_thread( struct thread_data *data )
     TEB64 *teb64 = get_teb64( data->teb );
 
     data->pthread_id = pthread_self();
-    pthread_setspecific( thread_data_key, data );
+    {
+        int err = pthread_setspecific( thread_data_key, data );
+        if (err)
+        {
+            ERR( "pthread_setspecific(thread_data_key) failed: %d, tid=%u data=%p\n",
+                 err, get_unix_tid(), data );
+            abort();  /* Continuing would leave signal and syscall paths unsafe. */
+        }
+#ifdef __riscv
+        riscv64_register_thread_data( data );
+        WARN( "RISC-V64 Unix thread registered: tid=%u key=%lu data=%p readback=%p teb=%p tp=%p\n",
+              get_unix_tid(), (unsigned long)thread_data_key, data, get_thread_data(),
+              data->teb, __builtin_thread_pointer() );
+#endif
+    }
 
     reply_pipe = init_thread_pipe( data );
     close( reply_pipe );

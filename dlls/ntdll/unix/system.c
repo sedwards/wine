@@ -602,7 +602,7 @@ void init_shared_data_cpuinfo( KUSER_SHARED_DATA *data )
         init_xstate_features( &data->XState );
 }
 
-#elif defined(__arm__) || defined(__aarch64__)
+#elif defined(__arm__) || defined(__aarch64__) || defined(__riscv)
 
 #if defined(AT_HWCAP)
 static BOOLEAN has_capability( int hwcap, unsigned long hwcap_bit )
@@ -666,6 +666,33 @@ static void set_feature_bitmap( ULONG flag, BOOLEAN enabled )
 }
 #endif
 
+#if defined(__riscv) && __riscv_xlen == 64
+/* ARM's CPU implementer/part fields do not describe RISC-V CPUs.
+ * Use the Linux uarch string for the native CPU name, without mapping
+ * the PE machine identifier to a Windows PROCESSOR_ARCHITECTURE value. */
+static void init_cpu_model(void)
+{
+    FILE *f;
+    char line[512];
+    char *value, *end;
+
+    strcpy( cpu_vendor, "RISC-V" );
+    strcpy( cpu_name, "RISC-V64" );
+
+    if (!(f = fopen( "/proc/cpuinfo", "r" ))) return;
+    while (fgets( line, sizeof(line), f ))
+    {
+        if (strncmp( line, "uarch", 5 ) || (line[5] != ':' && line[5] != ' ' && line[5] != '\t'))
+            continue;
+        if (!(value = strchr( line, ':' ))) continue;
+        while (*++value == ' ' || *value == '\t') ;
+        if ((end = strchr( value, '\n' ))) *end = 0;
+        if (*value) snprintf( cpu_name, sizeof(cpu_name), "%s", value );
+        break;
+    }
+    fclose( f );
+}
+#else
 static void init_cpu_model(void)
 {
     unsigned int implementer = 0x41, part = 0, variant = 0, revision = 0;
@@ -754,6 +781,8 @@ static void init_cpu_model(void)
 #endif
 }
 
+#endif /* RISC-V64 CPU model */
+
 static ULONGLONG get_cpu_features(void)
 {
     return 0;  /* FIXME */
@@ -766,11 +795,11 @@ void init_shared_data_cpuinfo( KUSER_SHARED_DATA *data )
     features[PF_FASTFAIL_AVAILABLE]      = TRUE;
     features[PF_COMPARE_EXCHANGE_DOUBLE] = TRUE;
 
-#ifdef __arm__
+#if defined(__arm__)
     features[PF_ARM_VFP_32_REGISTERS_AVAILABLE]          = HAS_FEATURE( 1, HWCAP_VFPv3 );
     features[PF_ARM_NEON_INSTRUCTIONS_AVAILABLE]         = HAS_FEATURE( 1, HWCAP_NEON );
     features[PF_ARM_DIVIDE_INSTRUCTION_AVAILABLE]        = HAS_FEATURE( 1, HWCAP_IDIVT );
-#else
+#elif defined(__aarch64__)
     features[PF_ARM_VFP_32_REGISTERS_AVAILABLE]          = TRUE;
     features[PF_ARM_NEON_INSTRUCTIONS_AVAILABLE]         = TRUE;
     features[PF_ARM_DIVIDE_INSTRUCTION_AVAILABLE]        = TRUE;
@@ -1795,6 +1824,8 @@ static SYSTEM_CPU_INFORMATION get_cpuinfo(void)
         .ProcessorArchitecture = PROCESSOR_ARCHITECTURE_INTEL,
 #elif defined(__x86_64__)
         .ProcessorArchitecture = PROCESSOR_ARCHITECTURE_AMD64,
+#elif defined(__riscv) && (__riscv_xlen == 64)
+        .ProcessorArchitecture = PROCESSOR_ARCHITECTURE_UNKNOWN,
 #endif
     };
 
@@ -3112,6 +3143,63 @@ static LONG64 get_current_tz_bias(void)
     return ((LONG64)high << 32) | low;
 }
 
+/* Winelib-only RV64 may have no installed Windows timezone registry.
+ * These resource IDs are from dlls/tzres/tzres.rc, not fabricated strings.
+ * Never modify the Unix-derived bias or daylight transition dates here. */
+#if defined(__riscv) && __riscv_xlen == 64
+static void riscv64_complete_unix_timezone_names( RTL_DYNAMIC_TIME_ZONE_INFORMATION *tzi,
+                                                  const RTL_DYNAMIC_TIME_ZONE_INFORMATION *mapped )
+{
+    static const struct
+    {
+        const char *iana, *windows;
+        unsigned int std_id, dlt_id;
+    } zones[] =
+    {
+        { "Etc/UTC", "UTC", 22000, 22001 },
+        { "Etc/GMT", "UTC", 22000, 22001 },
+        { "UTC", "UTC", 22000, 22001 },
+        { "America/Los_Angeles", "Pacific Standard Time", 11232, 11233 },
+        { "America/New_York", "Eastern Standard Time", 30800, 30801 },
+        { "America/Chicago", "Central Standard Time", 17456, 17457 }
+    };
+    char path[PATH_MAX];
+    const char *iana = getenv( "TZ" );
+    unsigned int i;
+    char std_name[64], dlt_name[64];
+
+    if (mapped && mapped->StandardName[0] && mapped->DaylightName[0])
+    {
+        memcpy( tzi->StandardName, mapped->StandardName, sizeof(tzi->StandardName) );
+        memcpy( tzi->DaylightName, mapped->DaylightName, sizeof(tzi->DaylightName) );
+        memcpy( tzi->TimeZoneKeyName, mapped->TimeZoneKeyName, sizeof(tzi->TimeZoneKeyName) );
+        return;
+    }
+    if (!iana)
+    {
+        size_t len = sizeof(default_tzinfo_dir) - 1;
+        if (!realpath( "/etc/localtime", path ) ||
+            strncmp( path, default_tzinfo_dir, len ) || path[len] != '/') return;
+        iana = path + len + 1;
+    }
+    if (*iana == ':') ++iana;
+    for (i = 0; i < ARRAY_SIZE(zones); ++i)
+    {
+        if (strcmp( iana, zones[i].iana )) continue;
+        snprintf( std_name, sizeof(std_name), "@tzres.dll,-%u", zones[i].std_id );
+        snprintf( dlt_name, sizeof(dlt_name), "@tzres.dll,-%u", zones[i].dlt_id );
+        ascii_to_unicode( tzi->StandardName, std_name, strlen(std_name) + 1 );
+        ascii_to_unicode( tzi->DaylightName, dlt_name, strlen(dlt_name) + 1 );
+        ascii_to_unicode( tzi->TimeZoneKeyName, zones[i].windows, strlen(zones[i].windows) + 1 );
+        TRACE( "RV64 Winelib: recovered %s as %s from tzres resources\\n",
+               debugstr_a(iana), debugstr_a(zones[i].windows) );
+        return;
+    }
+    WARN( "RV64 Winelib: no installed registry mapping or built-in tzres mapping for %s\\n",
+          debugstr_a(iana) );
+}
+#endif
+
 static void get_timezone_info( RTL_DYNAMIC_TIME_ZONE_INFORMATION *tzi )
 {
     static RTL_DYNAMIC_TIME_ZONE_INFORMATION cached_tzi;
@@ -3238,6 +3326,18 @@ static void get_timezone_info( RTL_DYNAMIC_TIME_ZONE_INFORMATION *tzi )
         WARN( "System config TZ info didn't match guessed parameters, falling back to search.\n" );
     }
     find_reg_tz_info(tzi, current_year + 1900);
+#if defined(__riscv) && __riscv_xlen == 64
+    /* A mismatched registry rule set must not replace Unix transition dates.
+     * The mapped resource names remain useful for the Winelib-only case. */
+    if (!tzi->StandardName[0] || !tzi->DaylightName[0])
+    {
+        RTL_DYNAMIC_TIME_ZONE_INFORMATION mapped;
+        if (get_system_config_tz_info( &mapped, current_year + 1900 ))
+            riscv64_complete_unix_timezone_names( tzi, &mapped );
+        else
+            riscv64_complete_unix_timezone_names( tzi, NULL );
+    }
+#endif
     cached_tzi = *tzi;
     mutex_unlock( &timezone_mutex );
 }
@@ -3401,7 +3501,8 @@ NTSTATUS WINAPI NtQuerySystemInformation( SYSTEM_INFORMATION_CLASS class,
         if (size >= (len = sizeof(SYSTEM_CPU_INFORMATION)))
         {
             SYSTEM_CPU_INFORMATION cpu = get_cpuinfo();
-            memcpy( info, &cpu, len );
+            if (!info) ret = STATUS_ACCESS_VIOLATION;
+            else memcpy( info, &cpu, len );
         }
         else ret = STATUS_INFO_LENGTH_MISMATCH;
         break;
@@ -3840,7 +3941,8 @@ NTSTATUS WINAPI NtQuerySystemInformation( SYSTEM_INFORMATION_CLASS class,
                 else if (cpu.ProcessorArchitecture == PROCESSOR_ARCHITECTURE_ARM64)
                     cpu.ProcessorArchitecture = PROCESSOR_ARCHITECTURE_ARM;
             }
-            memcpy(info, &cpu, len);
+            if (!info) ret = STATUS_ACCESS_VIOLATION;
+            else memcpy( info, &cpu, len );
         }
         else ret = STATUS_INFO_LENGTH_MISMATCH;
         break;
@@ -4086,7 +4188,8 @@ NTSTATUS WINAPI NtQuerySystemInformation( SYSTEM_INFORMATION_CLASS class,
         if (size >= len)
         {
             SYSTEM_PROCESSOR_FEATURES_INFORMATION features = { .ProcessorFeatureBits = get_cpu_features() };
-            memcpy( info, &features, len );
+            if (!info) ret = STATUS_ACCESS_VIOLATION;
+            else memcpy( info, &features, len );
         }
         else ret = STATUS_INFO_LENGTH_MISMATCH;
         break;

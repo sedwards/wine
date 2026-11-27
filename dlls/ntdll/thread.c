@@ -237,10 +237,14 @@ void set_native_thread_name( DWORD tid, const char *name )
  */
 void WINAPI RtlExitUserThread( ULONG status )
 {
-    ULONG last;
+    ULONG last = FALSE;
+    NTSTATUS query_status;
 
-    NtQueryInformationThread( GetCurrentThread(), ThreadAmILastThread, &last, sizeof(last), NULL );
-    if (last) RtlExitUserProcess( status );
+    /* A failed ThreadAmILastThread query must not leave an uninitialized
+     * value deciding whether to terminate the entire process. */
+    query_status = NtQueryInformationThread( GetCurrentThread(), ThreadAmILastThread,
+                                             &last, sizeof(last), NULL );
+    if (!query_status && last) RtlExitUserProcess( status );
     LdrShutdownThread();
     for (;;) NtTerminateThread( GetCurrentThread(), status );
 }

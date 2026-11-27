@@ -276,6 +276,92 @@ PRUNTIME_FUNCTION WINAPI RtlLookupFunctionTable( ULONG_PTR pc, ULONG_PTR *base, 
 }
 
 
+#ifdef __riscv
+/* RISC-V64 .pdata has no EndAddress; the .xdata header carries the
+ * function length in halfwords.  Use the same representation for
+ * image and dynamically registered function tables. */
+static ULONG riscv64_function_length( ULONG_PTR base, const RUNTIME_FUNCTION *func )
+{
+    DWORD header;
+    if (func->UnwindData & 3)
+    {
+        WARN( "RV64-UNWIND metadata rejected: unaligned xdata RVA=%#lx base=%p\\n",
+              (unsigned long)func->UnwindData, (void *)base );
+        return 0;
+    }
+    header = *(const DWORD *)(base + func->UnwindData);
+    if ((header >> 18) & 3)
+    {
+        WARN( "RV64-UNWIND metadata rejected: unsupported header=%#lx RVA=%#lx\\n",
+              (unsigned long)header, (unsigned long)func->UnwindData );
+        return 0;
+    }
+    if (!(header & 0x3ffff))
+        WARN( "RV64-UNWIND metadata rejected: zero function length RVA=%#lx\\n",
+              (unsigned long)func->UnwindData );
+    return (header & 0x3ffff) * 2;
+}
+
+static RUNTIME_FUNCTION *riscv64_find_function( ULONG_PTR pc, ULONG_PTR base,
+                                                 RUNTIME_FUNCTION *table, ULONG count )
+{
+    ULONG i;
+    ULONG_PTR rva = pc - base;
+    for (i = 0; i < count; ++i)
+    {
+        ULONG length = riscv64_function_length( base, &table[i] );
+        if (length && rva >= table[i].BeginAddress &&
+            rva - table[i].BeginAddress < length) return &table[i];
+    }
+    WARN( "RV64-UNWIND entry not found pc=%p base=%p rva=%#lx count=%lu\\n",
+          (void *)pc, (void *)base, (unsigned long)rva, (unsigned long)count );
+    return NULL;
+}
+
+/**********************************************************************
+ *              RtlLookupFunctionEntry   (NTDLL.@)
+ */
+PRUNTIME_FUNCTION WINAPI RtlLookupFunctionEntry( ULONG_PTR pc, ULONG_PTR *base,
+                                                 UNWIND_HISTORY_TABLE *history )
+{
+    RUNTIME_FUNCTION *table, *ret;
+    ULONG count = 0, size = 0;
+
+    if ((table = lookup_dynamic_function_table( pc, base, &count )))
+    {
+        TRACE( "RV64-UNWIND dynamic table pc=%p base=%p table=%p count=%lu\\n",
+               (void *)pc, (void *)*base, table, (unsigned long)count );
+        return riscv64_find_function( pc, *base, table, count );
+    }
+    TRACE( "RV64-UNWIND dynamic table not found pc=%p\\n", (void *)pc );
+    table = RtlLookupFunctionTable( pc, base, &size );
+    if (!table)
+    {
+        TRACE( "RV64-UNWIND image table not found pc=%p\\n", (void *)pc );
+        return NULL;
+    }
+    ret = riscv64_find_function( pc, *base, table, size / sizeof(*table) );
+    return ret;
+}
+
+/**********************************************************************
+ *              RtlAddFunctionTable   (NTDLL.@)
+ */
+BOOLEAN CDECL RtlAddFunctionTable( RUNTIME_FUNCTION *table, DWORD count, ULONG_PTR base )
+{
+    ULONG_PTR end = base;
+    void *ret;
+    DWORD i;
+    for (i = 0; i < count; ++i)
+    {
+        ULONG length = riscv64_function_length( base, &table[i] );
+        if (base + table[i].BeginAddress + length > end)
+            end = base + table[i].BeginAddress + length;
+    }
+    return !RtlAddGrowableFunctionTable( &ret, table, count, 0, base, end );
+}
+#endif  /* __riscv */
+
 /***********************************************************************
  * ARM64 support
  */
