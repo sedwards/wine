@@ -167,7 +167,8 @@ NTSTATUS call_seh_handlers( EXCEPTION_RECORD *rec, CONTEXT *original )
             if (disposition == ExceptionContinueExecution)
                 return (rec->ExceptionFlags & EXCEPTION_NONCONTINUABLE) ?
                        STATUS_NONCONTINUABLE_EXCEPTION : STATUS_SUCCESS;
-            if (disposition != ExceptionContinueSearch)
+            if (disposition == ExceptionNestedException) rec->ExceptionFlags |= EXCEPTION_NESTED_CALL;
+            else if (disposition != ExceptionContinueSearch)
             {
                 ERR( "RV64 language handler=%p returned invalid disposition=%d frame=%p pc=%p sp=%p\n",
                      handler, disposition, (void *)establisher,
