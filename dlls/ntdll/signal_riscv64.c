@@ -106,7 +106,7 @@ NTSTATUS call_seh_handlers( EXCEPTION_RECORD *rec, CONTEXT *original )
     while (depth++ < 1024)
     {
         /* A zero caller PC is the end of an ELF unwind chain. */
-        if (!context.Pc) break;
+        if (depth > 1 && !context.Pc) break;
         sp = context.Gpr.X[2];
         if (sp == (ULONG_PTR)NtCurrentTeb()->Tib.StackBase) break;
         if (!sp || sp > (ULONG_PTR)NtCurrentTeb()->Tib.StackBase ||
@@ -386,9 +386,7 @@ __ASM_GLOBAL_FUNC( RtlRaiseException,
                    "ebreak" )
 
 /* Unix signal delivery and the syscall return path arrange a CONTEXT followed
- * by an EXCEPTION_RECORD at the current stack pointer.  The helper is
- * deliberately noreturn: dispatch_exception either continues via NtContinue
- * or raises the resulting failure status. */
+ * by an EXCEPTION_RECORD at the current stack pointer. */
 struct riscv64_exception_stack
 {
     CONTEXT context;
