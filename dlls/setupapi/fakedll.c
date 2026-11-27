@@ -51,6 +51,9 @@ static const char current_arch[] = "arm";
 #elif defined __aarch64__
 static const WCHAR pe_dir[] = L"\\aarch64-windows";
 static const char current_arch[] = "arm64";
+#elif defined(__riscv) && __riscv_xlen == 64
+static const WCHAR pe_dir[] = L"\\riscv64-windows";
+static const char current_arch[] = "riscv64";
 #else
 static const WCHAR pe_dir[] = L"";
 static const char current_arch[] = "none";
@@ -82,11 +85,19 @@ struct dll_info
 
 /* contents of the dll sections */
 
+#if defined(__riscv) && __riscv_xlen == 64
+static const BYTE dll_code_section[] = { 0x13, 0x05, 0x00, 0x00, /* li a0,0 */
+                                         0x67, 0x80, 0x00, 0x00 }; /* ret */
+static const BYTE exe_code_section[] = { 0x13, 0x05, 0x10, 0x00, /* li a0,1 */
+                                         0x67, 0x80, 0x00, 0x00 }; /* ret */
+#else
 static const BYTE dll_code_section[] = { 0x31, 0xc0,          /* xor %eax,%eax */
                                          0xc2, 0x0c, 0x00 };  /* ret $12 */
 
 static const BYTE exe_code_section[] = { 0xb8, 0x01, 0x00, 0x00, 0x00,  /* movl $1,%eax */
                                          0xc2, 0x04, 0x00 };            /* ret $4 */
+
+#endif
 
 static const IMAGE_BASE_RELOCATION reloc_section;  /* empty relocs */
 
@@ -297,6 +308,8 @@ static BOOL build_fake_dll( HANDLE file, const WCHAR *name )
     nt->FileHeader.Machine = IMAGE_FILE_MACHINE_ARM64;
 #elif defined __arm__
     nt->FileHeader.Machine = IMAGE_FILE_MACHINE_ARMNT;
+#elif defined(__riscv) && __riscv_xlen == 64
+    nt->FileHeader.Machine = IMAGE_FILE_MACHINE_RISCV64;
 #else
     nt->FileHeader.Machine = IMAGE_FILE_MACHINE_I386;
 #endif
