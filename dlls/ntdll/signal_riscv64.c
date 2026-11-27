@@ -40,6 +40,14 @@ static BOOL riscv64_valid_seh_frame( const EXCEPTION_REGISTRATION_RECORD *frame 
            (ULONG_PTR)tib->StackBase - addr >= sizeof(*frame);
 }
 
+struct riscv64_exception_stack
+{
+    CONTEXT context;
+    EXCEPTION_RECORD record;
+};
+
+extern char riscv64_exception_dispatcher_end[];
+
 /* Native Winelib modules use ELF CFI, including modules without a PE
  * runtime function table. Follow the x86-64 builtin unwind bridge. */
 static NTSTATUS virtual_unwind( ULONG type, DISPATCHER_CONTEXT *dispatch, CONTEXT *context )
@@ -59,6 +67,30 @@ static NTSTATUS virtual_unwind( ULONG type, DISPATCHER_CONTEXT *dispatch, CONTEX
     dispatch->EstablisherFrame = 0;
     dispatch->HandlerData = NULL;
     dispatch->LanguageHandler = NULL;
+    /* A dispatcher frame contains the interrupted context, not a normal
+     * LP64D caller frame.  Recover PC and RA independently, including when
+     * a synchronous exception interrupted a leaf function. */
+    if (pc >= (ULONG_PTR)KiUserExceptionDispatcher &&
+        pc < (ULONG_PTR)riscv64_exception_dispatcher_end)
+    {
+        const struct riscv64_exception_stack *stack = (const void *)old_sp;
+        NT_TIB *tib = &NtCurrentTeb()->Tib;
+
+        dispatch->FunctionEntry = NULL;
+        if ((old_sp & 15) || old_sp < (ULONG_PTR)tib->StackLimit ||
+            old_sp >= (ULONG_PTR)tib->StackBase ||
+            (ULONG_PTR)tib->StackBase - old_sp < sizeof(*stack))
+            return STATUS_BAD_STACK;
+        if ((stack->context.ContextFlags & CONTEXT_CONTROL) != CONTEXT_CONTROL ||
+            (stack->context.Gpr.X[2] & 15) ||
+            stack->context.Gpr.X[2] < old_sp + sizeof(*stack) ||
+            stack->context.Gpr.X[2] > (ULONG_PTR)tib->StackBase)
+            return STATUS_BAD_STACK;
+
+        dispatch->EstablisherFrame = old_sp;
+        *context = stack->context;
+        return STATUS_SUCCESS;
+    }
     dispatch->FunctionEntry = RtlLookupFunctionEntry( pc, &dispatch->ImageBase,
                                                      dispatch->HistoryTable );
     if (!dispatch->FunctionEntry &&
@@ -418,19 +450,15 @@ __ASM_GLOBAL_FUNC( RtlRaiseException,
 
 /* Unix signal delivery and the syscall return path arrange a CONTEXT followed
  * by an EXCEPTION_RECORD at the current stack pointer. */
-struct riscv64_exception_stack
-{
-    CONTEXT context;
-    EXCEPTION_RECORD record;
-};
-
 /* Like arm64, dispatch directly from the saved exception frame.  A null
  * fault PC is a valid execute access violation, not a malformed context. */
 __ASM_GLOBAL_FUNC( KiUserExceptionDispatcher,
                    "mv a1, sp\n\t"
                    "addi a0, sp, 736\n\t"
                    "call " __ASM_NAME("dispatch_exception") "\n\t"
-                   "ebreak" )
+                   "ebreak\n\t"
+                   ".globl " __ASM_NAME("riscv64_exception_dispatcher_end") "\n\t"
+                   __ASM_NAME("riscv64_exception_dispatcher_end") ":" )
 C_ASSERT( offsetof(struct riscv64_exception_stack, record) == 736 );
 C_ASSERT( sizeof(struct riscv64_exception_stack) % 16 == 0 );
 
