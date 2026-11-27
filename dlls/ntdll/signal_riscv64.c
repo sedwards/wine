@@ -105,6 +105,8 @@ NTSTATUS call_seh_handlers( EXCEPTION_RECORD *rec, CONTEXT *original )
           (void *)(ULONG_PTR)original->Gpr.X[1], rec->ExceptionRecord );
     while (depth++ < 1024)
     {
+        /* A zero caller PC is the end of an ELF unwind chain. */
+        if (!context.Pc) break;
         sp = context.Gpr.X[2];
         if (sp == (ULONG_PTR)NtCurrentTeb()->Tib.StackBase) break;
         if (!sp || sp > (ULONG_PTR)NtCurrentTeb()->Tib.StackBase ||
