@@ -89,7 +89,7 @@ static NTSTATUS virtual_unwind( ULONG type, DISPATCHER_CONTEXT *dispatch, CONTEX
  * with the same nested-exception disposition as arm64. */
 static DWORD CDECL nested_seh_handler( EXCEPTION_RECORD *rec,
                                      EXCEPTION_REGISTRATION_RECORD *frame,
-                                     CONTEXT *context, void *dispatch )
+                                     CONTEXT *context, EXCEPTION_REGISTRATION_RECORD **dispatch )
 {
     if (rec->ExceptionFlags & (EXCEPTION_UNWINDING | EXCEPTION_EXIT_UNWIND))
         return ExceptionContinueSearch;
@@ -358,6 +358,10 @@ void WINAPI RtlRestoreContext( CONTEXT *context, EXCEPTION_RECORD *record )
         context->Fcsr = jmp->fcsr;
         context->ContextFlags |= CONTEXT_FULL;
     }
+    /* Discard native registration records belonging to unwound frames. */
+    while (riscv64_valid_seh_frame( NtCurrentTeb()->Tib.ExceptionList ) &&
+           (ULONG_PTR)NtCurrentTeb()->Tib.ExceptionList < context->Gpr.X[2])
+        __wine_pop_frame( NtCurrentTeb()->Tib.ExceptionList );
     status = NtContinue( context, FALSE );
     ERR( "RISCV64 RtlRestoreContext: NtContinue returned %#lx\\n", (unsigned long)status );
     __builtin_trap();
