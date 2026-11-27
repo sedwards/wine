@@ -767,12 +767,12 @@ static BOOL handle_syscall_fault( struct thread_data *data, ucontext_t *uc,
     }
     if (frame)
     {
-        frame->x[10] = EXCEPTION_ACCESS_VIOLATION;
+        frame->x[10] = (LONG)rec->ExceptionCode;
         REGn_sig( REG_A0, uc ) = (ULONG_PTR)frame;
         /* Leave the interrupted Unix C stack behind.  The continuation
          * helper grows its stack below the saved syscall frame. */
         SP_sig( uc ) = (ULONG_PTR)frame;
-        PC_sig( uc ) = (ULONG_PTR)__wine_syscall_dispatcher_return TRUE;
+        PC_sig( uc ) = (ULONG_PTR)__wine_syscall_dispatcher_return;
         RV64_CHECKPOINT( "unprotected syscall-stack fault returning through saved frame" );
         return TRUE;
     }
