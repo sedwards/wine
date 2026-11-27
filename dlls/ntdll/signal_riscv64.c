@@ -55,6 +55,7 @@ static NTSTATUS virtual_unwind( ULONG type, DISPATCHER_CONTEXT *dispatch, CONTEX
     if (pc && dispatch->ControlPcIsUnwound) pc--;
     dispatch->ImageBase = 0;
     dispatch->ScopeIndex = 0;
+    dispatch->EstablisherFrame = 0;
     dispatch->HandlerData = NULL;
     dispatch->LanguageHandler = NULL;
     dispatch->FunctionEntry = RtlLookupFunctionEntry( pc, &dispatch->ImageBase,
@@ -88,6 +89,7 @@ NTSTATUS call_seh_handlers( EXCEPTION_RECORD *rec, CONTEXT *original )
     EXCEPTION_REGISTRATION_RECORD *next;
     CONTEXT context = *original;
     DISPATCHER_CONTEXT dispatch = {0};
+    UNWIND_HISTORY_TABLE history = {0};
     ULONG_PTR establisher, sp, prev_sp = 0, prev_pc = 0;
     PEXCEPTION_ROUTINE handler;
     unsigned int depth = 0;
@@ -95,6 +97,7 @@ NTSTATUS call_seh_handlers( EXCEPTION_RECORD *rec, CONTEXT *original )
     EXCEPTION_DISPOSITION disposition;
 
     dispatch.ContextRecord = &context;
+    dispatch.HistoryTable = &history;
     WARN( "RV64 dispatch ENTER exception=%p code=%#lx flags=%#lx address=%p original_pc=%p sp=%p ra=%p parent=%p\n",
           rec, (unsigned long)rec->ExceptionCode, (unsigned long)rec->ExceptionFlags,
           rec->ExceptionAddress, (void *)(ULONG_PTR)original->Pc,
