@@ -725,6 +725,61 @@ static inline struct riscv64_continuation_data *riscv64_continuation_data( struc
     return (struct riscv64_continuation_data *)get_teb_data( data )->cpu_data;
 }
 
+/* Handle faults on Wine's Unix syscall stack before preparing a user exception. */
+static BOOL handle_syscall_fault( struct thread_data *data, ucontext_t *uc,
+                                  EXCEPTION_RECORD *rec, int sig )
+{
+    ULONG_PTR sp = SP_sig( uc );
+    struct syscall_frame *frame;
+
+    if (!is_inside_syscall( data, sp )) return FALSE;
+    frame = get_syscall_frame( data );
+
+    /* Protected Unix accesses use a native libc jump buffer.  Resume
+     * their local recovery path before abandoning the system call.
+     * The kernel restores the interrupted signal mask and host gp/tp
+     * before entering longjmp, just as on arm64 and x86-64. */
+    if (data->jmp_buf)
+    {
+        void *buf = data->jmp_buf;
+
+        data->jmp_buf = NULL;
+        REGn_sig( REG_A0, uc ) = (ULONG_PTR)buf;
+        REGn_sig( REG_A0 + 1, uc ) = 1;
+        PC_sig( uc ) = (ULONG_PTR)longjmp;
+        RV64_CHECKPOINT( "syscall-stack fault recovering through native longjmp" );
+        return TRUE;
+    }
+
+    if (riscv64_transition_diag_enabled())
+    {
+        char buf[256], *p = buf;
+        p = riscv64_diag_text( p, "RV64-DIAG syscall-stack fault pc=" );
+        p = riscv64_diag_hex( p, PC_sig( uc ) );
+        p = riscv64_diag_text( p, " sp=" );
+        p = riscv64_diag_hex( p, sp );
+        p = riscv64_diag_text( p, " addr=" );
+        p = riscv64_diag_hex( p, rec->NumberParameters >= 2 ? rec->ExceptionInformation[1] : 0 );
+        p = riscv64_diag_text( p, " frame=" );
+        p = riscv64_diag_hex( p, (ULONG_PTR)frame );
+        *p++ = '\n';
+        write( 2, buf, p - buf );
+    }
+    if (frame)
+    {
+        frame->x[10] = EXCEPTION_ACCESS_VIOLATION;
+        REGn_sig( REG_A0, uc ) = (ULONG_PTR)frame;
+        /* Leave the interrupted Unix C stack behind.  The continuation
+         * helper grows its stack below the saved syscall frame. */
+        SP_sig( uc ) = (ULONG_PTR)frame;
+        PC_sig( uc ) = (ULONG_PTR)__wine_syscall_dispatcher_return TRUE;
+        RV64_CHECKPOINT( "unprotected syscall-stack fault returning through saved frame" );
+        return TRUE;
+    }
+    RV64_CHECKPOINT( "syscall-stack fault without saved frame" );
+    _exit( 128 + sig );
+}
+
 static void riscv64_fault_handler( int sig, siginfo_t *info, void *opaque )
 {
     ucontext_t *uc = opaque;
@@ -926,59 +981,7 @@ static void riscv64_fault_handler( int sig, siginfo_t *info, void *opaque )
     if ((sig == SIGSEGV || sig == SIGBUS) &&
         !virtual_handle_fault( data, &rec, (void *)sp )) return;
 
-    /* A fault on the Unix syscall stack must not construct an exception
-     * payload below the interrupted SP.  That address can be in a protected
-     * stack guard (as seen in the pipe tests), causing a second SIGSEGV in
-     * memset before the existing syscall-return path can run.  Complete the
-     * syscall through its saved Windows frame instead. */
-    if (is_inside_syscall( data, sp ))
-    {
-        struct syscall_frame *frame = get_syscall_frame( data );
-
-        /* Protected Unix accesses use a native libc jump buffer.  Resume
-         * their local recovery path before abandoning the system call.
-         * The kernel restores the interrupted signal mask and host gp/tp
-         * before entering longjmp, just as on arm64 and x86-64. */
-        if (data->jmp_buf)
-        {
-            void *buf = data->jmp_buf;
-
-            data->jmp_buf = NULL;
-            REGn_sig( REG_A0, uc ) = (ULONG_PTR)buf;
-            REGn_sig( REG_A0 + 1, uc ) = 1;
-            PC_sig( uc ) = (ULONG_PTR)longjmp;
-            RV64_CHECKPOINT( "syscall-stack fault recovering through native longjmp" );
-            return;
-        }
-
-        if (riscv64_transition_diag_enabled())
-        {
-            char buf[256], *p = buf;
-            p = riscv64_diag_text( p, "RV64-DIAG syscall-stack fault pc=" );
-            p = riscv64_diag_hex( p, PC_sig( uc ) );
-            p = riscv64_diag_text( p, " sp=" );
-            p = riscv64_diag_hex( p, sp );
-            p = riscv64_diag_text( p, " addr=" );
-            p = riscv64_diag_hex( p, (ULONG_PTR)info->si_addr );
-            p = riscv64_diag_text( p, " frame=" );
-            p = riscv64_diag_hex( p, (ULONG_PTR)frame );
-            *p++ = '\n';
-            write( 2, buf, p - buf );
-        }
-        if (frame)
-        {
-            frame->x[10] = EXCEPTION_ACCESS_VIOLATION;
-            REGn_sig( REG_A0, uc ) = (ULONG_PTR)frame;
-            /* Leave the interrupted Unix C stack behind.  The continuation
-             * helper grows its stack below the saved syscall frame. */
-            SP_sig( uc ) = (ULONG_PTR)frame;
-            PC_sig( uc ) = (ULONG_PTR)__wine_syscall_dispatcher_return;
-            RV64_CHECKPOINT( "unprotected syscall-stack fault returning through saved frame" );
-            return;
-        }
-        RV64_CHECKPOINT( "syscall-stack fault without saved frame" );
-        _exit( 128 + sig );
-    }
+    if (handle_syscall_fault( data, uc, &rec, sig )) return;
 
     /* Use the common stack preparation path, as on arm64 and x86-64.
      * It can extend a committed stack into its guard page and preserve
