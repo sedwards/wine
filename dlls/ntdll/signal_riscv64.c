@@ -151,6 +151,15 @@ NTSTATUS call_seh_handlers( EXCEPTION_RECORD *rec, CONTEXT *original )
             return STATUS_BAD_STACK;
         }
         establisher = dispatch.EstablisherFrame;
+        if ((establisher & 15) ||
+            establisher < (ULONG_PTR)NtCurrentTeb()->Tib.StackLimit ||
+            establisher >= (ULONG_PTR)NtCurrentTeb()->Tib.StackBase)
+        {
+            WARN( "invalid establisher frame %p (%p-%p)\n", (void *)establisher,
+                  NtCurrentTeb()->Tib.StackLimit, NtCurrentTeb()->Tib.StackBase );
+            rec->ExceptionFlags |= EXCEPTION_STACK_INVALID;
+            break;
+        }
         handler = dispatch.LanguageHandler;
         if (handler)
         {
