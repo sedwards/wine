@@ -15,6 +15,7 @@
 #include "winternl.h"
 #include "ddk/wdm.h"
 #include "wine/asm.h"
+#include "wine/exception.h"
 #include "ntdll_misc.h"
 #include "ntsyscalls.h"
 
@@ -81,6 +82,32 @@ static NTSTATUS virtual_unwind( ULONG type, DISPATCHER_CONTEXT *dispatch, CONTEX
     return RtlVirtualUnwind2( type, dispatch->ImageBase, pc, dispatch->FunctionEntry,
                              context, NULL, &dispatch->HandlerData, &dispatch->EstablisherFrame,
                              NULL, NULL, NULL, &dispatch->LanguageHandler, 0 );
+}
+
+/* Native ELF builds use Wine's registered TEB exception frames rather
+ * than PE .seh_handler directives.  Protect calls during the search phase
+ * with the same nested-exception disposition as arm64. */
+static DWORD CDECL nested_seh_handler( EXCEPTION_RECORD *rec,
+                                     EXCEPTION_REGISTRATION_RECORD *frame,
+                                     CONTEXT *context, void *dispatch )
+{
+    if (rec->ExceptionFlags & (EXCEPTION_UNWINDING | EXCEPTION_EXIT_UNWIND))
+        return ExceptionContinueSearch;
+    return ExceptionNestedException;
+}
+
+static EXCEPTION_DISPOSITION call_seh_handler( EXCEPTION_RECORD *rec, void *frame,
+                                               CONTEXT *context, DISPATCHER_CONTEXT *dispatch,
+                                               PEXCEPTION_ROUTINE handler )
+{
+    EXCEPTION_REGISTRATION_RECORD registration;
+    EXCEPTION_DISPOSITION result;
+
+    registration.Handler = nested_seh_handler;
+    __wine_push_frame( &registration );
+    result = handler( rec, frame, context, dispatch );
+    __wine_pop_frame( &registration );
+    return result;
 }
 
 NTSTATUS call_seh_handlers( EXCEPTION_RECORD *rec, CONTEXT *original )
@@ -168,7 +195,7 @@ NTSTATUS call_seh_handlers( EXCEPTION_RECORD *rec, CONTEXT *original )
         handler = dispatch.LanguageHandler;
         if (handler)
         {
-            disposition = handler( rec, (void *)establisher, original, &dispatch );
+            disposition = call_seh_handler( rec, (void *)establisher, original, &dispatch, handler );
             if (disposition == ExceptionContinueExecution)
                 return (rec->ExceptionFlags & EXCEPTION_NONCONTINUABLE) ?
                        STATUS_NONCONTINUABLE_EXCEPTION : STATUS_SUCCESS;
@@ -185,7 +212,7 @@ NTSTATUS call_seh_handlers( EXCEPTION_RECORD *rec, CONTEXT *original )
                     (ULONG_PTR)frame < context.Gpr.X[2])
         {
             next = frame->Prev;
-            disposition = ((PEXCEPTION_ROUTINE)frame->Handler)( rec, frame, original, &dispatch );
+            disposition = call_seh_handler( rec, frame, original, &dispatch, (PEXCEPTION_ROUTINE)frame->Handler );
             if (disposition == ExceptionContinueExecution)
                 return (rec->ExceptionFlags & EXCEPTION_NONCONTINUABLE) ?
                        STATUS_NONCONTINUABLE_EXCEPTION : STATUS_SUCCESS;
