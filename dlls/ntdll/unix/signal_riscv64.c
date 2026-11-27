@@ -16,6 +16,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
+#ifdef __linux__
+# include <sys/uio.h>
+#endif
 #include <unistd.h>
 
 #ifdef HAVE_SYS_PARAM_H
@@ -694,6 +697,50 @@ static BOOL handle_syscall_fault( struct thread_data *data, ucontext_t *uc,
     _exit( 128 + sig );
 }
 
+/* Linux RV64 ucontext does not expose scause.  Read the instruction with
+ * process_vm_readv rather than dereferencing a possibly inaccessible PC
+ * from inside the signal handler.  Unknown instructions or a failed read
+ * retain the historical read-fault classification. */
+static ULONG_PTR get_fault_access_type( const ucontext_t *uc, const siginfo_t *info )
+{
+    ULONG_PTR pc = PC_sig( uc );
+#if defined(__linux__) && defined(SYS_process_vm_readv)
+    unsigned short insn[2];
+    struct iovec local = { insn, sizeof(insn[0]) };
+    struct iovec remote = { (void *)pc, sizeof(insn[0]) };
+    unsigned int opcode, funct3, quadrant;
+#endif
+
+    /* Instruction fetch faults normally report the faulting PC. */
+    if ((ULONG_PTR)info->si_addr == pc) return EXCEPTION_EXECUTE_FAULT;
+#if defined(__linux__) && defined(SYS_process_vm_readv)
+    if (syscall( SYS_process_vm_readv, getpid(), &local, 1, &remote, 1, 0 ) != sizeof(insn[0]))
+        return EXCEPTION_READ_FAULT;
+
+    quadrant = insn[0] & 3;
+    if (quadrant != 3)
+    {
+        funct3 = insn[0] >> 13;
+        /* C.FSD/C.SW/C.SD and their SP-relative variants on RV64. */
+        if ((quadrant == 0 || quadrant == 2) && funct3 >= 5)
+            return EXCEPTION_WRITE_FAULT;
+        return EXCEPTION_READ_FAULT;
+    }
+    opcode = insn[0] & 0x7f;
+    if (opcode == 0x23 || opcode == 0x27) return EXCEPTION_WRITE_FAULT;
+    if (opcode == 0x2f)
+    {
+        /* Atomics are writes except LR.W/LR.D (funct5 == 2). */
+        local.iov_base = &insn[1];
+        remote.iov_base = (void *)(pc + 2);
+        if (syscall( SYS_process_vm_readv, getpid(), &local, 1, &remote, 1, 0 ) == sizeof(insn[1]) &&
+            (insn[1] >> 11) != 2)
+            return EXCEPTION_WRITE_FAULT;
+    }
+#endif
+    return EXCEPTION_READ_FAULT;
+}
+
 static void riscv64_fault_handler( int sig, siginfo_t *info, void *opaque )
 {
     ucontext_t *uc = opaque;
@@ -866,7 +913,7 @@ static void riscv64_fault_handler( int sig, siginfo_t *info, void *opaque )
     case SIGBUS:
         rec.ExceptionCode = EXCEPTION_ACCESS_VIOLATION;
         rec.NumberParameters = 2;
-        rec.ExceptionInformation[0] = EXCEPTION_READ_FAULT;
+        rec.ExceptionInformation[0] = get_fault_access_type( uc, info );
         rec.ExceptionInformation[1] = (ULONG_PTR)info->si_addr;
         break;
     case SIGILL:
