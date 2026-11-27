@@ -396,6 +396,8 @@ struct riscv64_exception_stack_layout
     CONTEXT context;
     EXCEPTION_RECORD record;
 };
+C_ASSERT( offsetof(struct riscv64_exception_stack_layout, record) == sizeof(CONTEXT) );
+C_ASSERT( sizeof(struct riscv64_exception_stack_layout) % 16 == 0 );
 
 NTSTATUS call_user_exception_dispatcher( struct thread_data *data,
                                          EXCEPTION_RECORD *rec,
@@ -403,6 +405,7 @@ NTSTATUS call_user_exception_dispatcher( struct thread_data *data,
 {
     struct syscall_frame *frame = get_syscall_frame( data );
     struct riscv64_exception_stack_layout *stack;
+    EXCEPTION_RECORD record = *rec;
     NTSTATUS status;
 
     if (!frame) return STATUS_ACCESS_DENIED;
@@ -410,8 +413,9 @@ NTSTATUS call_user_exception_dispatcher( struct thread_data *data,
     if (status) return status;
 
     stack = (void *)(((ULONG_PTR)context->Gpr.X[2] - sizeof(*stack)) & ~(ULONG_PTR)15);
-    stack->context = *context;
-    stack->record = *rec;
+    /* The destination may overlap the caller's saved CONTEXT or record. */
+    memmove( &stack->context, context, sizeof(*context) );
+    stack->record = record;
     frame->sp = (ULONG_PTR)stack;
     frame->pc = (ULONG_PTR)pKiUserExceptionDispatcher;
     frame->x[2] = frame->sp;
