@@ -160,6 +160,8 @@ static const char *ln_s;
 static const char *sed_cmd;
 static const char *wayland_scanner;
 static const char *sarif_converter;
+static const char *provisioning_profile;
+static const char *codesign;
 static const char *buildimage;
 static const char *runtest;
 static const char *install;
@@ -1928,14 +1930,24 @@ static struct strarray get_expanded_make_var_array( const struct makefile *make,
 
 
 /*******************************************************************
+ *         get_file_local_var
+ */
+static char *get_file_local_var( const char *file, const char *name )
+{
+    char *p, *var = strmake( "%s_%s", file, name );
+
+    for (p = var; *p; p++) if (!isalnum( *p )) *p = '_';
+    return var;
+}
+
+
+/*******************************************************************
  *         get_expanded_file_local_var
  */
 static struct strarray get_expanded_file_local_var( const struct makefile *make, const char *file,
                                                     const char *name )
 {
-    char *p, *var = strmake( "%s_%s", file, name );
-
-    for (p = var; *p; p++) if (!isalnum( *p )) *p = '_';
+    char *var = get_file_local_var( file, name );
     return get_expanded_make_var_array( make, var );
 }
 
@@ -4218,12 +4230,13 @@ static void output_programs( struct makefile *make )
 
     STRARRAY_FOR_EACH( name, &make->programs )
     {
-        const char *install_dir;
+        const char *install_dir = !strcmp( make->obj_dir, "loader" ) ? arch_install_dirs[arch] : "$(bindir)";
         char *program = strmake( "%s%s", name, exe_ext );
         struct strarray deps = get_local_dependencies( make, name, make->in_files );
         struct strarray ldflags  = get_expanded_file_local_var( make, name, "LDFLAGS" );
         struct strarray objs     = get_expanded_file_local_var( make, name, "OBJS" );
         struct strarray symlinks = get_expanded_file_local_var( make, name, "SYMLINKS" );
+        struct strarray codesign_flags = get_expanded_file_local_var( make, name, "CODESIGN_FLAGS" );
         struct strarray all_libs = get_expanded_make_var_array( make, "UNIX_LIBS" );
 
         if (!objs.count) objs = make->object_files[arch];
@@ -4232,6 +4245,39 @@ static void output_programs( struct makefile *make )
             strarray_add( &ldflags, "$(LDFLAGS)" );
             strarray_addall( &all_libs, libs );
         }
+
+        if (strendswith( name, ".app" ))  /* create a macOS app bundle */
+        {
+            struct strarray bundle_files = empty_strarray;
+            char *appdir = strmake( "%s/Contents", name );
+            char *info_plist = get_expanded_make_variable( make, get_file_local_var( name, "INFO_PLIST" ));
+
+            if (info_plist)
+            {
+                output( "%s/Info.plist:", obj_dir_path( make, appdir ) );
+                output_filename( obj_dir_path( make, info_plist ) );
+                output( "\n" );
+                output( "\t%scp %s $@\n", cmd_prefix( "GEN" ), obj_dir_path( make, info_plist ) );
+                strarray_add( &bundle_files, strmake( "%s/Info.plist", appdir ) );
+            }
+            if (provisioning_profile)
+            {
+                output( "%s/embedded.provisionprofile: %s\n", obj_dir_path( make, appdir ), provisioning_profile );
+                output( "\t%scp %s $@\n", cmd_prefix( "GEN" ), provisioning_profile );
+                strarray_add( &bundle_files, strmake( "%s/embedded.provisionprofile", appdir ) );
+            }
+            output( "%s/PkgInfo:\n", obj_dir_path( make, appdir ) );
+            output( "\t%secho -n \"APPL????\" >$@ || (rm -f $@ && false)\n", cmd_prefix( "GEN" ));
+            strarray_add( &bundle_files, strmake( "%s/PkgInfo", appdir ) );
+
+            strarray_addall( &make->all_targets[arch], bundle_files );
+            STRARRAY_FOR_EACH( file, &bundle_files )
+                install_data_file( make, name, file, strmake( "%s/%s", install_dir, appdir ), NULL );
+
+            program = strmake( "%s/MacOS/%s", appdir, replace_extension( name, ".app", "" ));
+            install_dir = strmake( "%s/%s/MacOS", install_dir, appdir );
+        }
+
         output( "%s:", obj_dir_path( make, program ) );
         output_filenames_obj_dir( make, objs );
         output_filenames( deps );
@@ -4241,6 +4287,13 @@ static void output_programs( struct makefile *make )
         output_filenames( all_libs );
         output_filenames( ldflags );
         output( "\n" );
+        if (codesign && codesign_flags.count)
+        {
+            output( "\t%s%s", cmd_prefix( "GEN" ), codesign );
+            output_filenames( codesign_flags );
+            output_filename( "$@" );
+            output( "\n" );
+        }
         strarray_add( &make->all_targets[arch], program );
 
         STRARRAY_FOR_EACH( link, &symlinks )
@@ -4250,7 +4303,6 @@ static void output_programs( struct makefile *make )
         }
         strarray_addall( &make->all_targets[arch], symlinks );
 
-        install_dir = !strcmp( make->obj_dir, "loader" ) ? arch_install_dirs[arch] : "$(bindir)";
         install_program( make, name, arch, program, install_dir );
         STRARRAY_FOR_EACH( link, &symlinks )
             install_program_symlink( make, link, obj_dir_path( make, program ),
@@ -5165,6 +5217,8 @@ int main( int argc, char *argv[] )
     ln_s               = get_expanded_make_variable( top_makefile, "LN_S" );
     wayland_scanner    = get_expanded_make_variable( top_makefile, "WAYLAND_SCANNER" );
     sarif_converter    = get_expanded_make_variable( top_makefile, "SARIF_CONVERTER" );
+    codesign           = get_expanded_make_variable( top_makefile, "CODESIGN" );
+    provisioning_profile = get_expanded_make_variable( top_makefile, "PROVISIONING_PROFILE" );
 
     if (root_src_dir && !strcmp( root_src_dir, "." )) root_src_dir = NULL;
     if (tools_dir && !strcmp( tools_dir, "." )) tools_dir = NULL;
