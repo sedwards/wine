@@ -124,6 +124,48 @@ static LONG WINAPI caller_exception_handler( EXCEPTION_POINTERS *exception )
     return EXCEPTION_CONTINUE_EXECUTION;
 }
 
+static unsigned int access_fault_count, access_fault_errors;
+static ULONG_PTR expected_access_type;
+
+static LONG WINAPI access_fault_handler( EXCEPTION_POINTERS *exception )
+{
+    EXCEPTION_RECORD *rec = exception->ExceptionRecord;
+    CONTEXT *context = exception->ContextRecord;
+
+    if (rec->ExceptionCode != EXCEPTION_ACCESS_VIOLATION ||
+        rec->NumberParameters != 2 || rec->ExceptionInformation[1] != 0)
+        return EXCEPTION_CONTINUE_SEARCH;
+
+    ++access_fault_count;
+    if (rec->ExceptionInformation[0] != expected_access_type)
+    {
+        ++access_fault_errors;
+        trace( "RV64 access fault type %Iu, expected %Iu\n",
+               rec->ExceptionInformation[0], expected_access_type );
+    }
+    /* The two test instructions below are explicitly 32 bits wide. */
+    context->Pc += 4;
+    return EXCEPTION_CONTINUE_EXECUTION;
+}
+
+static void test_riscv64_access_faults(void)
+{
+    PVOID handler = AddVectoredExceptionHandler( 1, access_fault_handler );
+
+    ok( !!handler, "failed to install RV64 access fault handler\n" );
+    if (!handler) return;
+    access_fault_count = access_fault_errors = 0;
+
+    expected_access_type = 0;
+    __asm__ volatile( ".word 0x00003003" ::: "memory" ); /* ld zero,0(zero) */
+    expected_access_type = 1;
+    __asm__ volatile( ".word 0x00003023" ::: "memory" ); /* sd zero,0(zero) */
+
+    ok( access_fault_count == 2, "expected 2 access faults, got %u\n", access_fault_count );
+    ok( !access_fault_errors, "%u incorrectly classified access faults\n", access_fault_errors );
+    ok( RemoveVectoredExceptionHandler( handler ), "failed to remove RV64 access fault handler\n" );
+}
+
 static void test_raise_caller_context(void)
 {
     EXCEPTION_RECORD record = {0};
@@ -223,6 +265,7 @@ START_TEST(signal)
     test_capture_context();
 #if defined(__riscv) && __riscv_xlen == 64
     test_raise_caller_context();
+    test_riscv64_access_faults();
 #endif
     test_signal_exception();
 #ifdef __x86_64__
