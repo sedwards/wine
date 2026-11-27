@@ -2,6 +2,33 @@
 
 > **Experimental port — work in progress.** This guide describes the `risc-v` development branch of this fork, not an upstream-supported Wine configuration. Code merged into the branch is not necessarily verified on RISC-V hardware.
 
+## Source repository and WineHQ wiki checkpoint
+
+This is an independent experimental development fork of Wine, not an
+official upstream Wine release or an upstream-supported architecture.
+
+- **GitHub fork:** [sedwards/wine](https://github.com/sedwards/wine)
+- **Active development branch:** [risc-v](https://github.com/sedwards/wine/tree/risc-v)
+- **Living development guide:** [risc-v.md](https://github.com/sedwards/wine/blob/risc-v/risc-v.md)
+- **NTDLL stack layout:** [RISCV64-stack-layout.md](https://github.com/sedwards/wine/blob/risc-v/dlls/ntdll/RISCV64-stack-layout.md)
+- **Upstream project:** [WineHQ](https://www.winehq.org/)
+- **Source checkpoint (November 27, 2026):** [0db331e6fc58](https://github.com/sedwards/wine/tree/0db331e6fc589c32eb0f8da68752fcea47eff43a), including the latest experimental SEH code and stack layout notes.
+
+To reproduce the checkpoint rather than follow the moving branch:
+
+```sh
+git clone --branch risc-v https://github.com/sedwards/wine.git wine-riscv64
+cd wine-riscv64
+git switch --detach 0db331e6fc589c32eb0f8da68752fcea47eff43a
+```
+
+For readers arriving from the WineHQ wiki: this checkpoint records native
+Linux RV64 Winelib bring-up, not general Windows binary compatibility.
+The observed hardware milestones and pending validation below are
+intentionally distinguished from source-only implementation progress.
+Refer to the live branch for subsequent changes; use the pinned revision
+when reproducing the checkpoint.
+
 ## Scope and project goals
 
 The immediate goal is to build and run Wine's **native Linux RISC-V64 / Winelib (ELF)** path, then make thread startup, syscall dispatch, exception handling, context restoration, and unwinding reliable. This is distinct from running existing x86/x86-64 Windows binaries.
@@ -576,3 +603,44 @@ continuation, and the existing recursion limits remain unchanged.
 Protected SEH handler wrappers, complete collided unwind semantics, native
 dispatcher unwind metadata, and memory fault access classification remain
 open. These commits have not been compiled or tested on RV64 hardware.
+
+## 15. Protected SEH search, dispatcher unwinding and fault classification
+
+**Latest observed hardware baseline (before this experimental series):**
+Task Manager closed without the previously reported stack overflow after
+the SEH termination changes. The signal test returned exit status 66 with
+an empty log; this is consistent with the low byte of the test exception
+0xe0424242, but the reason for termination remains unconfirmed. Other
+previously working GUI applications have not yet been retested against
+this series. Mount Manager registration/startup remains unresolved.
+
+| Commit | Implementation |
+| --- | --- |
+| b851e60742e6 | Protect search-phase language and TEB handler calls with a temporary native TEB registration, recognizing nested exceptions. |
+| 32fa9c8a4680 | Remove obsolete TEB registrations below the destination SP in RtlRestoreContext; correct the nested registration handler signature. |
+| 14781f2d6535 | Unwind across KiUserExceptionDispatcher by restoring the saved machine context, independently preserving interrupted PC and RA. |
+| 9c334d2adbc3 | Classify common RV64 load/store, compressed store and atomic faults; use a PC/address heuristic for instruction fetch faults. |
+| 1ce1c99e1649 | Add native null-read and null-write signal translation regression coverage. |
+| 0db331e6fc58 | Document the shared exception frame and its unwind semantics. |
+
+The fault classifier reads instructions through Linux process_vm_readv
+rather than directly dereferencing a possibly inaccessible instruction
+pointer from the signal handler. If the syscall is unavailable, denied,
+or the instruction cannot be classified, the conservative read-fault
+fallback remains. This is not an exhaustive decoder (including vector,
+extended and ambiguous instruction fetch cases).
+
+The dispatcher unwind rule is internal to Wine's native ELF virtual
+unwinder; it is not full external DWARF CFI support. The search-phase
+registration wrapper is experimental. Full protected unwind-handler
+invocation and collided-unwind restart semantics remain open, as do
+removal of speculative recursion limits and virtual memory initialization
+alignment. No upstream integration or full architecture parity is claimed.
+
+**Validation:** rebuild, run the signal test (which includes the earlier
+caller-context test before the new access-fault tests), then exception,
+syscall, thread, sync and pipe tests. Retest the established GUI programs
+and prefix installation. Inspect failures with +seh,+riscv64 and targeted
+WINE_RISCV_DIAG=1 tracing. A completed test summary, not merely an exit
+status, is required to claim the new tests passed. The changes in this
+section are source-reviewed but not yet compiled or hardware-validated.
