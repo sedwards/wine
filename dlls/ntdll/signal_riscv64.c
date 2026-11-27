@@ -395,34 +395,16 @@ struct riscv64_exception_stack
     EXCEPTION_RECORD record;
 };
 
-void WINAPI DECLSPEC_NORETURN riscv64_dispatch_exception( struct riscv64_exception_stack *stack )
-{
-    NTSTATUS status;
-
-    WARN( "RV64 KiUserExceptionDispatcher enter stack=%p context=%p record=%p code=%08x flags=%08x pc=%p sp=%p ra=%p\n",
-          stack, &stack->context, &stack->record, (unsigned int)stack->record.ExceptionCode,
-          stack->context.ContextFlags, (void *)(ULONG_PTR)stack->context.Pc,
-          (void *)(ULONG_PTR)stack->context.Gpr.X[2],
-          (void *)(ULONG_PTR)stack->context.Gpr.X[1] );
-    if ((stack->context.ContextFlags & CONTEXT_CONTROL) != CONTEXT_CONTROL ||
-        !stack->context.Pc || !stack->context.Gpr.X[2] ||
-        (stack->context.Gpr.X[2] & 15))
-    {
-        ERR( "RV64 exception dispatcher received invalid context; refusing dispatch\n" );
-        RtlRaiseStatus( STATUS_INVALID_PARAMETER );
-    }
-    status = dispatch_exception( &stack->record, &stack->context );
-    ERR( "RV64 exception dispatch returned status=%#lx pc=%p sp=%p\n",
-         (unsigned long)status, (void *)(ULONG_PTR)stack->context.Pc,
-         (void *)(ULONG_PTR)stack->context.Gpr.X[2] );
-    RtlRaiseStatus( status );
-    __builtin_unreachable();
-}
-
+/* Like arm64, dispatch directly from the saved exception frame.  A null
+ * fault PC is a valid execute access violation, not a malformed context. */
 __ASM_GLOBAL_FUNC( KiUserExceptionDispatcher,
-                   "mv a0, sp\n\t"
-                   "call riscv64_dispatch_exception\n\t"
+                   "mv a1, sp\n\t"
+                   "addi a0, sp, 736\n\t"
+                   "call " __ASM_NAME("dispatch_exception") "\n\t"
                    "ebreak" )
+C_ASSERT( offsetof(struct riscv64_exception_stack, record) == 736 );
+C_ASSERT( sizeof(struct riscv64_exception_stack) % 16 == 0 );
+
 /* Mirrors the Unix-side riscv64_apc_stack_layout.  The dispatcher
  * executes on the Windows stack and resumes the saved context afterward. */
 struct riscv64_apc_stack
