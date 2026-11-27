@@ -523,111 +523,26 @@ C_ASSERT( offsetof( CONTEXT, F ) == offsetof(CONTEXT, Fcsr) + sizeof(ULONG64) );
 C_ASSERT( offsetof( struct riscv64_exception_stack_layout, context ) % 16 == 0 );
 
 
-static void DECLSPEC_NORETURN riscv64_raise_signal_exception( struct riscv64_exception_stack_layout *exc )
+/* Prepare first-chance exception delivery directly from the signal context,
+ * following the arm64 path.  The kernel restores native gp/tp on sigreturn. */
+static void setup_raise_exception( struct thread_data *data, ucontext_t *uc,
+                                   EXCEPTION_RECORD *rec, CONTEXT *context )
 {
-    NTSTATUS status;
-    ULONG_PTR entry_pc = exc->context.Pc;
-    ULONG_PTR entry_sp = exc->context.Gpr.X[2];
-    ULONG_PTR entry_ra = exc->context.Gpr.X[1];
-    struct thread_data *entry_data = get_thread_data();
-    struct syscall_frame *entry_frame = entry_data && entry_data->teb ? get_syscall_frame( entry_data ) : NULL;
+    struct riscv64_exception_stack_layout *stack;
+    NTSTATUS status = send_debug_event( data, rec, context, TRUE );
 
-    if (riscv64_transition_diag_enabled())
-        WARN( "RV64-EXC RAISE_ENTER exc=%p record=%p context=%p code=%#lx pc=%p sp=%p ra=%p flags=%#x frame=%p frame_pc=%p frame_sp=%p frame_ra=%p frame_flags=%#lx\n",
-              exc, &exc->record, &exc->context, (unsigned long)exc->record.ExceptionCode,
-              (void *)entry_pc, (void *)entry_sp, (void *)entry_ra, exc->context.ContextFlags,
-              entry_frame, (void *)(ULONG_PTR)(entry_frame ? entry_frame->pc : 0),
-              (void *)(ULONG_PTR)(entry_frame ? entry_frame->sp : 0),
-              (void *)(ULONG_PTR)(entry_frame ? entry_frame->ra : 0),
-              (unsigned long)(entry_frame ? entry_frame->restore_flags : 0) );
-
-    WARN( "RV64 exception dispatch enter code=%#lx address=%p fault=%p pc=%p sp=%p ra=%p a0=%p a1=%p teb=%p\n",
-          (unsigned long)exc->record.ExceptionCode, exc->record.ExceptionAddress,
-          (void *)(ULONG_PTR)exc->record.ExceptionInformation[1],
-          (void *)(ULONG_PTR)exc->context.Pc,
-          (void *)(ULONG_PTR)exc->context.Gpr.X[2],
-          (void *)(ULONG_PTR)exc->context.Gpr.X[1],
-          (void *)(ULONG_PTR)exc->context.Gpr.X[10],
-          (void *)(ULONG_PTR)exc->context.Gpr.X[11], NtCurrentTeb() );
-    status = NtRaiseException( &exc->record, &exc->context, TRUE );
-    if (riscv64_transition_diag_enabled())
+    if (status == DBG_CONTINUE || status == DBG_EXCEPTION_HANDLED)
     {
-        struct thread_data *after_data = get_thread_data();
-        struct syscall_frame *after_frame = after_data && after_data->teb ? get_syscall_frame( after_data ) : NULL;
-        WARN( "RV64-EXC RAISE_RETURN status=%#lx context_pc=%p context_sp=%p context_ra=%p delta_sp=%ld context_changed=%u frame_before=%p frame_after=%p frame_pc=%p frame_sp=%p frame_ra=%p frame_flags=%#lx\n",
-              (unsigned long)status, (void *)(ULONG_PTR)exc->context.Pc,
-              (void *)(ULONG_PTR)exc->context.Gpr.X[2],
-              (void *)(ULONG_PTR)exc->context.Gpr.X[1],
-              (long)(exc->context.Gpr.X[2] - entry_sp),
-              exc->context.Pc != entry_pc || exc->context.Gpr.X[2] != entry_sp ||
-              exc->context.Gpr.X[1] != entry_ra,
-              entry_frame, after_frame,
-              (void *)(ULONG_PTR)(after_frame ? after_frame->pc : 0),
-              (void *)(ULONG_PTR)(after_frame ? after_frame->sp : 0),
-              (void *)(ULONG_PTR)(after_frame ? after_frame->ra : 0),
-              (unsigned long)(after_frame ? after_frame->restore_flags : 0) );
+        restore_context( context, uc );
+        return;
     }
-    WARN( "RV64 NtRaiseException returned status=%#lx pc=%p sp=%p\n",
-          (unsigned long)status, (void *)(ULONG_PTR)exc->context.Pc,
-          (void *)(ULONG_PTR)exc->context.Gpr.X[2] );
 
-    /* A successful NtRaiseException may have scheduled KiUserExceptionDispatcher
-     * in the syscall frame.  Never feed an invalid or overwritten CONTEXT
-     * back to NtContinue: doing so attempts to execute PC=0 on RV64. */
-    if (!status)
-    {
-        struct thread_data *data = get_thread_data();
-        struct syscall_frame *frame = data && data->teb ? get_syscall_frame( data ) : NULL;
-        WARN( "RV64 exception return context=%p flags=%08x pc=%p sp=%p frame=%p frame_pc=%p frame_sp=%p\n",
-              &exc->context, exc->context.ContextFlags,
-              (void *)(ULONG_PTR)exc->context.Pc,
-              (void *)(ULONG_PTR)exc->context.Gpr.X[2], frame,
-              (void *)(ULONG_PTR)(frame ? frame->pc : 0),
-              (void *)(ULONG_PTR)(frame ? frame->sp : 0) );
-        if (frame && frame->pc && frame->sp && frame->pc != exc->context.Pc)
-        {
-            if (riscv64_transition_diag_enabled())
-                WARN( "RV64-EXC DISPATCH_TRANSFER context_pc=%p context_sp=%p frame_pc=%p frame_sp=%p frame_ra=%p frame_x2=%p frame_flags=%#lx\n",
-                      (void *)(ULONG_PTR)exc->context.Pc,
-                      (void *)(ULONG_PTR)exc->context.Gpr.X[2],
-                      (void *)(ULONG_PTR)frame->pc, (void *)(ULONG_PTR)frame->sp,
-                      (void *)(ULONG_PTR)frame->ra, (void *)(ULONG_PTR)frame->x[2],
-                      (unsigned long)frame->restore_flags );
-            WARN( "RV64 exception dispatch scheduled pc=%p sp=%p; transferring through syscall return\n",
-                  (void *)(ULONG_PTR)frame->pc, (void *)(ULONG_PTR)frame->sp );
-            __asm__ volatile ( "mv a0, %0\n\tjr %1" :: "r"(frame),
-                               "r"(__wine_syscall_dispatcher_return) : "a0", "memory" );
-            __builtin_unreachable();
-        }
-        if (!(exc->context.ContextFlags & CONTEXT_CONTROL) ||
-            !exc->context.Pc || !exc->context.Gpr.X[2] ||
-            (exc->context.Gpr.X[2] & 15))
-        {
-            ERR( "RV64 refusing invalid exception continuation flags=%08x pc=%p sp=%p\n",
-                 exc->context.ContextFlags, (void *)(ULONG_PTR)exc->context.Pc,
-                 (void *)(ULONG_PTR)exc->context.Gpr.X[2] );
-            abort();
-        }
-        if (riscv64_transition_diag_enabled())
-            WARN( "RV64-FLOW NtContinue caller=exception-dispatch context=%p pc=%p sp=%p ra=%p frame=%p frame_pc=%p frame_sp=%p\n",
-                  &exc->context, (void *)(ULONG_PTR)exc->context.Pc,
-                  (void *)(ULONG_PTR)exc->context.Gpr.X[2],
-                  (void *)(ULONG_PTR)exc->context.Gpr.X[1], frame,
-                  (void *)(ULONG_PTR)(frame ? frame->pc : 0),
-                  (void *)(ULONG_PTR)(frame ? frame->sp : 0) );
-        if (riscv64_transition_diag_enabled())
-            WARN( "RV64-EXC CONTINUE_ENTER context=%p pc=%p sp=%p ra=%p flags=%#x\n",
-                  &exc->context, (void *)(ULONG_PTR)exc->context.Pc,
-                  (void *)(ULONG_PTR)exc->context.Gpr.X[2],
-                  (void *)(ULONG_PTR)exc->context.Gpr.X[1], exc->context.ContextFlags );
-        status = NtContinue( &exc->context, FALSE );
-        if (riscv64_transition_diag_enabled())
-            WARN( "RV64-EXC CONTINUE_RETURN status=%#lx pc=%p sp=%p\n",
-                  (unsigned long)status, (void *)(ULONG_PTR)exc->context.Pc,
-                  (void *)(ULONG_PTR)exc->context.Gpr.X[2] );
-    }
-    ERR( "RISC-V64 exception continuation failed: %#lx\\n", (unsigned long)status );
-    abort();
+    stack = virtual_setup_exception( data, (void *)(SP_sig( uc ) & ~(ULONG_PTR)15),
+                                     sizeof(*stack), rec );
+    stack->context = *context;
+    stack->record = *rec;
+    SP_sig( uc ) = (ULONG_PTR)stack;
+    PC_sig( uc ) = (ULONG_PTR)pKiUserExceptionDispatcher;
 }
 
 /* Minimal signal-path diagnostics: no stdio, heap allocation, or Wine logging. */
@@ -782,7 +697,7 @@ static BOOL handle_syscall_fault( struct thread_data *data, ucontext_t *uc,
 static void riscv64_fault_handler( int sig, siginfo_t *info, void *opaque )
 {
     ucontext_t *uc = opaque;
-    struct riscv64_exception_stack_layout *exc;
+    CONTEXT context;
     EXCEPTION_RECORD rec = {0};
     struct thread_data *data;
     ULONG_PTR sp = SP_sig( uc );
@@ -982,52 +897,8 @@ static void riscv64_fault_handler( int sig, siginfo_t *info, void *opaque )
 
     if (handle_syscall_fault( data, uc, &rec, sig )) return;
 
-    /* Use the common stack preparation path, as on arm64 and x86-64.
-     * It can extend a committed stack into its guard page and preserve
-     * STATUS_STACK_OVERFLOW in the exception record when appropriate. */
-    exc = virtual_setup_exception( data, (void *)(sp & ~(ULONG_PTR)15), sizeof(*exc), &rec );
-    if (riscv64_transition_diag_enabled())
-    {
-        char buf[384], *p = buf;
-        p = riscv64_diag_text( p, "RV64-EXC FRAME_ALLOC signal=" );
-        p = riscv64_diag_dec( p, (unsigned int)sig );
-        p = riscv64_diag_text( p, " fault_pc=" );
-        p = riscv64_diag_hex( p, PC_sig( uc ) );
-        p = riscv64_diag_text( p, " source_sp=" );
-        p = riscv64_diag_hex( p, sp );
-        p = riscv64_diag_text( p, " frame_sp=" );
-        p = riscv64_diag_hex( p, (ULONG_PTR)exc );
-        p = riscv64_diag_text( p, " size=" );
-        p = riscv64_diag_hex( p, sizeof(*exc) );
-        p = riscv64_diag_text( p, " delta=" );
-        p = riscv64_diag_hex( p, sp - (ULONG_PTR)exc );
-        p = riscv64_diag_text( p, " fault_addr=" );
-        p = riscv64_diag_hex( p, (ULONG_PTR)(info ? info->si_addr : NULL) );
-        *p++ = '\n';
-        write( 2, buf, p - buf );
-    }
-    memset( exc, 0, sizeof(*exc) );
-    save_context( &exc->context, uc );
-
-    exc->record = rec;
-
-    if (riscv64_transition_diag_enabled())
-    {
-        char buf[256], *p = buf;
-        p = riscv64_diag_text( p, "RV64-DIAG exception HANDOFF source_pc=" );
-        p = riscv64_diag_hex( p, exc->context.Pc );
-        p = riscv64_diag_text( p, " source_sp=" );
-        p = riscv64_diag_hex( p, exc->context.Gpr.X[2] );
-        p = riscv64_diag_text( p, " exception_sp=" );
-        p = riscv64_diag_hex( p, (ULONG_PTR)exc );
-        p = riscv64_diag_text( p, " target=" );
-        p = riscv64_diag_hex( p, (ULONG_PTR)riscv64_raise_signal_exception );
-        *p++ = '\n';
-        write( 2, buf, p - buf );
-    }
-    SP_sig( uc ) = (ULONG_PTR)exc;
-    REGn_sig( REG_A0, uc ) = (ULONG_PTR)exc;
-    PC_sig( uc ) = (ULONG_PTR)riscv64_raise_signal_exception;
+    save_context( &context, uc );
+    setup_raise_exception( data, uc, &rec, &context );
 }
 
 /* A kernel-created signal frame is safer than fabricating an rt_sigframe:
