@@ -1147,7 +1147,7 @@ static void macdrv_context_select_drawable(struct macdrv_context *context, struc
     if (drawable && drawable->client)
     {
         struct macdrv_client_surface *surface = impl_from_client_surface(drawable->client);
-        RECT rect = surface->client.virtual_rect;
+        RECT rect = surface->client.raw ? surface->client.monitor_rect : surface->client.virtual_rect;
         macdrv_make_context_current(context->context, surface->cocoa_view, cgrect_from_rect(rect));
         return;
     }
@@ -1849,8 +1849,11 @@ static BOOL macdrv_context_activate(struct opengl_context *base, struct opengl_d
 
     if (NtCurrentTeb()->glReserved2) funcs->p_glFlush();
 
+    /* set the context current before selecting the view, preventing incorrect modification of the context viewport */
+    CGLSetCurrentContext(context->base.host_context);
     macdrv_context_select_drawable(context, draw);
     CGLSetCurrentContext(context->base.host_context);
+
     return TRUE;
 }
 
