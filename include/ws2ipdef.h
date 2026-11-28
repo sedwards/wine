@@ -99,7 +99,6 @@ typedef struct _INTERFACE_INFO
 #define IP_RECVTOS                      40
 #define IP_ORIGINAL_ARRIVAL_IF          47
 #define IP_ECN                          50
-#define IP_RECVECN                      50
 #define IP_PKTINFO_EX                   51
 #define IP_WFP_REDIRECT_RECORDS         60
 #define IP_WFP_REDIRECT_CONTEXT         70
@@ -141,7 +140,6 @@ typedef struct _INTERFACE_INFO
 #define WS_IP_RECVTOS                   40
 #define WS_IP_ORIGINAL_ARRIVAL_IF       47
 #define WS_IP_ECN                       50
-#define WS_IP_RECVECN                   50
 #define WS_IP_PKTINFO_EX                51
 #define WS_IP_WFP_REDIRECT_RECORDS      60
 #define WS_IP_WFP_REDIRECT_CONTEXT      70
@@ -244,7 +242,6 @@ typedef struct WS(in6_pktinfo) {
 #define IPV6_TCLASS                     39
 #define IPV6_RECVTCLASS                 40
 #define IPV6_ECN                        50
-#define IPV6_RECVECN                    50
 #define IPV6_PKTINFO_EX                 51
 #define IPV6_WFP_REDIRECT_RECORDS       60
 #define IPV6_WFP_REDIRECT_CONTEXT       70
@@ -282,7 +279,6 @@ typedef struct WS(in6_pktinfo) {
 #define WS_IPV6_TCLASS                  39
 #define WS_IPV6_RECVTCLASS              40
 #define WS_IPV6_ECN                     50
-#define WS_IPV6_RECVECN                 50
 #define WS_IPV6_PKTINFO_EX              51
 #define WS_IPV6_WFP_REDIRECT_RECORDS    60
 #define WS_IPV6_WFP_REDIRECT_CONTEXT    70

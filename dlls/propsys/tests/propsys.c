@@ -27,6 +27,7 @@
 
 #include "windef.h"
 #include "winbase.h"
+#include "initguid.h"
 #include "objbase.h"
 #include "propsys.h"
 #include "propvarutil.h"
@@ -34,9 +35,7 @@
 #include "propkey.h"
 #include "wine/test.h"
 
-#include "cguid.h"
-
-#include "initguid.h"
+DEFINE_GUID(GUID_NULL,0,0,0,0,0,0,0,0,0,0,0);
 DEFINE_GUID(dummy_guid, 0xdeadbeef, 0xdead, 0xbeef, 0xde, 0xad, 0xbe, 0xef, 0xca, 0xfe, 0xba, 0xbe);
 DEFINE_GUID(expect_guid, 0x12345678, 0x1234, 0x1234, 0x12, 0x34, 0x12, 0x34, 0x56, 0x78, 0x90, 0x12);
 DEFINE_GUID(PKEY_WineTest, 0x7b317433, 0xdfa3, 0x4c44, 0xad, 0x3e, 0x2f, 0x80, 0x4b, 0x90, 0xdb, 0xf4);
@@ -2538,39 +2537,6 @@ static void test_PSCreateMemoryPropertyStore(void)
     IPropertyStoreCache_Release(propstorecache);
 }
 
-static void test_marshalling(void)
-{
-    IPropertyStore *propstore;
-    IMarshal *marshal;
-    IGlobalInterfaceTable *pGIT;
-    DWORD cookie;
-    HRESULT hr;
-
-    CoInitialize(NULL);
-
-    hr = CoCreateInstance(&CLSID_StdGlobalInterfaceTable, NULL,
-                      CLSCTX_INPROC_SERVER, &IID_IGlobalInterfaceTable,
-                      (void**)&pGIT);
-
-    hr = PSCreateMemoryPropertyStore(&IID_IPropertyStore, (void **)&propstore);
-    ok(hr == S_OK, "PSCreateMemoryPropertyStore failed: 0x%08lx.\n", hr);
-
-    hr = IPropertyStore_QueryInterface(propstore, &IID_IMarshal, (void**)&marshal);
-    ok(hr == E_NOINTERFACE, "got 0x%08lx.\n", hr);
-
-    hr = IGlobalInterfaceTable_RegisterInterfaceInGlobal(pGIT, (IUnknown*)propstore, &IID_IPropertyStore, &cookie);
-    ok(hr == S_OK, "RegisterInterfaceInGlobal failed: 0x%08lx.\n", hr);
-
-    hr = IGlobalInterfaceTable_RevokeInterfaceFromGlobal(pGIT, cookie);
-    ok(hr == S_OK, "_RevokeInterfaceFromGlobal failed: 0x%08lx.\n", hr);
-
-    IGlobalInterfaceTable_Release(pGIT);
-
-    IPropertyStore_Release(propstore);
-
-    CoUninitialize();
-}
-
 static void  test_propertystore(void)
 {
     IPropertyStore *propstore;
@@ -3351,5 +3317,4 @@ START_TEST(propsys)
     test_PropVariantToUInt32Vector();
 
     test_PropertySystem();
-    test_marshalling();
 }

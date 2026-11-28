@@ -1535,10 +1535,10 @@ static HRESULT WINAPI dwritefontface1_GetKerningPairAdjustments(IDWriteFontFace5
 
     TRACE("%p, %u, %p, %p.\n", iface, count, glyphs, values);
 
-    if (!count)
-        return S_OK;
+    if (!(glyphs || values) || !count)
+        return E_INVALIDARG;
 
-    if (!glyphs)
+    if (!glyphs || count == 1)
     {
         memset(values, 0, count * sizeof(*values));
         return E_INVALIDARG;
